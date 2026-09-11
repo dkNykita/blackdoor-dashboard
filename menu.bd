@@ -147,11 +147,14 @@ func refresh_status(target):
     # startup; a whole action's worth of work on every other call) and
     # nothing here reset the clock until AFTER the opening log() line.
     nu.throttle(nu.cpu_guard_conservative())
+    log("DEBUG A: entered refresh_status, after 1st throttle")
     log("Checking status...")
+    log("DEBUG B: before 2nd throttle")
     # throttle() polls in small steps until CPU clears the threshold,
     # so this naturally takes less real time on a better CPU tier -
     # no fixed sleep duration to hand-tune per tier.
     nu.throttle(nu.cpu_guard_conservative())
+    log("DEBUG C: after 2nd throttle, before probe_firewall")
     # probe_firewall() raises ("unknown target") instead of returning a
     # failure shape when target isn't a real, registered server - your
     # own IP is exactly this case (confirmed: not a valid target the
@@ -166,6 +169,7 @@ func refresh_status(target):
     fw_active = fw.active
     fw_layers = fw.layers
     fw_layers_remaining = fw.layers_remaining
+    log("DEBUG D: after probe_firewall block")
     # Persisted once, at the very end of this function (see save_entry()
     # call below) - NOT here. Every uhd.set_*() is its own full
     # read_entries()+write_entries() pass over host_intel.txt; calling
@@ -176,10 +180,14 @@ func refresh_status(target):
     # something more pacing could fix.
 
     nu.throttle(nu.cpu_guard_conservative())
+    log("DEBUG E: after 3rd throttle, before get_noise()")
     noise = get_noise()
+    log("DEBUG F: after get_noise()")
 
     nu.throttle(nu.cpu_guard_conservative())
+    log("DEBUG G: after 4th throttle, before cracked_accounts_for")
     accounts = uc.cracked_accounts_for(nu, target)
+    log("DEBUG H: after cracked_accounts_for")
     # The USERS name list is fetched live only once (below) and cached
     # from then on, but cracked status can change any time you crack a
     # new account - recompute it here, every refresh, straight from the
