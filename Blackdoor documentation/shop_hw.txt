@@ -1,0 +1,55 @@
+HARDWARE
+
+ Upgrade your rig. Faster hardware = faster scripts.
+   ────────────────────────────
+ Processing
+
+ CPU Mk.II - $500
+
+ 2x script execution speed (20 ticks/sec). The most impactful early upgrade.
+   ────────────────────────────
+ CPU Mk.III - $2,000
+
+ 4x script execution speed (40 ticks/sec). Requires CPU Mk.II.
+   ────────────────────────────
+ CPU Mk.IV - $6,000
+
+ 8x script execution speed (80 ticks/sec). Requires CPU Mk.III.
+   ────────────────────────────
+ Memory
+
+ RAM Expansion - $300
+
+ 4 concurrent script slots (up from 2).
+   ────────────────────────────
+ RAM Expansion+ - $1,200
+
+ 6 concurrent script slots. Requires RAM Expansion.
+   ────────────────────────────
+ RAM 8 Slots - $4,000
+
+ 8 concurrent script slots. Requires RAM Expansion+.
+   ────────────────────────────
+ Storage & Network
+
+ Storage Drive - $200
+
+ 2x file capacity (100 files).
+   ────────────────────────────
+ Storage Drive+ - $800
+
+ 4x file capacity (200 files). Requires Storage Drive.
+   ────────────────────────────
+ Storage Drive++ - $2,500
+
+ 8x file capacity (400 files). Requires Storage Drive+.
+   ────────────────────────────
+ Network Card - $400
+
+ 2x connection speed. Faster downloads, uploads, and scans.
+   ────────────────────────────
+ Network Card+ - $1,500
+
+ 4x connection speed. Requires Network Card.
+   ────────────────────────────
+ back

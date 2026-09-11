@@ -1,0 +1,97 @@
+SOFTWARE
+
+ Most tools include a working script delivered to ~/scripts/.
+   ────────────────────────────
+ SmartProbe - $150
+
+ Scans top 100 ports instead of 65,535. A convenience script - you could write this yourself.
+   ────────────────────────────
+ QuietCrack - $200
+
+ Noise-managed cracker with progress reporting. A convenience script - you could write this yourself.
+   ────────────────────────────
+ ProxyChain - $250
+
+ Pivot through compromised servers to mask your IP. Each hop adds 15 seconds to the trace timer.
+   ────────────────────────────
+ QuietGrab - $300
+
+ Check file types before downloading. Skip binaries, grab only what you need.
+   ────────────────────────────
+ SQLKit - $300
+
+ Automates SQL injection technique - tries the classic dump-all probe, then a couple of targeted row/column guesses.
+   ────────────────────────────
+ LogScrubber - $350
+
+ Selectively remove your entries from server logs. Leave everything else intact.
+   ────────────────────────────
+ HoneyCheck - $400
+
+ Detect honeypot servers before you commit. Check banners for tells.
+   ────────────────────────────
+ PatternKit - $400
+
+ Extract IPs, emails, credentials, and URLs from file content. Text in, structured data out.
+   ────────────────────────────
+ FireBreak - $450
+
+ Fast firewall bypass. Cuts through layers significantly faster than default.
+   ────────────────────────────
+ CryptoKit - $500
+
+ Detect and break file encryption. You'll need this for anything with real security.
+   ────────────────────────────
+ Crack Source - $650
+
+ See how crack() works. Unlocks low-level hash primitives and delivers the source.
+   ────────────────────────────
+ Bypass Source - $650
+
+ See how bypass_firewall() works. Unlocks probe_layer() and chip_layer() for writing custom bypass logic.
+   ────────────────────────────
+ FTP Source - $500
+
+ Anonymous logins, directory listing, upload and download over FTP. Unlocks ftp_connect() and friends.
+   ────────────────────────────
+ DB Source - $600
+
+ Direct database access - connect, list tables, run queries. Unlocks db_connect() and friends.
+   ────────────────────────────
+ Pivot Source - $700
+
+ See how PivotTool actually works. Unlocks remote_run() - execute an uploaded script on a server as if you were running it locally there.
+   ────────────────────────────
+ Daemon Source - $800
+
+ See how daemon_listen() actually works. Plant a persistent watcher on a server and let it idle for free until its event fires.
+   ────────────────────────────
+ Miner Kit - $350
+
+ Pre-built cryptominer daemon - mines money off a compromised box's CPU while you're elsewhere. Requires Daemon Source.
+   ────────────────────────────
+ Research Kit - $350
+
+ Pre-built BOINC-style donation daemon - donates a compromised box's CPU to research for reputation instead of money. Requires Daemon Source.
+   ────────────────────────────
+ Daemon Commander - $500
+
+ See every daemon you've planted across the network at a glance, read its last output, kill it remotely. Requires Daemon Source.
+   ────────────────────────────
+ Wordlists
+
+ Plain text password lists delivered to ~/wordlists/. Useful with Crack Source.
+   ────────────────────────────
+ Rockyou Pack - $50
+
+ 1000 real leaked passwords. Covers most low-security targets.
+   ────────────────────────────
+ Corporate Pack - $75
+
+ 500 corporate-pattern passwords. Company names, years, policy patterns.
+   ────────────────────────────
+ Targeted Pack - $100
+
+ 200 passwords pulled from the game world. Rewards players who explore.
+   ────────────────────────────
+ back

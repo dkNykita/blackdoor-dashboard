@@ -1,0 +1,233 @@
+FIELD NOTES
+===========
+Consolidated from a third-party scripting guide (hexhaven.net) plus our
+own empirical testing this session. Where the two disagreed, testing
+won - see VERIFIED VS DOCS below. Everything already covered in
+api_documentation.txt / terminal_documentation.txt isn't repeated here.
+
+SECURITY GUIDE
+==============
+
+TRACE TIMER
+  The bar in your status shows time until you're traced. When it hits
+  zero, you're caught and the connection is terminated. Disconnect
+  before it runs out.
+
+NOISE / DETECTION
+  Every action generates noise - scanning ports, cracking passwords,
+  downloading files, it all adds up. Noise decays slowly when you
+  disconnect. Higher noise makes the trace run faster:
+    NONE     - normal trace speed
+    CAUTION  - 1.2x speed (you're on their radar)
+    ALERT    - 1.5x speed (they're actively looking)
+    CRITICAL - 2x speed, ports start closing
+  Exact numeric thresholds for these tiers aren't confirmed - get_noise()
+  returns a raw 0-100 float, tier boundaries unknown.
+
+  - sleep() between actions reduces noise
+  - probe_vuln() reports noise "for free" in the sense that it doesn't
+    cost CPU, but it still generates detection noise - it is not a
+    truly risk-free look, contrary to how idempotent/no-side-effects
+    might sound
+  - Crack a weak account first, then escalate quieter from inside
+    (local_crack()) rather than a second loud remote crack(). cracker
+    takes user@ip too: cracker root@1.2.3.4 is the default target/root,
+    cracker tim@1.2.3.4 targets tim specifically
+  - Fewer API calls = less noise. Write efficient scripts
+  - Download only what you need
+  - Always disconnect before the trace completes
+
+CPU LOAD (confirmed by testing this session)
+  Every line a script runs costs 1 tick, and ticks run at your CPU's
+  speed (10/sec at the base tier - see shop_hw.txt for upgrades). Plain
+  statements - assignments, if/loop bodies, log() calls - all count.
+  So do crack(), decrypt(), bypass_firewall() - real computation, not
+  network I/O. True network-style calls (connect(), scan(), download(),
+  upload(), sleep()) do NOT cost CPU load - separate meter entirely.
+
+  Staying at 100% CPU for 5 STRAIGHT seconds kills every running
+  script. This is a SUSTAINED-duration trigger, not an instant one -
+  but on a base-tier CPU (10 lines/sec), a script printing as few as
+  ~25-30 plain log()/if lines back to back, with no sleep() at all, can
+  already be several seconds of continuous 100% load from nothing but
+  formatting text - no API calls needed to trigger it.
+
+  Practical takeaways from getting this wrong repeatedly:
+  - A conditional-only guard ("wait only if already over threshold")
+    isn't enough - load can spike well past threshold in a single step
+    between checks. Pair it with an unconditional sleep(1) every call.
+  - Polling more often (e.g. sleep(0.2) instead of sleep(1)) does NOT
+    help and can make things WORSE - polling itself executes lines,
+    adding load, and at a tight threshold that can prevent the reading
+    from ever dropping low enough to exit the wait loop at all
+    (self-sustaining livelock, observed directly on a 20%-threshold job).
+  - sleep(1) between every handful of lines (roughly every 5-8), not
+    just around "expensive" API calls, is the safe default on base-tier
+    hardware - a long chain of pure log()/if statements is just as
+    capable of triggering the kill as a real API-call loop.
+  - A module imported by several other modules that are all imported by
+    the same top-level script gets re-executed once per import (no
+    caching observed) - a script importing N helper modules that each
+    also import a shared base module re-runs that base module N+1
+    times before a single line of the script's own logic executes. Have
+    only the top-level script import the shared module once and pass
+    the resulting instance into helper functions as a parameter instead
+    of letting each helper import it independently.
+  - Reproduced directly: importing IS itself real CPU load, costing
+    ticks proportional to the imported file's line count (not just its
+    top-level statements - the whole file, function bodies included,
+    even though those bodies don't run yet). A script that just imports
+    ~10 utility modules back to back, with zero sleep between the
+    import lines, overloaded and got killed before a single line of its
+    own logic ran - no loop, no API call, nothing but the import chain
+    itself. Fixed with a plain sleep(1) between every import statement.
+    Import cost adds directly to whatever the script does immediately
+    after, so a heavy import chain leaves less budget before its first
+    real pacing point too.
+  - A hand-written loop (for/while written in the script) costs real
+    per-iteration ticks even when the body only calls "free-looking"
+    built-ins like .contains()/.trim()/.split() - confirmed by a loop
+    over an accumulated wordlist/host-list file that had grown to
+    several dozen+ lines over many play sessions, with no per-iteration
+    pacing, overloading on a call that "should" have been instant.
+    Don't assume a loop is cheap just because its body has no visible
+    API call - if the list it walks can grow across sessions (anything
+    read from a file that gets appended to over time), pace it.
+  - Periodic pacing ("throttle every N iterations" instead of every
+    single one) is NOT reliably safe once per-iteration cost varies or
+    is itself unbounded - e.g. a loop whose body does its own nested
+    scan over another list (cost scales with THAT list's size, not the
+    outer loop's). Checked-every-5 still let bursts through that
+    checked-every-1 didn't. Reserve periodic pacing for loops where each
+    iteration is a small, genuinely bounded constant amount of work;
+    throttle every iteration otherwise even though it's slower.
+  - Debugging tip: a script that dies with zero visible output
+    overloaded before its very first log() line - the cause is early
+    (import chain, or the first unpaced loop before any logging). A
+    script that dies after SOME log() lines printed overloaded in
+    whatever ran between the last line that printed and the next one
+    that should have - narrows the search to exactly that stretch of
+    code instead of the whole script.
+  - Over-pacing is a real failure mode too, not just under-pacing -
+    throttle() always sleeps at least 1s AND can loop several more times
+    if get_cpu() decays slowly, so it can easily cost several real
+    seconds per single call, not a flat 1s. Throttling a loop that calls
+    another already-throttled loop (e.g. a per-item rebuild calling a
+    helper that itself throttles per item) turns O(N) real throttle
+    calls into O(N^2) - only 7 items each way still meant ~50 throttled
+    calls, each several seconds, adding up to literal MINUTES for what
+    should've been instant. Only throttle the loop that's actually
+    unbounded (per-host field data, e.g.) - a loop that just scans/
+    copies a small, realistically-bounded list (the host list itself,
+    not what's attached to each host) doesn't need its own throttle on
+    top of whatever built that list already paced.
+  - A "read the docs, they said no other calls needed pacing here"
+    corner can still overload: menu.bd's dashboard refresh deliberately
+    doesn't throttle while a connection is open (real time spent =
+    trace exposure, so keep that window short). Fine normally, because
+    most of what it fetches is cached after the first successful read.
+    But the FIRST time it ever runs against a given target - or any
+    time an earlier crash meant nothing got persisted yet - every
+    "fetch this once" field is still unset at the same time, so they
+    ALL fire in that one dip: 5+ real API calls back to back, zero
+    pacing, the exact overload pattern. A deliberately-unpaced section
+    can still hide this if its "normal" case (some fields already
+    cached) never exercises the "everything's still unset" case that
+    stacks every call into one burst.
+  - Fixing the above (nu.throttle() between each call in that burst)
+    quietly broke trace safety instead: a single check_trace() called
+    once right after connect() was the original design, on the
+    assumption the connected window stays short. Adding real
+    sleep()-backed throttle() waits inside that same window (each one
+    real wall-clock seconds, not free) stretches it out - trace can now
+    go low PARTWAY THROUGH the burst, past the one check that already
+    ran, with nothing left to catch it until disconnect. Any fix that
+    adds real waiting time inside an already-connected window needs a
+    fresh check_trace() paired with each new wait, not just the one at
+    the top - a CPU fix and a trace fix aren't interchangeable, and
+    solving one silently reopened the other.
+
+LOGS
+  Servers write your activity to /var/log/auth.log. When you disconnect,
+  IDS-enabled servers scan that log and add noise for every entry with
+  your IP.
+
+  /var/log/syslog records file operations (writes, deletes). It is NOT
+  checked by IDS - it's evidence, not a score.
+
+  IMPORTANT: editing auth.log with write_file() (read the file, filter
+  lines, write it back) does NOT reduce IDS noise/trace tracking. IDS
+  keeps its own copy of what it's seen in memory, independent of the
+  file on disk. Only the real scrub_log() (LogScrubber tool, $350)
+  clears both the file and IDS's memory copy. A DIY "log scrubber" built
+  on read_file()/write_file() only edits what's visible on disk - useful
+  against someone reading the log by hand, not against detection.
+
+  In the meantime: make fewer writes, disconnect cleanly, and stay
+  under the IDS threshold.
+
+VERIFIED VS DOCS (this session's empirical testing)
+====================================================
+Things confirmed working but absent from the official reference, and
+corrections to claims that turned out wrong when actually tested.
+
+CONFIRMED WORKING (undocumented in api_documentation.txt):
+  - import "path" as alias - module system, including subfolder paths
+    (e.g. import "utils/net" as nu). NOT cached: importing the same
+    module from multiple places re-executes its whole file each time -
+    see CPU LOAD above for why that matters.
+  - log(msg, Color.xxx) - two-argument colored logging. Confirmed
+    colors: red, green, amber, cyan, purple, white, muted.
+  - Assignment without var (x = 5) creates an implicit variable.
+  - Ternary x ? y : z and "%s"-style string formatting both work as
+    described in the quick reference below.
+  - get_args() returns the raw argument list exactly as typed
+    (["foo", "bar", "-debug"]), letting a script implement its own
+    "-flag" parsing independent of @param's positional-only binding.
+  - local_crack(user) takes exactly one argument, no conn - it operates
+    on the calling script's own current/most-recent connection. Errors
+    "not connected" if the script hasn't connected to anything.
+  - prompt() genuinely blocks for real typed input, even though the
+    terminal's "Running <script>..." indicator after it can look like
+    the script already ended - it hasn't. It's just a confusing display,
+    not a functional bug.
+  - Confirmed directly, repeatedly: prompt() does NOT submit on a bare
+    Enter with nothing typed at all - it just keeps waiting on the same
+    line, full stop. Any script UX built on "leave it blank for the
+    default" (an empty string after trim()) is unreachable that way - a
+    prompt worded "(default X)" or "(blank to skip)" is advertising a
+    path the player can't actually take by just hitting Enter. See
+    CORRECTIONS below - an earlier version of this note claimed a
+    whitespace workaround exists; retesting showed it doesn't.
+
+CORRECTIONS (a third-party note claimed this; testing showed otherwise):
+  - get_users(conn) does NOT include a per-user security field. Actual
+    confirmed shape: {name, home, shell}. There is no scriptable way to
+    identify a "weakest account" from this call alone.
+  - RETRACTED (this document previously claimed it, under CONFIRMED
+    WORKING): typing a single space then Enter does NOT submit a
+    prompt(), and does NOT land on "" after .trim(). Retested directly:
+    the terminal's own input widget discards whitespace-only input
+    before it ever reaches the running script - the space vanishes, the
+    line goes back to empty, and prompt() keeps waiting exactly as it
+    does for a bare Enter. Repeating it changes nothing. There is
+    currently NO known way to make prompt() return an empty-after-
+    trim() string through normal typing - any "use default"/"skip" UX
+    needs a visible non-whitespace sentinel instead (e.g. a literal "-"
+    the script checks for explicitly), not a blank-string check. Word
+    these prompts as "(type - for X)", not "(space + Enter for X)" or
+    "(default X)".
+
+STILL UNRESOLVED / CONFIRMED ABSENT:
+  - No real "-flag" command-line syntax exists via @param - it binds
+    purely positionally by declaration order. get_args() (above) is the
+    workaround.
+  - No way for a script to relaunch/restart itself - run() is not a
+    callable function from within a script (confirmed via direct test:
+    "'run' is not defined").
+  - /etc/crontab is inert - no real cron daemon reads it (confirmed via
+    a disabled-then-cron-scheduled test that never fired).
+  - get_cwd(conn) reflects the connection's authenticated home
+    directory, not an interactive terminal session's current path -
+    each script/connection resolves independently (this one IS
+    documented, in persistence_update.txt's "language grows up" note).

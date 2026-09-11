@@ -1,0 +1,911 @@
+https://blackdoor.tools/api/
+
+Language Basics
+BDScript is small and dynamically typed. If you know Python or GDScript you already know most of this.
+
+Types
+Seven values type(x) can return: number, string, bool, none, list, object, function (plus builtin, for a built-in like len passed around as a value). Numbers are always floats internally - 10 and 10.0 are the same value. none is the absence of a value, same role as null/None elsewhere - most API calls return it on failure instead of raising.
+
+var n = 42            # number
+var s = "hello"       # string
+var b = true          # bool
+var x = none          # none
+var l = [1, 2, 3]      # list
+var o = {"a": 1}       # object
+Variables & operators
+var x = 10
+x += 1                 # += and -= both exist
+var msg = "ip: " + get_my_ip()   # + concatenates strings too
+Arithmetic: + - * / %. Comparison: == != < <= > >=. Logical: and or not. Bitwise: & | ^ ~ << >>.
+
+var y = x > 3 ? "big" : "small"   # ternary - y if x is truthy, else z
+"Port %s open" % port              # string formatting - %s/%d/%f, %% for
+                                    # a literal percent. One value, or a
+                                    # list for multiple placeholders
+
+Control flow
+if x > 5:
+    log("big")
+elif x > 0:
+    log("small")
+else:
+    log("not positive")
+
+for port in [22, 80, 443]:
+    scan(target, port)
+
+for i in range(1, 100):
+    if i == 50:
+        break
+    if i % 2 == 0:
+        continue
+
+while not crack(conn, "root"):
+    sleep(0.1)
+pass is a no-op statement, same role as everywhere else it exists.
+
+Functions
+func greet(name, greeting="hello"):
+    return greeting + ", " + name
+
+greet("static")             # "hello, static"
+greet("static", "hey")      # "hey, static"
+Parameters can have a default value (b=10) - leave the argument out and the default applies. daemon_listen()'s callback is a plain function like this one, just handed to another function by name instead of called directly.
+
+try / catch
+try:
+    var r = crack(conn, "root")
+catch e:
+    log("something went wrong: " + e.message + " (line " + str(e.line) + ")")
+Catches a runtime error instead of the whole script halting on the spot. e.message/e.line describe what happened. Works across nested function calls, not just the current one.
+
+Built-in functions
+Not part of the API registry (no connection, no ticks, no noise) - always available.
+
+log(msg)	Print a line to the terminal (or the background process log, if running detached).
+log(msg, color)	Same, printed in color. color is one of Color.red/green/amber/cyan/purple/white/muted. Not in the official reference but confirmed working.
+range(start, end, step=1)	A list of numbers - range(5), range(1, 5), or range(0, 10, 2).
+len(x)	Length of a list or string.
+str(x)	Convert to string.
+int(x)	Convert a number or numeric string to an int.
+type(x)	The type name of a value, as a string.
+round(n) / floor(n) / ceil(n)	Standard rounding.
+exit()	Halt the whole script cleanly right now, from any nesting depth.
+raise(message)	Halt with an actual error - catchable by try/catch, same as any other runtime error.
+prompt(message)	Pause a foreground script and read a real line of typed input. Only valid as its own statement, not inside a larger expression.
+get_args()	ALL arguments this script was called with, as a raw list of strings, in order - even ones with no matching @param. @param binds purely positionally by declaration order and breaks if a flag-like token ("-full") lands ahead of a positional value; reading get_args() directly and filtering out recognized "-flag" tokens yourself avoids that.
+List methods
+var l = [10, 20, 30]
+l.append(40)            # [10, 20, 30, 40]
+l.pop()                  # removes & returns 40
+l.insert(0, 5)           # [5, 10, 20, 30]
+l.remove(0)              # removes index 0 -> [10, 20, 30]
+l.contains(20)           # true
+l.size()                 # same as len(l)
+l[0]                      # index access - negative indices count from the end
+String methods
+var s = "Hello World"
+s.lower()                       # "hello world"
+s.upper()                       # "HELLO WORLD"
+s.replace("World", "There")      # "Hello There"
+s.split(" ")                     # ["Hello", "World"]
+s.contains("World")              # true
+s.starts_with("Hello")           # true
+s.ends_with("World")             # true
+s.find("World")                  # 6 (index, or -1 if not found)
+s.substr(0, 5)                    # "Hello"
+s.trim()                          # strips leading/trailing whitespace
+s.size()                          # same as len(s)
+Objects
+Every API call that returns structured data returns an object - dot access and bracket access both work.
+
+var r = crack(conn, "root")
+r.success        # dot access
+r["success"]     # same thing
+Examples
+Full scripts, not isolated calls - the shape a real script actually takes.
+
+Getting a foothold
+var conn = connect("45.33.12.7", 22)
+while not crack(conn, "root"):
+    sleep(0.1)
+
+var r = download(conn, "/var/data/clients.db")
+# r.success == true - file lands in ~/downloads/clients.db
+
+disconnect(conn)
+Filling out a real form
+The full browse() → find_forms() → fill_form() → submit_form() flow, strung together - this is the part the individual function entries above don't show on their own.
+
+var page = browse("45.33.12.8/signup")
+var forms = find_forms(page.html)
+# [{action: "/signup", fields: [{name: "email", type: "text"},
+#                                {name: "password", type: "password"},
+#                                {name: "referral_code", type: "text"}]}]
+
+fill_form("email", "test@example.com")
+fill_form("password", "hunter2")
+# referral_code only shows up in the raw HTML, never in a real browser -
+# a script that fills in every field it can find is exactly how a bot
+# gets caught. Leave anything you don't recognise alone.
+
+var r = submit_form()
+# {success: true, html: "...", sqli_success: false, sqli_data: ""}
+Plant a daemon and walk away
+The callback is a normal function - daemon_listen() just holds onto it and calls it later, on the server's own CPU, whether you're connected or not. Requires: Daemon Source
+
+func on_backup(payload):
+    var conn = connect("45.33.12.9", 22)
+    write_file(conn, "/tmp/.seen", "checked in")
+    disconnect(conn)
+
+var conn = connect("45.33.12.9", 22)
+while not crack(conn, "root"):
+    sleep(0.1)
+
+daemon_listen("nightly_backup", none, on_backup)
+# true - the watcher is planted. This script can end right here; nothing
+# above the "func" line runs again until nightly_backup fires next.
+Network
+get_target() -> object
+Returns the current mission target. {ip, hostname}, or none if no target is set. Valid mid-mission even while disconnected.
+
+Cost: 0 ticks
+
+resolve_hostname(hostname) -> string
+Resolve a hostname to an IP via /etc/hosts. Returns none if not found.
+
+Cost: 0 ticks
+
+traces() -> array
+Every trace worth caring about: the current active/paused one, plus any other server still recovering from a previous visit.
+
+var t = traces()
+# [{ip: "74.55.128.33", hostname: "acme-web-01", status: "active",
+#   remaining: 87.0, total: 120.0}]
+status is "active", "paused", or "cooling".
+
+Cost: 0 ticks
+
+scan(target, port) -> object
+Check if a port is open on the target.
+
+var r = scan("74.55.128.33", 22)
+# {open: true, service: "ssh", version: "OpenSSH 8.2",
+#  banner: "SSH-2.0-OpenSSH_8.2p1", filtered: false,
+#  response_time: 0.12}
+Cost: 2 ticks   Noise: 0.5
+
+connect(target, port) -> object
+Open a connection. Starts the trace timer. target can be "user@host" to authenticate directly - pass a password as an optional 3rd argument, or omit it to authenticate as an already-cracked user.
+
+var conn = connect("root@74.55.128.33", 22, "changeme")
+# {id: 1, success: true, user: "root", hostname: "acme-web-01",
+#  os: "Ubuntu", banner: "SSH-2.0-OpenSSH_8.2p1",
+#  trace_time: 120}
+Cost: 5 ticks   Noise: 0.5
+
+disconnect(conn) -> void
+Close a connection. Stops the trace timer.
+
+Cost: 1 tick
+
+pivot(conn) -> bool
+Route future connections through the currently connected server. Must be authenticated. Auto-disconnects and adds the server as a proxy hop. Requires: ProxyChain
+
+Each hop in the chain adds trace time on your next connection - capped at 5 hops.
+
+Cost: 5 ticks
+
+pivot_clear() -> void
+Clear the entire proxy chain. Requires: ProxyChain
+
+Cost: 0 ticks
+
+scan_network(conn) -> array
+Discover servers connected to the connected server, by reading its own /etc/hosts, SSH known_hosts, SSH config, and bash_history. Only genuinely registered and online servers show up - a reference to something that isn't actually there (yet) simply doesn't appear. Scripting equivalent of the terminal nmap command. Always available, no unlock step.
+
+var found = scan_network(conn)
+# [{ip: "10.0.4.12", hostname: "internal-db", source: "known_hosts"}]
+Cost: 1 tick   Noise: 0.5
+
+whois(ip) -> object
+Registry lookup, not a probe - works on any IP, no connection needed. Scripting equivalent of the terminal whois command.
+
+var r = whois("74.55.128.33")
+# {ip: "74.55.128.33", owner: "Acme Corp", faction_id: "acme"}
+owner/faction_id are empty strings if the address isn't inside any faction's registered range.
+
+Cost: 1 tick
+
+store(target) -> bool
+Add a server to the Network tab, same as the terminal store command.
+
+Cost: 1 tick
+
+unstore(target) -> bool
+Remove a server from the Network tab, same as the terminal unstore command.
+
+Cost: 1 tick
+
+remote_run(conn, script_path) -> bool
+Execute a .bd script already sitting at script_path on the CONNECTED server (upload() it there first) as if it were running locally on that machine - its own connect()/scan_network()/etc. calls resolve against what THAT server can reach, not you. Fire-and-forget: starts the remote script as its own background process (its own RAM/CPU slot) and returns immediately - it does not wait for it to finish, and you stay connected to conn throughout. Requires: Pivot Source
+
+Returns false if the script isn't there, you don't have permission, it's already running, or there's no free RAM slot for it on that server.
+
+Cost: 2 ticks   Noise: 2.5
+
+Challenge Ports
+Some ports don't run a real service at all - a reflex-gated challenge instead of a shell.
+
+netcat(target, port) -> object
+Connect to a challenge port.
+
+var r = netcat("83.142.66.19", 31337)
+# {id: 1, success: true, hostname: "...", target: "83.142.66.19",
+#  task: "reverse this: dlrow olleh", window_seconds: 8.0,
+#  retry_seconds: 0}
+task is a string to solve (currently: reverse it) and reply with via netcat_send() before window_seconds real seconds run out. retry_seconds > 0 means this port is temporarily locked out after a recent failure - wait that long before it'll answer again.
+
+Cost: 4 ticks
+
+netcat_send(conn, response) -> object
+Answer the live challenge from netcat(). Single-shot - correct, wrong, or expired all clear it, so a fresh netcat() is needed to try again. A wrong answer or an expired challenge locks the port out for a while.
+
+var r = netcat_send(conn, "hello world")
+# {success: true, correct: true, remaining_seconds: 3.2, retry_seconds: 0}
+A correct answer opens every currently-filtered port on the server, same as a firewall bypass.
+
+Cost: 2 ticks   Noise: 0.5 on success, 8.0 on a wrong/expired answer
+
+Security
+get_security(conn) -> float
+Server security level. 0.0 (trivial) to 1.0 (impossible).
+
+Cost: 0 ticks
+
+probe_vuln(conn) -> object
+Check the next vulnerability without exploiting it. Idempotent - repeated calls return the same result until exploit_vuln() finishes it off. Probing first makes exploit_vuln() faster.
+
+var r = probe_vuln(conn)
+# {found: true, exploited: false, progress: 0.0,
+#  vuln_type: "config",
+#  description: "Misconfigured SSH: no rate limiting",
+#  severity: "medium", security_reduction: 0.08,
+#  new_security: 0.5, tip: "..."}
+Returns {found: false} when all vulnerabilities are exhausted.
+
+Cost: 2 ticks   Noise: varies
+
+exploit_vuln(conn) -> object
+Chip away at the current vulnerability found by probe_vuln(). Usually takes several calls - exploited is true and security_reduction applies on the call that finishes it.
+
+Same return shape as probe_vuln().
+
+Cost: 4 ticks   Noise: varies
+
+probe_firewall(target) -> object
+Check if a server has an active firewall. Returns layer count.
+
+var fw = probe_firewall("83.142.66.19")
+# {active: true, layers: 3, layers_remaining: 3}
+Cost: 2 ticks   Noise: 0.5
+
+bypass_firewall(target) -> object
+Chip away at the firewall. Progressive - each call makes progress on the current layer. Very noisy.
+
+var r = bypass_firewall("83.142.66.19")
+# {success: false, layers_remaining: 2,
+#  progress: 0.35, layer_breached: true,
+#  firewall_down: false}
+When all layers are breached, filtered ports open.
+
+Cost: 3 ticks   Noise: 5.0
+
+fast_bypass(target) -> object
+Enhanced firewall bypass. Faster progress per call. Same return shape as bypass_firewall(). Requires: FireBreak
+
+Cost: 3 ticks   Noise: 5.0
+
+Auth
+crack(conn) / crack(conn, username) -> object
+Attempt to crack a user's password. Progressive - each call builds on the last.
+
+var r = crack(conn, "root")
+# {success: false, progress: 0.35,
+#  hint: "c***g***", attempts: 3,
+#  difficulty: "hard"}
+
+# Keep calling...
+# {success: true, progress: 1.0,
+#  hint: "changeme", password: "changeme",
+#  attempts: 8}
+Progress persists between calls. Faster CPU = more calls/second = faster cracking.
+
+Cost: 3 ticks   Noise: 0.8
+
+brute_web(conn) / brute_web(conn, username) -> object
+Crack a web login (port 80/443). Progressive like crack(). Same return shape: {success, progress, hint, password}.
+
+Cost: 3 ticks   Noise: 0.04
+
+local_crack(username) -> object
+Crack a user from inside the server. Progressive like crack() but uses only user security (not server+user), so it's easier. Much less noise. Must be SSH'd in.
+
+Returns same object as crack(): {success, progress, hint, password}
+
+Cost: 2 ticks   Noise: 0.01
+
+su(username) / su(username, password) -> bool
+Switch user. Works if you've cracked them or know the password.
+
+Cost: 1 tick
+
+get_users(conn) -> array
+List user accounts. Must be authenticated.
+
+var users = get_users(conn)
+# [{name: "root", home: "/root", shell: "/bin/bash"}, ...]
+Confirmed shape by testing - no per-user security field, despite what
+some third-party notes claim. There's no way to pick a "weakest
+account" from this call alone.
+
+Cost: 2 ticks
+
+reset_crack(conn, username) -> bool
+Testing tool: clears the permanent cracked record for a user, so the next crack()/local_crack() call actually redoes the work. Does not touch ~/.ssh/credentials.
+
+Cost: 2 ticks
+
+Web Attack Vectors
+No connect() needed - these are plain HTTP requests against a web form, same as wget()/browse().
+
+sqli(url) -> object
+Test a web form for SQL injection. url is a route string authored on the server's own routing config, not necessarily a real file on disk.
+
+var r = sqli("83.142.66.19/login")
+# {success: true, data: "admin:5f4dcc3b5aa765d61d8327deb882cf99", error: ""}
+Cost: 2 ticks   Noise: 0.03
+
+cmd_inject(url) -> object
+Test a web form for command injection. url must be the exact route string the vulnerable form posts to - it's not a filesystem path, so don't add an extension or guess a page name. If /tools/diagnostics.html is what you can see in the browser, the route underneath it might just be /tools/diagnostics - check the page's actual form action, or find_forms() on its HTML, rather than guessing.
+
+var r = cmd_inject("138.68.90.27/tools/diagnostics")
+# {success: true, output: "root@...# tail -20 /var/log/...", error: ""}
+
+# Wrong - this is a file path, not the route:
+cmd_inject("138.68.90.27/tools/diagnostics.html")
+# {success: false, output: "", error: "404 not found"}
+Cost: 2 ticks   Noise: 0.03
+
+smtp_connect(target) -> object
+Open a connection to a mail server (port 25). No credentials required to connect - real SMTP relays don't require auth to accept a message either, which is exactly what makes spoofing possible via smtp_send(). Mailbox auth is a separate step (smtp_login()).
+
+var conn = smtp_connect("74.55.128.33")
+# {id: 1, success: true, banner: "220 mail.acme-corp.com ESMTP"}
+Cost: 3 ticks   Noise: 0.5
+
+smtp_login(conn, user, password) -> bool
+Authenticate to one mailbox. The mailbox password isn't necessarily the SSH one - there's no crack() equivalent for it, it has to be found or guessed. Required before smtp_read() for that user; not required for smtp_send().
+
+Cost: 2 ticks   Noise: 0.03
+
+smtp_read(conn, user) -> array
+Read a mailbox. Requires smtp_login() for that user first this connection.
+
+var msgs = smtp_read(conn, "billing")
+# [{from: "ops@acme-corp.com", subject: "Invoice", body: "..."}]
+Cost: 3 ticks   Noise: 0.02
+
+smtp_send(conn, from, to, subject, body) -> bool
+from is not checked against anything - that's the point. This is how spoofing a trusted sender works against a mail server that doesn't verify it.
+
+Cost: 3 ticks   Noise: 0.03
+
+Browser Automation
+Drive the actual browser pane from a script - the same navigation the terminal browse command and the floating form UI use, just scriptable.
+
+find_links(html) -> array
+Parse <a href> links out of an HTML string. Pure function - works on any HTML you already have, e.g. from browse(), independent of the live browser session.
+
+var links = find_links(html)
+# [{text: "Client Diagnostics", href: "/tools/diagnostics"}]
+Cost: 1 tick
+
+find_forms(html) -> array
+Parse <form> elements out of an HTML string. Fields are {name, type}.
+
+var forms = find_forms(html)
+# [{action: "/login", fields: [{name: "user", type: "text"},
+#                              {name: "pass", type: "password"}]}]
+Cost: 1 tick
+
+browse(url) / browse(url, visible) -> object
+Navigate the browser pane to a URL, same as the terminal browse command - it takes over the screen, same as it would for a player. visible defaults to true; pass false to skip the pane swap entirely (useful for a script hitting many URLs in a loop, where the pane popping open every call is disruptive) and stay in the terminal. The page still loads for real either way, and click()/fill_form()/submit_form() work identically regardless.
+
+var r = browse("74.55.128.33/login", false)
+# {success: true, html: "..."}
+Cost: 3 ticks
+
+click(text) -> object
+Click a link on the current page by its visible text - same lookup your eyes would do. Requires browse() first.
+
+Cost: 2 ticks
+
+fill_form(field, value) -> bool
+Fill a form field on the current page, same as typing into the floating input box. Requires browse() first.
+
+Cost: 1 tick
+
+submit_form() -> object
+Submit the current page's form. Auto-detects the action via find_forms() - errors if the page has no form, or more than one. Returns {success, html, sqli_success, sqli_data} - the last two are only meaningful if the submission happened to trigger a SQL injection leak.
+
+Cost: 2 ticks
+
+Filesystem
+cd(path) or cd(conn, path) -> bool
+Change the working directory relative paths resolve against - every other path-taking function accepts a relative path from here on, not just absolute ones. cd(path) sets the local working directory (used by my_files/read_local/save/etc); cd(conn, path) sets the working directory on a connected remote session.
+
+Cost: 0 ticks
+
+get_cwd() or get_cwd(conn) -> string
+Current directory set by cd(). get_cwd() (local) starts wherever the terminal was locally browsing when the script launched; get_cwd(conn) (remote) starts in the authenticated user's home directory once connected.
+
+Cost: 0 ticks
+
+list_files(conn, path) -> array
+List files in a directory. Returns objects with name, path, type, size, owner.
+
+var files = list_files(conn, "/home/tim")
+# [{name: "notes.txt", type: "file", size: 132, owner: "tim"},
+#  {name: ".bash_history", type: "file", size: 48, owner: "tim"}]
+Cost: 2 ticks   Noise: 0.5
+
+read_file(conn, path) -> object
+Read file contents. Returns content, size, encrypted status, owner.
+
+var r = read_file(conn, "/home/tim/notes.txt")
+# {success: true, content: "...", size: 132,
+#  encrypted: false, owner: "tim"}
+Cost: 1 tick
+
+download(conn, path) -> object
+Download a file to your machine. Returns transfer info.
+
+var r = download(conn, "/var/data/clients.db")
+# {success: true, path: "/var/data/clients.db",
+#  size: 45200, local_path: "~/downloads/clients.db"}
+Cost: 10-50 ticks (scales with size)   Noise: 1.5
+
+wget(url) / wget(url, username, password) -> object
+Fetch a web page directly, no connect() needed. Credentials (if passed) only authorize that one call - they don't grant a session, matching the terminal wget command.
+
+var r = wget("74.55.128.33/reports/q3.pdf")
+# {success: true, path: "/reports/q3.pdf", size: 4200,
+#  local_path: "~/downloads/q3.pdf", error: ""}
+Cost: 10-50 ticks (scales with size)
+
+upload(conn, file, path) -> bool
+Upload a local file to the target server.
+
+Cost: 10-50 ticks (scales with size)   Noise: 2.0
+
+write_file(conn, path, content) -> object
+Write content to a remote file. Creates the file if it doesn't exist - but the parent directory has to be real.
+
+var r = write_file(conn, "/var/log/notes.txt", "hi")
+# {success: true, path: "/var/log/notes.txt", error: ""}
+Cost: 2 ticks   Noise: 2.0
+
+touch(conn, path) -> bool
+Create an empty remote file if it doesn't already exist. Unlike write_file(), never overwrites an existing file's content.
+
+Cost: 2 ticks
+
+delete_file(conn, path) -> bool
+Delete a file. Useful for covering tracks. Rejects directories - use rm_dir() for those.
+
+Cost: 2 ticks   Noise: 1.5 (2.0 for a log file)
+
+rm_dir(conn, path) -> bool
+Recursively delete a directory and everything inside it.
+
+Cost: 2 ticks   Noise: 1.5
+
+file_size(conn, path) -> int
+Get the size of a file in bytes.
+
+Cost: 0 ticks
+
+file_type(conn, path) -> string
+Returns file type: "text", "pdf", "data", "web", "script", "image", "archive", "encrypted", "dir", or "unknown". Useful for filtering downloads. Requires: QuietGrab
+
+Cost: 1 tick
+
+Text Extraction
+Pull structured data out of any string - file content, page source, whatever. Requires: PatternKit
+
+extract_ips(text) -> string[]
+Extract all IPv4 addresses from text.
+
+Cost: 0 ticks
+
+extract_emails(text) -> string[]
+Extract all email addresses from text.
+
+Cost: 0 ticks
+
+extract_urls(text) -> string[]
+Extract all http/https URLs from text.
+
+Cost: 0 ticks
+
+extract_credentials(text) -> string[]
+Extract password/key/token patterns from text.
+
+Cost: 0 ticks
+
+System
+get_trace_time() -> float
+Seconds remaining before trace completes. Plan accordingly.
+
+get_time() is an alias.
+
+Cost: 0 ticks
+
+get_noise() -> float
+Current noise/detection level (0-100). Higher = faster trace.
+
+get_detection() is an alias.
+
+Cost: 0 ticks
+
+get_unix_time() -> int
+Real wall-clock time, in seconds since the Unix epoch. Not related to get_time()/the trace countdown - use this to benchmark your own script's actual elapsed time.
+
+Cost: 0 ticks
+
+get_cpu() -> float
+Current aggregate CPU load across all your running processes (0-100).
+
+Cost: 0 ticks
+
+sleep(seconds) -> void
+Wait. Reduces noise slightly. Sometimes the best move is to do nothing.
+
+Cost: 0 ticks
+
+clear() -> void
+Clear the terminal screen, same as the terminal clear/cls command.
+
+Cost: 0 ticks
+
+get_my_ip() -> string
+Your current exit IP address. Changes when using a proxy chain.
+
+Cost: 0 ticks
+
+whoami() / whoami(conn) -> string
+Returns your username on the current connection. If you pass a conn, it's validated like any other connection - errors if it's gone stale. Not connected to anything? Returns your local account name.
+
+Cost: 0 ticks
+
+get_hostname() -> string
+Returns the hostname of the connected server.
+
+Cost: 0 ticks
+
+ids_status(conn) -> string
+Current IDS watch level for the connected server: "quiet", "flagged", or "active". Poll it to react (scrub_log(), disconnect) before real pressure lands.
+
+Cost: 1 tick
+
+server_specs(conn) -> object
+This box's real hardware, unavailable without a live connection.
+
+var s = server_specs(conn)
+# {cpu_tier: "Mk.III", cpu_ticks: 40, ram_tier: "16GB",
+#  max_daemons: 4, daemons_used: 1,
+#  ram_slots: 2, ram_used: 0}
+cpu_ticks is the rate anything running ON this box (a daemon dispatch, a remote_run() payload) actually executes at. max_daemons/ram_slots are independent caps - how many daemons can idle here vs. how many can run at once.
+
+Cost: 1 tick
+
+Events & Jobs
+Every server runs its own background jobs, reacting to real events on its own schedule. These read/drive that system directly.
+
+list_jobs(conn) -> array
+List the connected server's own background jobs.
+
+var jobs = list_jobs(conn)
+# [{name: "nightly_backup", listens_for: "interval", status: "open"}]
+status is "open" or "requires <user>". Hidden/ambient jobs don't appear.
+
+Cost: 1 tick
+
+emit_event(conn, name, payload={}) -> object
+Manually push a named event onto the connected server's event bus right now. Any job or daemon listening for name reacts identically to a manual or natural trigger.
+
+var r = emit_event(conn, "maintenance_window", {})
+# {fired: true, jobs_run: 1, capped: false, daemons_fired: 0}
+fired is true if either a job ran or a daemon was queued; jobs_run/capped cover only the synchronous job cascade - a daemon dispatch is never synchronous with this call.
+
+Cost: 2 ticks
+
+Daemons
+Plant a persistent watcher on a server and walk away - it runs entirely on the target's own resources, connected or not. Requires: Daemon Source
+
+daemon_listen(event, arg=none, callback) -> bool
+Register a named top-level function in THIS script (callback, always the LAST argument - pass none for arg if the event doesn't need one) as a persistent watcher on the connected server, then let the current run end normally - it costs nothing while idle. callback must be a function defined in this same script taking exactly one parameter (the event payload).
+
+When event fires again on this server, ONLY callback runs, fresh - connect()/anything else at the top level never runs again. event is "interval" (arg = seconds) or any named event the server's jobs/emitters use.
+
+Cost: varies
+
+daemon_stop() -> bool
+Remove the CURRENT script's daemon registration from the connected server, if it has one. Callable on a normal first run (before daemon_listen() would otherwise register it) or on a dispatched run (stops future triggers). Returns true if a registration was actually removed.
+
+Cost: 0 ticks
+
+get_event_payload() -> object
+Inside a daemon's dispatched run, returns the payload dict the triggering event carried ({} if none). Returns {} on a normal (non-dispatched) run.
+
+Cost: 0 ticks
+
+daemons() -> array
+Lists every daemon YOU'VE planted, across every server you've registered/visited this session.
+
+var mine = daemons()
+# [{ip: "74.55.128.33", event: "interval", arg: 30, script_path: "/home/static/scripts/miner.bd"}]
+Cost: 0 ticks
+
+daemon_output(ip) -> array
+Last output lines from your daemon's most recent dispatched run on the server at ip. Empty if it's never fired (or you have no daemon there).
+
+Cost: 1 tick
+
+list_daemons(conn) -> array
+List every daemon registered on the connected server, yours or not - this is how you find something else's botnet sitting on a box you just compromised.
+
+var all = list_daemons(conn)
+# [{event: "interval", arg: 60, script_path: "/home/root/watcher.bd", installed_by: "root"}]
+Cost: 1 tick
+
+Passive Income
+The payoff for planting a daemon and walking away. Requires: Miner Kit or Research Kit
+
+mine(kind) -> object
+The ONE thing a Passive Income Daemon's callback calls, every tick. One call doesn't pay out on its own - it progresses a chunk, same as a real miner doing many hashes per block, and only a completed chunk credits the trusted per-server pending yield ledger. Takes no amount - yield is computed by the engine from the box's specs and kind, so there's nothing to spoof by passing a bigger number yourself. kind is "miner" (money) or "boinc" (reputation). Requires an existing daemon_listen() registration on this connection.
+
+var r = mine("miner")
+# {success: true, completed: false, chunk_id: 3, progress: 0.4,
+#  estimated_output: 12, pending_total: 8}
+completed is true only on the call that finished the current chunk - chunk_id/progress already describe the NEXT one by then.
+
+Cost: 1 tick
+
+deposit(kind) -> object
+Cash in whatever mine() has accrued on the currently connected server RIGHT NOW - credits it immediately and clears it. No conn argument, same as mine() - both resolve against your current connection. Currently the only way to collect.
+
+var r = deposit("miner")
+# {success: true, amount: 24, currency: "money"}
+Cost: 1 tick   Noise: 0.3 - real outbound traffic, see netstat
+
+Local Filesystem
+my_files() / my_files(path) -> array
+List local files/dirs at path (defaults to your home directory if omitted). Same shape as list_files() - objects with name, path, type, size. One level at a time, not recursive - call it again on a "dir" entry to go deeper, same as you already do for a remote target.
+
+var files = my_files("/home/static")
+# [{name: "scripts", type: "dir", size: 4096},
+#  {name: "notes.txt", type: "file", size: 132}]
+Cost: 0 ticks
+
+read_local(path) -> string
+Read a file from your local machine. Accepts a path string or a my_files() entry directly.
+
+Cost: 0 ticks
+
+save(name, data) -> object
+Save data to a local file. Creates the file if it doesn't exist - but the parent directory has to be real. write_local(path, content) is an alias - handy for testing filters/formatting locally before writing to a remote file.
+
+var r = save("notes.txt", "hi")
+# {success: true, path: "/home/player/notes.txt", error: ""}
+Cost: 0 ticks
+
+touch_local(path) -> bool
+Create an empty local file if it doesn't already exist. Unlike save()/write_local(), never overwrites an existing file's content.
+
+Cost: 0 ticks
+
+local_mkdir(path) -> bool
+Create a directory on your local machine.
+
+Cost: 0 ticks
+
+local_mv(src, dst) -> bool
+Move or rename a local file.
+
+Cost: 0 ticks
+
+local_cp(src, dst) -> bool
+Copy a local file.
+
+Cost: 0 ticks
+
+local_rm(path) -> bool
+Delete a local file.
+
+Cost: 0 ticks
+
+to_char(code) -> string
+Convert an ASCII code (integer) to a single character string.
+
+Cost: 0 ticks
+
+to_code(char) -> number
+Convert a single character string to its ASCII code. Inverse of to_char().
+
+Cost: 0 ticks
+
+set_char(str, pos, char) -> string
+Replace the character at pos with char. Returns the new string.
+
+Cost: 0 ticks
+
+FTP & Database
+Two more ways onto a box that don't go through SSH, each with their own vulnerability shape.
+
+ftp_connect(target, port) / ftp_connect("user@host", port, password) -> object
+Connect to an FTP server. Anonymous login happens automatically if the server allows it. Otherwise unauthenticated unless a known-good user/password is supplied, or the user is already cracked via crack(conn, user). Requires: FTP Source
+
+var conn = ftp_connect("74.55.128.33", 21)
+# {id: 1, success: true, banner: "...", hostname: "...", os: "...",
+#  port: 21, target: "74.55.128.33", trace_time: 90, user: "anonymous",
+#  anon: true}
+Cost: 4 ticks   Noise: 0.3
+
+ftp_anon(target) -> bool
+Check whether a server allows anonymous FTP login, with no connection or credentials needed. Requires: FTP Source
+
+Cost: 1 tick   Noise: 0.02
+
+ftp_list(conn, path) -> array
+List a directory over FTP. Requires: FTP Source
+
+var files = ftp_list(conn, "/pub")
+# [{name: "export.csv", size: 4200, type: "file"}]
+Cost: 2 ticks   Noise: 0.03
+
+ftp_get(conn, path) -> object
+Download a file's contents over FTP. Requires: FTP Source
+
+var r = ftp_get(conn, "/pub/export.csv")
+# {success: true, content: "...", size: 4200, path: "/pub/export.csv", error: ""}
+Cost: scales with size   Noise: 1.0
+
+ftp_put(conn, local_path, remote_path) -> bool
+Upload a local file to the FTP server. Requires: FTP Source
+
+Cost: scales with size   Noise: 1.5
+
+db_connect(target, port, user, pass) -> object
+Connect to a database server. user is empty in the result if the credentials were wrong - success only means the port was reachable. Requires: DB Source
+
+var conn = db_connect("74.55.128.33", 5432, "app_ro", "readonly123")
+# {id: 1, success: true, banner: "...", hostname: "...",
+#  port: 5432, target: "74.55.128.33", trace_time: 90, user: "app_ro"}
+Cost: 4 ticks   Noise: 0.3
+
+db_tables(conn) -> array
+List tables the connected DB user can read. Requires: DB Source
+
+var tables = db_tables(conn)
+# ["customers", "orders", "staff_accounts"]
+Cost: 1 tick
+
+db_query(conn, sql) -> array
+Run a simple SELECT or UPDATE against an authored table. Not a real SQL engine - supports "SELECT * FROM t", "SELECT cols FROM t WHERE col='val'", and "UPDATE t SET col=val WHERE col='val'". Requires: DB Source
+
+var rows = db_query(conn, "SELECT username, password FROM staff_accounts")
+# [{username: "it_support", password: "Helpd3sk!2024"}]
+Cost: 2 ticks   Noise: 0.3
+
+Shop Tools
+These functions require purchasing the corresponding tool in-game first.
+
+QuietGrab
+Unlocks file_type(conn, path) - see Filesystem above.
+
+LogScrubber
+scrub_log(conn, path, ip) -> object
+Remove all lines containing the given IP from a log file. Returns {removed, remaining}.
+
+var r = scrub_log(conn, "/var/log/auth.log", get_my_ip())
+# {removed: 4, remaining: 18}
+Cost: 2 ticks   Noise: 2.0
+
+HoneyCheck
+is_honeypot(target, port) -> bool
+Check if a server is likely a honeypot. Not 100% reliable but catches most of them. Pair with the free scan() if you want the raw service banner alongside.
+
+Cost: 3 ticks   Noise: 0.5
+
+FireBreak
+Unlocks fast_bypass(target) - see Security above.
+
+CryptoKit
+detect_encryption(conn, path) -> object
+Detect encryption type on a file. Returns {encrypted, type}.
+
+Cost: 2 ticks   Noise: 0.5
+
+decrypt(conn, path) / decrypt(conn, path, method) -> object
+Decrypt a file. Progressive. Returns {success, progress, content, method_hint}.
+
+Cost: 3 ticks   Noise: 0.8
+
+local_decrypt(path) / local_decrypt(path, method) -> object
+Decrypt a file already downloaded to ~/downloads. Progressive, same return shape as decrypt(). No conn argument and no noise - it's your own local copy.
+
+Cost: 3 ticks
+
+ProxyChain
+Unlocks pivot(conn) and pivot_clear() - see Network above.
+
+PatternKit
+Unlocks the Text Extraction functions above - see Text Extraction.
+
+Crack Source
+Low-level primitives behind crack(), for players who want to write their own cracker instead of using the built-in one.
+
+grab_hash(conn, user) -> object
+Retrieve the salted password hash for a user. Returns {hash, salt, security}.
+
+Cost: 3 ticks   Noise: 0.05
+
+hash_string(str, salt, security=0) -> string
+Hash a string with the given salt, at the given target security (0-1). security has to match the target's or the result isn't comparable at all - it changes both the hash's length and its underlying range, not just its value. Use the security field grab_hash() already gives you rather than guessing it.
+
+Cost: 0 ticks
+
+hash_distance(h1, h2) -> int
+Distance between two hashes. Zero means identical.
+
+Cost: 0 ticks
+
+random_char(str, pos) -> string
+Swap the character at pos with a random printable ASCII character.
+
+Cost: 0 ticks
+
+Bypass Source
+Low-level primitives behind bypass_firewall(), for players who want to write their own bypass instead of using the built-in one.
+
+probe_layer(target) -> object
+Low-level firewall probe. Returns {active, layers, layers_remaining, progress} - includes current-layer progress, unlike probe_firewall().
+
+Cost: 2 ticks   Noise: 0.5
+
+chip_layer(target) -> object
+One tick of firewall bypass with no automatic output. Same return shape as bypass_firewall().
+
+Cost: 3 ticks   Noise: 5.0
+
+FTP Source
+Unlocks ftp_connect(), ftp_anon(), ftp_list(), ftp_get(), and ftp_put() - see FTP & Database above.
+
+DB Source
+Unlocks db_connect(), db_tables(), and db_query() - see FTP & Database above.
+
+Pivot Source
+Unlocks remote_run(conn, script_path) - see Network above.
+
+Daemon Source
+Unlocks daemon_listen(), daemon_stop(), get_event_payload(), daemons(), daemon_output(), and list_daemons() - see Daemons above.
+
+Miner Kit / Research Kit
+Either unlocks mine() and deposit() - see Passive Income above. Both require Daemon Source first.
+
+Tick costs are per API call. Your CPU speed determines ticks per second.
+
+Default: 10 ticks/sec. CPU Mk.V: 160 ticks/sec.

@@ -1,0 +1,573 @@
+REFACTOR ANALYSIS - Active Scripts
+===================================
+Snapshot of slot_0/mnt/Scripts/Active as of this session's debugging pass.
+Written for whoever refactors this next - what each piece does, how it
+connects to the rest, where the duplication is, and which of that
+duplication is safe to collapse vs. blocked by unconfirmed language
+features. Read field_notes.txt first if you haven't - half of this
+file's reasoning leans on lessons documented there (CPU load model,
+prompt() behavior, trace/IDS timing).
+
+DIRECTORY
+=========
+menu.bd                  - sole entry point, dashboard + action launcher
+utils/net.bd              - tuning knobs, throttle(), trace/IDS safety, target resolution
+utils/hostdata.bd          - host_intel.txt persistence (7-field per-host record)
+utils/sync.bd              - known_hosts/credentials/wordlist local sync (menu.bd startup only)
+utils/creds.bd             - ~/.ssh/credentials reader
+utils/crack.bd             - crack()/local_crack() orchestration, softening, escalation, nmap
+utils/grab.bd              - recursive file download
+utils/cleanup.bd           - log scrub (surgical) + log delete (raw)
+utils/firewall.bd          - firewall bypass loop
+utils/probe.bd             - port scanning
+utils/sqli.bd              - SQL injection (direct route + form fallback)
+utils/args.bd              - UNUSED - no current caller (see ORPHANED below)
+
+Every utils/*.bd module (except net.bd itself) takes a `nu` instance as
+a plain parameter instead of importing utils/net itself - re-importing
+net.bd per module was a confirmed real CPU-overload cause this session
+(see field_notes.txt CPU LOAD). menu.bd is the only importer of all ten
+modules, once each, with sleep(1) between every import line - ALSO a
+confirmed overload fix this session. Anyone adding an 11th module needs
+that same sleep(1) gap, not just adding an import line.
+
+PER-MODULE BREAKDOWN
+=====================
+
+utils/net.bd - foundation, imported once by menu.bd, instance passed everywhere
+  Purpose: tuning constants + the two safety primitives (CPU backoff,
+  trace/IDS backoff) + target string resolution. Nothing else in the
+  codebase should hardcode a wait duration, a threshold, or reimplement
+  disconnect-wait-reconnect - it all funnels through here.
+
+  Public API:
+    throttle_default() -> 50          CPU threshold, light/no-connect calls
+    throttle_heavy() -> 80            CPU threshold, everything else (see
+                                       NOTE below - "default" is nearly
+                                       unused now)
+    retry_delay() -> 0.5              pause between crack/bypass poll attempts
+    log_pace() -> 1                   pause between dashboard blocks/prompts
+    line_pace() -> 0.2                UNUSED as of this session (see ORPHANED)
+    trace_poll_interval() -> 5        wait_for_trace_recovery() poll gap
+    trace_critical() -> 10            check_trace()'s hard reconnect threshold
+    trace_watch() -> 15               cleanup's early trace-check threshold
+    trace_check_interval() -> 25      cleanup's per-N-lines trace poll
+    parse_pace_interval() -> 5        UNUSED as of this session (see ORPHANED)
+    throttle(threshold)               sleep(1) + poll get_cpu() until <= threshold
+    wait_for_trace_recovery(host)     poll traces() every 5s until host clears
+    check_trace(conn, connect_str, host) -> {conn, reconnected}
+                                       the actual dc-wait-rc cycle + IDS-active
+                                       hard abort. Every module that holds a
+                                       connection open across more than one
+                                       API call uses this.
+    resolve_raw_target(raw) -> string param cleanup + mission-target fallback,
+                                       RAISES if neither given (menu.bd
+                                       catches this specifically for its
+                                       own-IP fallback - see menu.bd section)
+
+  NOTE - throttle_default() vs throttle_heavy(): originally "default"
+  (50%) was for light calls and "heavy" (80%) for costly ones. Mid-session
+  this stopped being about call weight and became about connection/trace
+  RISK instead - throttle_heavy() was pointedly used for all the purely
+  local, no-trace-consequence loops (utils/hostdata, utils/sync) purely
+  to make throttle() exit sooner (needs less CPU decay), because
+  throttle_default()'s lower threshold was making basic startup take
+  literal minutes. throttle_default() is now used almost nowhere except
+  a handful of menu.bd dashboard-loop paces and utils/sqli.bd/creds.bd.
+  A refactor should either rename these to reflect the real distinction
+  now in play (something like cpu_guard_conservative() vs
+  cpu_guard_fast(), or just cpu_guard(context)) or fold back to one
+  constant - the two-threshold split isn't doing the job it was named for
+  anymore.
+
+  ORPHANED: line_pace() (0.2) and parse_pace_interval() (5) are both
+  defined but have zero call sites left in the current Active tree -
+  both were tried as intermediate fixes during the host_intel.txt
+  overload saga and superseded by "throttle every single iteration with
+  throttle_heavy()" once periodic pacing was proven unreliable (see
+  field_notes.txt). Safe to delete, or keep as documented-but-unused
+  if you want the historical record of what didn't work.
+
+utils/hostdata.bd - persistence layer for ~/host_intel.txt
+  Purpose: the dashboard's only durable memory. One line per IP, with
+  zero or more "key=value" tokens for whichever of 7 fields have been
+  observed: ports, fw, users, specs, jobs, nmap, sqli. A field absent
+  from a line means "never observed" - never conflate with "observed as
+  empty" (e.g. nmap="" means scanned, found nothing; nmap missing
+  entirely means never scanned - menu.bd's NETWORK section depends on
+  this distinction, see its own section below).
+
+  Public API:
+    host_intel_path() -> string
+    empty_entry(ip) -> {ip, ports:none, fw:none, users:none, specs:none, jobs:none, nmap:none, sqli:none}
+    read_entries(nu) -> [entry, ...]           full file parse
+    write_entries(nu, entries)                  full file rewrite
+    find_entry(nu, entries, host) -> entry       linear scan, in-memory only
+    get_entry(nu, host) -> entry                 read_entries + find_entry, ONE read
+    save_entry(nu, entry)                        read + replace-or-append + write, ONE round trip
+    get_ports/get_firewall/get_users/get_specs/get_jobs/get_nmap/get_sqli(nu, host)
+                                                   -> field, each its own get_entry() call
+    set_ports/set_firewall/set_users/set_specs/set_jobs/set_nmap/set_sqli(nu, host, value)
+                                                   -> thin wrappers: get_entry() + save_entry()
+                                                      with one field replaced
+
+  Internal-only: decode_ports/encode_ports, decode_users/encode_users,
+  decode_jobs/encode_jobs, decode_nmap/encode_nmap, decode_fw/encode_fw,
+  decode_sqli/encode_sqli - field-specific (de)serializers, called only
+  from read_entries()/write_entries().
+
+  Dependencies: takes nu (throttling only - no trace/connection logic
+  lives here, this module never connects to anything).
+
+  Callers: menu.bd (get_entry/save_entry/set_ports/set_nmap/set_sqli/
+  mark_cracked-via-get_entry+set_users), utils/sync.bd (read_entries/
+  write_entries/find_entry directly, bypassing the get_*/set_* layer
+  since it's rebuilding the whole host list at once).
+
+  KNOWN RISK / history: this file is where most of this session's CPU-
+  overload crashes actually lived. Confirmed lessons baked into its
+  current shape (all documented in field_notes.txt, cross-referenced
+  in comments here too):
+    - Every hand-written loop here throttles EVERY iteration, not
+      periodically - periodic pacing (every 5) was tried and proven
+      unreliable once a single host's field data (esp. ports, nmap) can
+      be arbitrarily long.
+    - find_entry() and save_entry()'s rebuild loop are DELIBERATELY
+      NOT throttled - they only scan the host list itself (bounded,
+      realistically tens of hosts), not per-host field data. Throttling
+      them anyway stacked an O(hosts) pass on top of callers' own
+      O(hosts) loops for O(hosts^2) total throttle calls - 49 throttled
+      calls for 7 hosts, several real seconds each, several literal
+      minutes total. If you're tempted to throttle a loop here "just to
+      be safe," check whether it's scanning the host list (don't) or a
+      per-host field list (do).
+    - Every decode_*/encode_* that takes a list (ports/users/jobs/nmap)
+      throttles its own inner loop, independent of read_entries()'s
+      outer per-host throttle - a single host's field list is itself
+      unbounded (a full port scan, a big nmap sweep).
+
+  REFACTOR CANDIDATE - the decode_*/encode_* pairs are structurally
+  identical modulo field names and tuple arity (ports/users are 2-field
+  tuples, jobs/nmap are 3-field tuples: "name:val,name:val,..." vs
+  "a:b:c,a:b:c,..."). A generic decode_tuple_list(nu, blob, field_names)/
+  encode_tuple_list(nu, list, field_names) could collapse 8 functions
+  into 2, BUT building a dict with dynamically-named keys
+  ({field_names[0]: v0, field_names[1]: v1, ...}) needs dynamic
+  dict-key WRITE, which is a different and separately unconfirmed
+  BDScript capability from what's already avoided here (dynamic dict-key
+  READ/bracket-index-assignment - see this file's own top-of-file
+  comment on why every entry is a fixed-shape object). Confirm that
+  capability in isolation before attempting this collapse - if it's not
+  supported, the 8 separate functions are the correct shape, not
+  duplication to be blamed on laziness.
+
+  REFACTOR CANDIDATE (smaller, safe): mark_cracked() in menu.bd calls
+  uhd.get_entry() itself, then uhd.set_users() - which calls
+  uhd.get_entry() AGAIN internally before save_entry(). That's 2 reads +
+  1 write where 1 read + 1 write would do (fetch once, mutate the users
+  field locally, call uhd.save_entry() directly instead of set_users()).
+  Minor at realistic host counts, but matches the exact "extra round
+  trip" pattern this whole session was about eliminating - worth fixing
+  in the same pass as anything else touching this file.
+
+utils/sync.bd - do_sync(nu, uc, uhd), called ONCE at menu.bd startup
+  Purpose: three unrelated bits of local file maintenance bundled into
+  one call so menu.bd only pays the CPU-load "cold open" once: (1)
+  rebuild host_intel.txt's IP list from ~/.ssh/known_hosts, preserving
+  every paired field via find_entry() per known host; (2) backfill any
+  cracked-but-not-yet-stored host into the Network tab via store(); (3)
+  append any new password from ~/.ssh/credentials into
+  ~/wordlists/common.txt.
+  --user note: might be good idea to not call for a file rebuild on every opening of menu, but make it an option in menu
+
+  Dependencies: nu (throttling), uc (utils/creds, for read_credentials),
+  uhd (utils/hostdata, for read_entries/find_entry/write_entries).
+  Notably does NOT import net/creds/hostdata itself - all three passed
+  in by menu.bd, which is the only reason importing them once each at
+  the top of menu.bd doesn't get multiplied by sync.bd also importing
+  them (see field_notes.txt's re-import-multiplication lesson).
+  Caller: menu.bd, exactly once, before target resolution.
+
+  DEAD FEATURE WARNING: bullet 3 (wordlist building) feeds
+  ~/wordlists/common.txt, which nothing in the current Active tree
+  reads back - crack()/local_crack()/brute_web() take no wordlist
+  argument at all (confirmed against api_documentation.txt). The only
+  place a wordlist plausibly matters is the "Wordlists" shop item text
+  ("Useful with Crack Source") - if that's a real engine-side hook
+  behind an unowned upgrade, this bullet is doing real (if invisible)
+  work; if not, it's paying real per-line throttle cost every startup
+  for a file nothing consumes. Confirm before deciding to rip it out -
+  this was raised and deliberately left in earlier this session pending
+  that confirmation.
+  --user note: it's future-proofing for a crack-source purchase
+
+  RISK: same "throttle every iteration" discipline as utils/hostdata -
+  do NOT relax any of the 4 loops here back to periodic pacing; each was
+  independently confirmed to overload without full per-iteration pacing
+  during this session (the known_hosts loop, and separately the
+  wordlist-building loop once common.txt grew past ~30 lines).
+
+utils/creds.bd - read-only ~/.ssh/credentials reader
+  Purpose: "have I cracked this account on this host" without a
+  connection (0 ticks, per the file's own doc line - though see
+  field_notes.txt: local file I/O still costs CPU-load ticks per line
+  executed regardless of that "0 ticks" figure, which is a different,
+  network-tick meter).
+
+  Public API: read_credentials(nu) -> [{account, host, password}, ...],
+  is_cracked(nu, account, host) -> bool, cracked_accounts_for(nu, host) -> [account, ...]
+
+  Callers: menu.bd (cracked_accounts_for, every refresh_status() call -
+  this is the "free" CRACK/root-status check that stays live even when
+  nothing else can connect), utils/sync.bd (read_credentials, for the
+  Network-tab backfill and wordlist build).
+
+  Note: is_cracked() has zero current callers in Active - only
+  cracked_accounts_for() is used. Not necessarily dead (a reasonable API
+  to keep even if unused today), but worth knowing it's untested this
+  session if a refactor touches it.
+
+  Structural note: both is_cracked() and cracked_accounts_for() do a
+  SECOND full pass over read_credentials(nu)'s already-throttled result,
+  each iteration re-throttled independently. Correct (confirmed
+  necessary - a second unthrottled pass over a large list was a real
+  overload elsewhere in this session), just flagging that "call
+  read_credentials() once, filter the returned list without a fresh
+  throttled loop" is NOT safe here - the list itself, not just the read
+  that built it, needs its own pacing when walked again.
+
+utils/crack.bd - remote + local password cracking, network discovery
+  Purpose: the single most complex utils module. Softens a target
+  (probe_vuln/exploit_vuln) if requested, brute-forces one account
+  (crack()), runs scan_network() once in, optionally escalates a second
+  account from inside (local_crack()) either as part of the same call
+  or standalone.
+
+  Public API:
+    check_trace_verbose(nu, conn, connect_str, host) -> conn
+      Logs Trace:/IDS: status, then delegates to nu.check_trace(). The
+      ONLY place in the codebase that surfaces trace/IDS status to the
+      player during a loop - grab.bd/cleanup.bd use nu.check_trace()
+      directly with no visible log. See REFACTOR CANDIDATE below.
+    discover_network(nu, conn, host) -> [{ip, hostname, source}, ...]
+      Wraps scan_network(), returns the list (menu.bd persists/displays
+      it - this function itself only logs a human-readable summary).
+    local_crack_loop(nu, conn, connect_str, host, target_account) -> {conn, password}
+      Generic progressive-crack retry loop, used by BOTH do_crack()'s
+      internal escalate_to path and do_escalate()'s standalone path.
+    do_crack(nu, host, account, exploit, escalate_to) -> {password, nmap}
+      Only ever returns after account is GENUINELY cracked (internally
+      retries until success or an active-IDS hard abort via
+      check_trace()/exit() - there is no "returned but failed" shape).
+      menu.bd's mark_cracked() call after this line relies on that
+      guarantee.
+    do_escalate(nu, host, as_account, target_account) -> {password, nmap}
+      Standalone version of do_crack()'s escalate_to - same guarantee.
+
+  Dependencies: nu only (no uc/uhd - persistence is entirely menu.bd's
+  job, this module only returns data for menu.bd to persist).
+
+  Callers: menu.bd choices "3" (do_crack) and "4" (do_escalate).
+
+  FIXED THIS SESSION (both real bugs, not just pacing):
+    - do_crack()'s internal escalate_to call used to pass bare `host` as
+      connect_str into local_crack_loop() instead of `account + "@" +
+      host` - a mid-loop trace-triggered reconnect would come back
+      UNAUTHENTICATED and local_crack() needs a real session.
+      do_escalate() already had this right; only the internal path in
+      do_crack() didn't. Now both correctly pass the authenticated
+      identity string.
+    - Both loops (local_crack_loop's pre-loop call, do_crack()'s main
+      crack() pre-loop call) had zero pacing between
+      check_trace_verbose() and the first crack()/local_crack() call -
+      confirmed as a real overload point mid-session. Both now throttle
+      before that first call, not just inside the while loop.
+
+  REFACTOR CANDIDATE (structural duplication, real): local_crack_loop()
+  and do_crack()'s inline main-crack while-loop are near-identical:
+  check_trace_verbose + throttle + call the crack function + while
+  not success: check_trace_verbose + throttle + log "Trying..." +
+  sleep(retry_delay) + retry. The only difference is crack(conn,
+  account) (takes conn) vs local_crack(target_account) (does not,
+  operates on "current connection" implicitly per field_notes.txt). A
+  shared progressive_crack_loop(nu, connect_str, host, attempt_fn) taking
+  a NAMED function reference (confirmed working - daemon_listen()'s
+  callback argument is exactly this pattern) could collapse both, with
+  two tiny named wrapper functions (one that calls crack(conn, account),
+  one that calls local_crack(target_account)) supplying the "try once"
+  step. Worth doing - this exact duplication is also where BOTH
+  overload-pacing bugs above had to be fixed twice, once per copy.
+
+  REFACTOR CANDIDATE (consistency, not a bug): check_trace_verbose()'s
+  visible Trace:/IDS: logging only happens on crack.bd's own loops.
+  utils/grab.bd and utils/cleanup.bd call nu.check_trace() directly with
+  no equivalent logging, so a long grab/cleanup run gives no visible
+  trace feedback the way a crack run does. If that asymmetry isn't
+  deliberate, moving check_trace_verbose() itself into utils/net.bd (or
+  a shared wrapper both crack.bd and grab.bd/cleanup.bd can call) would
+  make the whole codebase's trace visibility consistent, not just crack
+  operations.
+
+utils/grab.bd, utils/cleanup.bd (do_cleanup path), utils/cleanup.bd
+(do_raw_cleanup path) - THREE COPIES of the same directory-walk shape
+  All three independently implement:
+    var dirs_to_visit = [root]
+    while len(dirs_to_visit) > 0:
+        var dir = dirs_to_visit.pop()
+        conn = nu.check_trace(...).conn
+        nu.throttle(nu.throttle_heavy())
+        var entries = list_files(conn, dir)
+        for f in entries:
+            conn = nu.check_trace(...).conn
+            nu.throttle(nu.throttle_heavy())
+            <push subdirs onto dirs_to_visit, otherwise act on the file>
+  do_grab() downloads; do_cleanup() reads+filters+rewrites (with extra
+  per-line trace polling inside); do_raw_cleanup() delete_file()s.
+
+  REFACTOR CANDIDATE (real, and language-supported): this is the
+  single biggest concrete duplication in the codebase - three near-
+  identical tree-walkers differing only in the per-file action. Since
+  named-function callbacks are confirmed to work (daemon_listen()), a
+  shared walk_tree(nu, conn, connect_str, host, root, on_file) in
+  utils/net.bd (or a new utils/fs.bd) taking a named per-file callback
+  would collapse all three into one walker + three tiny action
+  functions. do_cleanup()'s extra per-line IDS/trace polling inside the
+  file-content loop is unique to it and would stay local to its own
+  callback, not the shared walker. This is worth doing before adding a
+  fourth tree-walking action (e.g. a future "search files for X"
+  feature) rather than copy-pasting a fourth time.
+
+  Also identical across do_cleanup/do_raw_cleanup/do_grab/do_escalate:
+  `var conn = connect(connect_str, 22); if not conn.success: raise(...)`.
+  A tiny nu.connect_or_raise(connect_str) would remove 4 copies of this
+  3-line block. Lower value than the tree-walker collapse, but trivial
+  to do at the same time.
+
+utils/firewall.bd - do_bypass_firewall(nu, target)
+  Purpose: single-responsibility firewall-bypass loop. No connection
+  (probe_firewall/bypass_firewall both take a bare target, not a conn -
+  confirmed via api_documentation.txt, this is why it's safe to run
+  before connecting to anything, per its own header).
+
+  Callers: menu.bd choice "2" only.
+
+  No known issues, no duplication with anything else - the simplest
+  module in the tree. Nothing to refactor here.
+
+utils/probe.bd - scan_ports/common_ports/do_probe/do_probe_full
+  Purpose: port scanning, common-list or full-range. Same "no
+  connection" shape as firewall.bd (scan() takes a bare target).
+
+  Callers: menu.bd choice "1" only.
+
+  No duplication with other modules. common_ports() (a 40-entry literal
+  list) is the only sizeable static data in the whole tree - fine where
+  it is, not worth extracting.
+
+utils/sqli.bd - do_sqli(nu, host, route, page) + helpers
+  Purpose: the two free (no-purchase, no SQLKit) SQLi paths - a direct
+  route guess, falling back to browsing a login page, discovering its
+  real form, and working through injection_payloads() until one leaks.
+
+  Callers: menu.bd choice "7" only.
+
+  No connect()/trace exposure at all (sqli()/browse()/submit_form() are
+  documented connection-free web calls) - the only utils module besides
+  firewall.bd/probe.bd with zero trace-safety code, correctly so.
+
+  No duplication with other modules. normalize_path()/build_url() are
+  small and specific enough that generalizing them elsewhere isn't
+  worth it.
+
+utils/args.bd - ORPHANED, zero current callers
+  parse_args(flag_names) - manual "-flag" parsing via get_args(),
+  written for a "-full" flag pattern used by the now-deleted standalone
+  probe.bd/grabber.bd wrapper scripts (see persistence history below).
+  menu.bd's own choice "1" asks "Full scan? (y/N)" via prompt() instead
+  of a command-line flag, so nothing in the current Active tree calls
+  this. Safe to delete if the standalone-wrapper-script pattern isn't
+  coming back; keep if you want the "-flag" parsing pattern available
+  for a future standalone script.
+
+CROSS-CUTTING OBSERVATIONS
+============================
+- Import graph is a strict star: menu.bd -> all ten modules, once each.
+  No utils/*.bd imports another utils/*.bd. This is deliberate (see
+  utils/net.bd's own header) and should stay that way - any module
+  importing utils/net directly instead of taking nu as a parameter
+  reintroduces the exact multiplication bug that caused a real overload
+  this session.
+- Persistence (utils/hostdata) is entirely menu.bd's responsibility.
+  No utils/*.bd action module (crack/grab/cleanup/firewall/probe/sqli)
+  touches host_intel.txt directly - they return plain data, menu.bd
+  decides what and when to persist. Keep it this way in a refactor -
+  it's why utils/hostdata's own throttling fixes only needed auditing
+  in one file's call sites (menu.bd) instead of six.
+- Every module that opens a connection loops through nu.check_trace()
+  for safety EXCEPT utils/sqli.bd and utils/firewall.bd/probe.bd (which
+  don't connect at all - correctly so, not an oversight).
+- The "record what a wait/threshold means, don't repeat the number"
+  discipline (utils/net.bd's tuning knobs) is followed everywhere except
+  a literal `30` in check_trace_verbose()'s amber-color cutoff
+  (utils/crack.bd line 14: `tt < 30 ? Color.amber`) - trace_critical()
+  (10) is used for the red cutoff right next to it, but the amber one
+  was never named. Minor, but worth a trace_warn() constant if you're
+  already touching utils/net.bd.
+
+MENU.BD - DETAILED ANALYSIS
+=============================
+menu.bd is the only top-level script (no standalone wrapper scripts
+exist anymore - probe.bd, cracker.bd, grabber.bd, cleanup.bd, sqli.bd,
+firewall.bd, sync_hosts.bd, recon.bd were all folded in or deleted
+earlier this session; see field_notes.txt / this session's own history
+for why). It owns: all module imports, all persistent dashboard state
+(as top-level `var`s, not passed as parameters between its own
+functions - refresh_status()/print_dashboard()/mark_cracked() all read
+and write these directly), the connection dip that populates most of
+the dashboard, the dashboard rendering, and the action dispatch loop.
+
+Structure, top to bottom:
+  1. Header comment block (design rationale - read this before changing
+     anything, it's dense but answers most "why is this like this"
+     questions a fresh read would raise)
+  2. Ten imports with sleep(1) between each (see net.bd section -
+     import cost is real CPU load, confirmed this session)
+  3. ~18 top-level `var`s - the entire dashboard's state. Notably NOT
+     encapsulated in an object - each field is its own bare variable.
+     A refactor consolidating these into one `var state = {...}` object
+     would need to confirm dict field mutation-in-place works reliably
+     first (this session deliberately avoided relying on that anywhere -
+     see utils/hostdata.bd's own header comment on why every setter
+     rebuilds a fresh literal instead of mutating one field). Until
+     that's confirmed, keep these as separate vars.
+  4. refresh_status(target) - the live-data fetch. See DEEP DIVE below.
+  5. print_separator() - trivial, one-line divider helper.
+  6. mark_cracked(target, account_name) - added this session, see
+     utils/hostdata.bd's REFACTOR CANDIDATE note on its extra round trip.
+  7. print_dashboard(target) - pure rendering, no fetching. Reads the
+     top-level vars, never writes them (except via nu.throttle() calls
+     inside its own list-display loops, which don't touch dashboard
+     state). See DEEP DIVE below.
+  8. Script body: do_sync() once, target resolution (try/catch around
+     nu.resolve_raw_target(), falls back to get_my_ip() - see
+     target_is_own_ip below), one-time hydration via get_entry(),
+     initial refresh_status() call, then the while(true) dispatch loop.
+
+DEEP DIVE - refresh_status(target)
+  This is the single most-rewritten function in the whole session - at
+  least four distinct root causes were found and fixed inside it:
+    1. Calling uhd.set_firewall() unconditionally PLUS uhd.set_users()
+       conditionally, both full read+write round trips, inside the same
+       function call - up to 5 separate host_intel.txt round trips per
+       refresh. Fixed by moving to ONE uhd.save_entry() call at the very
+       end, building the whole entry from whatever's in the top-level
+       vars by then.
+    2. probe_firewall()/whois()/connect() all RAISE (not a graceful
+       failure shape) for an unrecognized target - your own IP is
+       exactly this case. Fixed with target_is_own_ip, computed once at
+       target-resolution time (and again on choice "t"), guarding all
+       three calls.
+    3. The authenticated-connection block (users/specs/jobs/nmap/
+       daemons_here) can fire up to 5 real API calls back to back with
+       zero pacing THE FIRST TIME a target has no cached data for any of
+       them (every "fetch once" field starts none simultaneously) - the
+       "normal" case (some fields already cached) never exercised this
+       path in earlier testing, which is why it took this long to
+       surface. Fixed with nu.check_trace()+nu.throttle() pairs between
+       each fetch.
+    4. Fixing #3 (real wall-clock waits inside the connected window)
+       broke a DIFFERENT assumption: the single check_trace() call right
+       after connect() was designed assuming a short window. A trace
+       that goes low partway through the now-longer burst had nothing
+       catching it. Fixed by pairing check_trace() with each throttle()
+       added for #3, not just relying on the one at the top.
+  The lesson for a refactor: any change that adds real wait time inside
+  an already-open connection needs its own trace re-check, not just a
+  CPU-safety pace. These are two different failure modes this session
+  kept treating as one fix and then finding the other half missing.
+
+  The "fetch once" fields (users/specs/jobs/nmap) are each guarded by
+  `if X == none:` - correct AS LONG AS X is only ever set to none by
+  this function's own else-branch (target unreachable) or never set at
+  all (fresh host). If a refactor adds a way to explicitly RE-fetch one
+  of these (e.g. a "force refresh specs" menu option), it needs to
+  reset the var to none first, or add a separate force-fetch path -
+  there's currently no way to invalidate a cached fetch-once field
+  short of it never having been set.
+
+DEEP DIVE - print_dashboard(target)
+  Pure rendering function, reads only. Every section follows the same
+  shape: a none/empty/populated three-way branch, a print_separator(),
+  a sleep(log_pace()). List-display loops (PORTS/USERS/JOBS/NETWORK/
+  DAEMONS) each throttle their own iteration - added this session after
+  confirming a full 65535-port scan or a large nmap result could
+  overload the dashboard render itself, not just the fetch that
+  produced the data.
+
+  The USERS section specifically: root's cracked status comes from
+  `accounts` (the free credentials-file read, always live), not from
+  the `users` list - this is deliberate so root's status is visible even
+  before `users` has ever been fetched (no connection needed). Every
+  OTHER account in `users` shows only once the name list itself has been
+  fetched at least once (the fetch-once field). A refactor changing how
+  root is displayed needs to preserve this "always visible regardless of
+  connection state" property - it's filling the role the old standalone
+  CRACK section used to have before this session folded it into USERS.
+
+  NETWORK section relies on the none-vs-empty-list distinction described
+  in utils/hostdata.bd's header (missing nmap field vs. empty nmap=
+  field) to tell "never scanned" from "scanned, found nothing" - don't
+  collapse that distinction in a refactor without updating this display
+  logic too.
+
+DEEP DIVE - action dispatch (the while loop)
+  Seven numbered actions plus t/r/0, ordered by field_notes.txt-informed
+  risk color (green: no connect(); amber: connects but not the noisiest;
+  red: bypass_firewall specifically, 5.0 noise/call) and by typical
+  usage sequence (recon -> open up -> get in -> cover tracks -> the
+  rest). target_is_own_ip mutes 2/3/4/5/6 (everything that needs
+  connect()) with an explanatory relabel rather than hiding them - no
+  native strikethrough exists in this API (log() only supports color),
+  confirmed this session.
+
+  Every "leave blank for default" prompt says "space + Enter" now, not
+  "default X" - prompt() confirmed this session to NOT submit on a bare
+  Enter at all, it just keeps waiting; the only way to reach the empty-
+  after-trim() string that triggers default/skip logic is to type
+  something (a single space) that trims away to nothing. This is a
+  repeated 8-line shape (prompt -> trim -> if empty, default) that could
+  be a shared prompt_default(message, default_value) helper - low risk,
+  pure convenience, hasn't been done yet because each call site's
+  wording is slightly different (some say "space + Enter for root",
+  some "space + Enter to skip").
+
+  Choices "3"/"4" (crack/escalate) both call mark_cracked() immediately
+  after their do_crack()/do_escalate() call returns, relying on the
+  documented guarantee that those functions only return after genuine
+  success (see utils/crack.bd section). If that guarantee is ever
+  loosened (e.g. a future "give up after N attempts" option), these
+  mark_cracked() calls would need a success check added - right now
+  there isn't one because there's never been a way to reach that line
+  without success.
+
+REFACTOR PRIORITY, IF PICKING WHERE TO START
+==============================================
+Roughly in order of value vs. risk:
+  1. Collapse the three directory-walk copies (grab/cleanup/raw_cleanup)
+     into one walk_tree() + named callbacks - highest duplication, lowest
+     risk (pure extraction, behavior already proven correct three times
+     over).
+  2. Collapse crack.bd's two progressive-crack-loop copies the same way -
+     second-highest duplication, same low risk.
+  3. Decide the utils/args.bd / orphaned-constants (line_pace,
+     parse_pace_interval) cleanup - zero risk, just dead weight.
+  4. Confirm dynamic dict-key WRITE support in isolation (a throwaway
+     test script), then decide on the decode_*/encode_* collapse in
+     utils/hostdata.bd based on the result - meaningful duplication but
+     gated on an unconfirmed capability, don't attempt blind.
+  5. Resolve the wordlist dead-feature question (utils/sync.bd bullet
+     3) - not a bug, just an open question worth closing one way or the
+     other before it's copy-pasted into a future module.
+  6. throttle_default()/throttle_heavy() renaming/consolidation - purely
+     cosmetic clarity, do last since it touches the most call sites for
+     the least functional change.

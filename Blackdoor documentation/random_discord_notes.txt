@@ -1,0 +1,286 @@
+usesPython — 18.08.2026 16:45
+Turns out declaring functions uses up ticks 💀
+publord_ozai — 18.08.2026 21:27
+call-free declares were free in modules, not sure if they are anymore
+usesPython — 18.08.2026 21:28
+They still are, I had to revert to putting all the functions in a module
+---
+BuffNStufff — 07.09.2026 4:16
+aight so question about accessing local values in a script.
+does it take absolute or relative paths. seems no matter what i use get a token error for the / or the ..
+var wordlist = read_local(../docs/wordlist.txt)
+or do i need to nest my wl into my scripts dir?
+bgatesvoodoodoll — 07.09.2026 9:34
+Have you tried ~/docs in your script? Its shorter and ~/downloads worked for me when i added an upload procedure to my wipe script
+-------
+dj_himp [FASC],  — 23.08.2026 17:46
+Hello, upload() doesn't accept relative path, is there a way to convert a relative path to a absolute path, I'm trying for exemple to pass as an argument "../downloads/test.txt"
+nouseforname — 23.08.2026 17:50
+U download the file, edit and upload I guess? Well u have to use the absolut path for upload till it's fixed
+i think i had the same issue and posted it somehwere here
+ [FASC], 
+usesPython — 23.08.2026 18:04
+If you're just trying to upload something from your downloads folder to the dropbox what you can do is
+conn = connect("root@185.70.44.22", 22, "dr0p_b0x_7")
+upload(conn, my_files()[0].path + "/downloads/test.txt", "/drops/")
+--------
+bgatesvoodoodoll — 19.08.2026 17:32
+Did anyone write a roman or civilwar cipher tool yet?
+usesPython — 19.08.2026 17:49
+func save_cpu():
+    while get_cpu() == 100:
+        sleep(0.0125) #Set this to 1/cpu_tick_rate
+
+func rot(text, offset):
+    var lookup_table = {}
+    #Would be faster to precompute this
+    for i in range(65, 91):
+        lookup_table[to_char(i)] = to_char(((i - 65 + offset) % 26) + 65)
+    for i in range(97, 123):
+        lookup_table[to_char(i)] = to_char(((i - 97 + offset) % 26) + 97)
+    var res = ""
+    for i in range(len(text)):
+        save_cpu()
+        if lookup_table.has(text[i]):
+            res = res + lookup_table[text[i]]
+        else:
+            res = res + text[i]
+    return res
+
+for i in range(1,26):
+    log(rot("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", i))
+bgatesvoodoodoll — 19.08.2026 18:02
+Ok, so roman, then
+-----------
+nouseforname — 18.08.2026 19:39
+if somebody wants import/export the scripts to another save or so. I made myself import/export scripts. u get one file containing all ur scripts. This can be copied to the other save, then run the import.bd to read that file and create the scripts again
+export = "/home/" + whoami() + "/export.bd"
+content = ""
+files = my_files("/home/" + whoami() + "/scripts")
+for file in files:
+    #log(file)
+    res = read_local(file.path)
+    content = content + "***" + file.name + "***\n" + res + "***ENDFILE***\n"
+    sleep(0.15)    
+    
+save(export, content)
+import_file = "/home/" + whoami() + "/export.bd"
+import_Path = "/home/" + whoami() + "/scripts/"
+exportContent = read_local(import_file)
+
+if exportContent == "":
+    log("Error: Export file empty or not found.")
+    exit()
+
+
+fileBlocks = exportContent.split("***ENDFILE***")
+for block in fileBlocks:
+    if block.trim() == "":
+        continue
+    
+    content = block.split("***")
+    log(content[1])
+        
+    log("Importing: " + import_Path + content[1])
+    
+    save(import_Path + content[1], content[2])
+    sleep(0.15)
+
+log("Import completed successfully.")
+------
+nouseforname — 17.08.2026 19:30
+so instead of editing the remote file, i download it, replace content and upload it again now
+func replace_in_file(target, file, old, new):
+    conn = connect(target, 22)
+    read = read_file(conn, file)
+    result = read.content.replace(old, new)
+    write = write_file(conn, file, result)
+    disconnect(conn)
+
+
+func replace_in_file2(target, file, old, new):
+    
+    # get my local user
+    me = whoami()
+    
+    conn = connect(target, 22)
+    dl = download(conn, file)
+    local_path = dl.local_path.replace("~", "/home/" + me)
+    s = read_local(local_path)
+    data = s.replace(old, new)
+    save(local_path, data)
+    upload(conn, local_path, file)
+    disconnect(conn)
+    --------
+    I'm having trouble using cmd_inject
+here the script : 
+result = cmd_inject("138.68.90.27/tools/diagnostics.html")
+print("success : ", result.success, " output : ", result.output, " error : ", result.error) return 404 I also tried "138.68.90.27/tools" and "138.68.90.27" but nothing work anyone know how this function works ?
+nouseforname — 15.08.2026 18:47
+try without the file extension, as this function works with the links, so basically this is a bug imho 
+dj_himp [FASC],  — 15.08.2026 18:47
+I've checked the doc of wget since the doc says it's working the same way and the exemple of wget is : var r = wget("74.55.128.33/reports/q3.pdf")
+same error without the extension
+so I can't finish this mission
+browse doesn't work either
+dj_himp [FASC],  — 15.08.2026 18:58
+well I've connected to ssh once and now it start working with extension or not
+ScorpioneOrzion [XENO],  — 15.08.2026 18:59
+@dj_himp want a hint?
+dj_himp [FASC],  — 15.08.2026 19:00
+my bad it works only without extension
+ [XENO], 
+dj_himp [FASC],  — 15.08.2026 19:00
+yes please
+ScorpioneOrzion [XENO],  — 15.08.2026 19:00
+have you already found it, or still not?
+dj_himp [FASC],  — 15.08.2026 19:01
+I found the log with ldergate2026
+! but it's not that
+ [FASC], 
+ScorpioneOrzion [XENO],  — 15.08.2026 19:02
+well as a hint explains cmd_inject is the way to do it
+dj_himp [FASC],  — 15.08.2026 19:03
+well from what I see cmd_inject if vulnerable show the 20 last line of /var/log/intercept/capture.log
+ScorpioneOrzion [XENO],  — 15.08.2026 19:04
+and what pages are found?
+dj_himp [FASC],  — 15.08.2026 19:07
+root@capture-appliance:~# tail -20 /var/log/intercept/capture.log
+[2026-03-08 02:14:07] SRC 10.20.4.4:51422 -> DST mail.aldergate-pg.internal:25 CAPTURED AUTH PLAIN: aldergate-billing / Aldergate2026!
+[2026-03-08 02:14:09] NOTE: client believes this uplink is unmonitored for anything beyond latency stats. it is not.
+[2026-03-08 03:41:55] SRC 10.20.4.9:443 -> DST portal.aldergate-pg.internal CAPTURED SESSION COOKIE: sid=8841af0c... (full session, not just metadata)
+[2026-03-08 03:42:02] NOTE: retained indefinitely per section 4.2. client has never asked to see section 4.2.
+I though it was Aldergate2026! but I can't browse to it 
+ScorpioneOrzion [XENO],  — 15.08.2026 19:07
+well the awnser is in that
+-------------
+dj_himp [FASC],  — 15.08.2026 18:22
+ah you need to browse the api here so the final url is https://blackdoor.tools/api/
+thanks
+but it would be nice to have it ingame also
+Secret — 15.08.2026 18:23
+the api is in game
+bloodwhite [S1],  — 15.08.2026 18:23
+ehh not everything is in game
+Secret — 15.08.2026 18:23
+well the full examples aren't so i guess so
+actually i do see here
+bloodwhite [S1],  — 15.08.2026 18:24
+some things are also missing
+
+like the alias for log being print 
+
+or commands from the command list like grep and diff
+dj_himp [FASC],  — 15.08.2026 18:24
+and the doc is not complete, for exemple it is missing cmd_inject
+Secret — 15.08.2026 18:24
+theres alot of commands that arent in game
+------
+Is 
+read_file(conn, path)
+ supposed to accept output from 
+list_files(conn, path)
+ without actually accessing the "path" from the result? It says in the docs that read_file takes a path as input, but it appears to work with just the straight output from list_files.
+Also, is there a way to remove the "last" entry from syslog after writing new log files?
+Meaning, if I scrub the logs through a modified "cleanup", so we don't delete the files, we just write new files, excluding any lines that contain our IP, the syslog will still contain a line like this: 
+Aug 14 15:16:01 HOST kernel: File written: /var/log/syslog by MY_IP
+ [PROF], 
+publord_ozai — 14.08.2026 16:36
+it’ll also contain a notice for when you disconnect, there is no way to avoid either of these with file editing
+Maymew [PROF],  — 14.08.2026 16:36
+Yeah I figured as much.
+publord_ozai — 14.08.2026 16:37
+also, as log scrubber notes, editing those files doesnt do much
+Maymew [PROF],  — 14.08.2026 16:37
+The only way to actually do something like that would be to add a script on the server to run after you disconnect.... I think?
+I wrote my own scrubber
+Or rather, I modified the cleanup.bd script to just edit the files instead of deleting them
+# @param target "Target IP address"
+
+var target = get_param("target")
+var parsed = parse_target(target)
+log("Attempting to connect to: " + parsed.host)
+log("                    User: " + parsed.user)
+var conn = connect(parsed.user + "@" + parsed.host, 22)
+var logs = list_files(conn, "/var/log")
+var ip = get_my_ip()
+for logfile in logs:
+    log("Processing " + logfile.path)
+    var file = read_file(conn, logfile)
+    if not file.success:
+        log("Unable to open " + logfile)
+    elif file.encrypted:
+        log(logfile + " is encrypted, skipping")
+    else:
+        var content = file.content
+        var new_content = ""
+        var lines = content.split(to_char(10)) # 10 is new line (line feed), 13 is carriage return
+        var total_lines = lines.size()
+        var skipped_lines = 0
+        for line in lines:
+            if not line.contains(ip):
+                new_content = line + to_char(10)
+            else:
+                skipped_lines += 1
+                #log("Skipping " + line)
+                #log("Contains " + ip + " which is my ip")
+            if get_cpu() >= 90:
+                log("Cooldown")
+                sleep(0.1)
+        log("Scrubbed " + skipped_lines + "/" + total_lines + " lines from " + logfile)
+        write_file(conn, logfile, new_content)
+Oh hang on, I just noticed something
+new_content = line + to_char(10)
+ just replaces, doesn't append
+ [PROF], 
+publord_ozai — 14.08.2026 16:40
+right, but you can modify the on-disk log files all you want, the IDS system doesn't read them when it audits the log
+Maymew [PROF],  — 14.08.2026 16:40
+new_content = new_content + line + to_char(10)
+ fixes it.
+publord_ozai — 14.08.2026 16:41
+lore wise, it keeps a ram only version hot
+log scrubber is the only thing that can modify that ram-only version
+Maymew [PROF],  — 14.08.2026 16:41
+Sorry, I've not gotten to any missions that require dealing with an IDS xD
+Ah okay
+publord_ozai — 14.08.2026 16:42
+Deleting the log file does have effects
+ [PROF], 
+usesPython — 14.08.2026 16:42
+There's not really much point in doing that since all the missions that have you covering your tracks either just require you to use the log scrubber or require you to delete the log file entirely
+Maymew [PROF],  — 14.08.2026 16:42
+Oh well, guess I spent effort for nothing then xD
+--------
+Is 
+read_file(conn, path)
+ supposed to accept output from 
+list_files(conn, path)
+ without actually accessing the "path" from the result? It says in the docs that read_file takes a path as input, but it appears to work with just the straight output from list_files.
+Also, is there a way to remove the "last" entry from syslog after writing new log files?
+Meaning, if I scrub the logs through a modified "cleanup", so we don't delete the files, we just write new files, excluding any lines that contain our IP, the syslog will still contain a line like this: 
+Aug 14 15:16:01 HOST kernel: File written: /var/log/syslog by MY_IP
+publord_ozai — 14.08.2026 17:02
+this one is a bit weirder, a lot of the file manipulation api calls are fairly aggressive about trying to cast the input to a valid path. Providing any object with a path field will work.
+Maymew [PROF],  — 14.08.2026 17:03
+imho, that should be in the api doc
+publord_ozai — 14.08.2026 17:04
+As far as I know its undocumented, it seems likely its a convenience behavior for reducing code duplication, that isn't really intended for player use
+not that its harmful, just a side effect we benefit from
+ [PROF], 
+publord_ozai — 14.08.2026 17:10
+eh, its a neat trick but bogging down the api documentation with bunch of notes on the weird stuff you can do as a result of the api implementation would be confusing to new players
+it'd be more appropriate for a wiki or secondary documentation
+Maymew [PROF],  — 14.08.2026 17:11
+That's a fair point.
+publord_ozai — 14.08.2026 17:14
+Another weird one is connection handle objects
+since the game doesn't actually track the objects passed back, you can forge them
+as long as the current connection matches the data, it'll work
+usesPython — 14.08.2026 17:37
+The game also doesn't care about which port you're using, meaning you can do file manipulation through a mail or web port
+publord_ozai — 14.08.2026 17:54
+I think you can connect via any port as long as its open, you can also use smtp_connect to initialize the connection without authenticating if the smtp port is open (slightly faster, though same cost if you then su)
+though smtp_connect has some other weird behavior, it seems to always cause a trace even if you've cracked the server
+that one might be a legit bug
+----------------

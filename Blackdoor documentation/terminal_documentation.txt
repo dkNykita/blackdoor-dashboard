@@ -1,0 +1,120 @@
+help
+
+COMMANDS
+
+  run <script>       Execute a script
+  run <script> &    Run in background
+  <script> &         Start it backgrounded right away (run not required)
+  edit <file>        Open the code editor
+                     Ctrl+S save, Esc exit, Ctrl+Enter save+run without
+                     leaving, Ctrl+/ toggle a line comment
+  new <name>         Create a file
+  ls [path]          List directory
+  cat <file>         Print file
+  cd [path]          Change directory
+  pwd                Print working directory
+
+NETWORK
+
+  ssh [user@]host    Connect to remote server - re-run on an already-open host to switch to it (alias: connect)
+  sessions [n]         List open SSH sessions, or switch to session n
+  su <user> [password]  Switch user on the connected server (cracked or genuine password)
+  disconnect [n]      Close a remote connection (the addressed one, or session n) (alias: dc)
+  pivot clear        Clear your proxy chain (Requires: ProxyChain)
+  scp user@host:/path ~/dst  Copy files (no active SSH needed)
+  download <path>     Download remote file to ~/downloads/
+  upload <path>       Upload local file to remote cwd
+  wget <url> [-u=<user> -p=<pass>]  Download a file over HTTP to ~/downloads/ (alias: curl)
+  browse <ip>         Open a server's website
+  mail <ip>           Open a server's webmail (shorthand for browse <ip>/webmail)
+  forkbomb             Reset a server you've broken beyond use (last resort)
+  network list         List all servers you have cracked
+  creds                Show cracked credentials, grouped by server
+  services             List services running on the connected server
+  netstat              Show outbound connections logged on the connected server
+  specs                CPU/RAM tier and daemon capacity of the connected server
+  events               List background jobs on the connected server
+  traces               List active/recovering traces across every server
+  whois <ip>            Registry lookup - who's registered to an IP, no connection needed
+  nmap                 Scan the addressed session's own /etc/hosts, SSH config, and history for hosts genuinely online right now
+  ftp [user@]host [port] [pw]  Connect via FTP (Requires: FTP Source) - then ftp ls/get/put/disconnect, or ftp anon <host> to check anonymous access
+  db [user@]host [port] <pw>  Connect to a database (Requires: DB Source) - then db tables/query/disconnect
+  netcat <host> <port>    Peek at a challenge port's timed task - solve it with netcat_send() from a script before the window closes
+  store <ip>          Add a server to the network graph
+  forget <ip>         Remove a server from the network graph (alias: unstore)
+
+ECONOMY
+  balance              Show current credits
+  shop                 Open the tool shop
+  Buy hardware upgrades and software tools.
+  Software unlocks new scripting APIs.
+
+PROCESSES
+
+  ps / jobs           List processes
+  kill <pid>         Kill a process
+  bg                 Background current process
+  fg                 Foreground a bg process
+  daemons            List your planted daemons (needs Daemon Source)
+  daemons kill <ip> <script>  Stop one remotely
+  time <command>       Time how long a command takes to run
+
+MISSIONS
+
+  missions           List available missions
+  mission <id>       View mission details
+  mission accept <id>  Accept a mission
+  mission abandon     Drop current mission
+
+CTF
+
+  ctf                  List difficulties + today's progress
+  ctf <difficulty>      Start or resume today's box (easy/medium/hard/expert)
+  submit <flag>          Submit a flag you've found
+  Same box for every player attempting a given difficulty today - resets midnight UTC.
+
+  ctf community           Browse the permanent community pool
+  ctf community <box_id>  Attempt a player-built box from the pool
+  Personal instance per attempt, fresh flags every time - no daily reset, no shared state.
+
+  ctf test <hostname>       Clear your own saved Workshop server before submitting it to the pool
+  Save it from the Workshop editor first - this loads that file, not unsaved edits.
+
+OTHER
+
+  mount             Mount /mnt as a real folder on disk - drop .bd files in from any editor, run/import them in-game
+  publish <script> [new]  Publish a ~/scripts/ file to the Steam Workshop ('new' ignores a stuck prior attempt)
+  music [next/prev/name/set <name>/off/on] Change or view the current track, or mute/unmute
+  save               Save game
+  boards [browse/name/badge]  Leaderboards - browse, set your handle, pick a badge
+  feedback <message>   Send feedback straight to the devs
+  factions [id]         List known organisations and their relationships
+  neofetch/sysinfo        Show system info
+  credits             Show the credits
+  fortune             Print a random one-liner
+  clear              Clear terminal
+  quit               Return to main menu
+  help <topic>       Help on a topic
+  alias [name=cmd]     List your aliases, or define one (e.g. alias ll="ls -la")
+  unalias <name>       Remove an alias
+
+SHORTCUTS
+
+  Ctrl+C             Interrupt running script
+  Ctrl+Z             Background running script
+  Ctrl+L             Clear terminal
+  Ctrl+R             Search command history (Ctrl+R again for older matches, Enter to accept, Esc to cancel)
+  Ctrl+1..5          Focus pane (terminal/files/mission/network/irc)
+  Tab                Autocomplete
+  Up/Down            Command history
+  !$ / !^            Recall previous command's last / first argument
+  Ctrl+A / Ctrl+E    Jump to start / end of the input line
+  Ctrl+W             Delete the last word (or path segment)
+  Ctrl+D             Disconnect (on an empty line)
+  <command> -h       Quick usage for that command
+
+Topics: help commands, help scripting, help filesystem, help network,
+        help economy, help processes, help missions, help shortcuts,
+        help api, help other
+Full API reference with worked examples: blackdoor.tools/api (a real website - open it in your actual browser, not browse())
+
