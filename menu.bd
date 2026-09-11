@@ -117,7 +117,7 @@ import "/home/Nykita/scripts/utils/dashboard" as udb
 # to add a second one for, now that Krok 12 moved them all out) fixed it -
 # confirmed via a clean full startup + dashboard render with no crash.
 sleep(1)
-log("DEBUG TIME: imports done at +" + str(get_unix_time() - startup_t0) + "s", Color.muted)
+nu.debug_time("imports done", startup_t0)
 
 # Krok 12: consolidated from ~20 separate top-level vars into one dict,
 # since every field here now needs to be threaded into/out of
@@ -159,7 +159,7 @@ log("DEBUG TIME: imports done at +" + str(get_unix_time() - startup_t0) + "s", C
 #   can't do anything on this target.
 var state = {"logs_dirty": false, "ids_log_cleared": false, "fw_active": false, "fw_layers": 0, "fw_layers_remaining": 0, "noise": 0, "accounts": [], "owner": "", "banner": "", "os_name": "", "security": -1, "trace_ceiling": none, "users": none, "next_vuln": none, "open_ports": none, "specs": none, "jobs": none, "daemons_here": none, "nmap_data": none, "sqli_status": none, "target_is_own_ip": false}
 sleep(1)  # CONFIRMED fix - see comment above the imports
-log("DEBUG TIME: state declared at +" + str(get_unix_time() - startup_t0) + "s", Color.muted)
+nu.debug_time("state declared", startup_t0)
 
 # Local file maintenance (host_intel.txt entries, Network tab, wordlist) -
 # see utils/sync for why this replaced a standalone sync_hosts script.
@@ -198,10 +198,9 @@ state.specs = cached.specs
 state.jobs = cached.jobs
 state.nmap_data = cached.nmap
 state.sqli_status = cached.sqli
-log("DEBUG TIME: get_entry() done at +" + str(get_unix_time() - startup_t0) + "s", Color.muted)
-var refresh_t0 = get_unix_time()
+nu.debug_time("get_entry() done", startup_t0)
 state = udb.refresh_status(nu, uc, uhd, state, target)
-log("DEBUG TIME: refresh_status() took " + str(get_unix_time() - refresh_t0) + "s (total +" + str(get_unix_time() - startup_t0) + "s)", Color.muted)
+nu.debug_time("refresh_status() done (total)", startup_t0)
 
 # Purely informational (see net.bd's CPU tier auto-scaling comment for
 # why nothing scales by this - tried and disproven live, tier-scaling
@@ -218,7 +217,7 @@ var first_render = true
 while true:
     udb.print_dashboard(nu, state, target)
     if first_render:
-        log("DEBUG TIME: dashboard fully loaded, total startup +" + str(get_unix_time() - startup_t0) + "s", Color.muted)
+        nu.debug_time("dashboard fully loaded (total startup)", startup_t0)
         first_render = false
     nu.throttle(nu.cpu_guard_conservative())
     log("")

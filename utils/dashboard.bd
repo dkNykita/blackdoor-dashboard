@@ -62,13 +62,13 @@ func refresh_status(nu, uc, uhd, state, target):
     var dbg_t0 = get_unix_time()
     nu.throttle(nu.cpu_guard_conservative())
     log("Checking status...")
-    log("DEBUG TIME: 1st throttle done, +" + str(get_unix_time() - dbg_t0) + "s")
+    nu.debug_time("1st throttle done", dbg_t0)
     # throttle() polls in small steps until CPU clears the threshold,
     # so this naturally takes less real time on a better CPU tier - see
     # net.bd's CPU tier auto-scaling comment for why nothing here scales
     # by tier explicitly (tried, disproven live).
     nu.throttle(nu.cpu_guard_conservative())
-    log("DEBUG TIME: 2nd throttle done, +" + str(get_unix_time() - dbg_t0) + "s")
+    nu.debug_time("2nd throttle done", dbg_t0)
     # probe_firewall() raises ("unknown target") instead of returning a
     # failure shape when target isn't a real, registered server - your
     # own IP is exactly this case (confirmed: not a valid target the
@@ -84,7 +84,7 @@ func refresh_status(nu, uc, uhd, state, target):
     state.fw_active = fw.active
     state.fw_layers = fw.layers
     state.fw_layers_remaining = fw.layers_remaining
-    log("DEBUG TIME: probe_firewall block done, +" + str(get_unix_time() - dbg_t0) + "s")
+    nu.debug_time("probe_firewall block done", dbg_t0)
     # Persisted once, at the very end of this function (see save_entry()
     # call below) - NOT here. Every uhd.set_*() is its own full
     # read_entries()+write_entries() pass over host_intel.txt; calling
@@ -94,11 +94,11 @@ func refresh_status(nu, uc, uhd, state, target):
 
     nu.throttle(nu.cpu_guard_conservative())
     state.noise = get_noise()
-    log("DEBUG TIME: get_noise() done, +" + str(get_unix_time() - dbg_t0) + "s")
+    nu.debug_time("get_noise() done", dbg_t0)
 
     nu.throttle(nu.cpu_guard_conservative())
     state.accounts = uc.cracked_accounts_for(nu, target)
-    log("DEBUG TIME: cracked_accounts_for() done, +" + str(get_unix_time() - dbg_t0) + "s")
+    nu.debug_time("cracked_accounts_for() done", dbg_t0)
     # The USERS name list is fetched live only once (below) and cached
     # from then on, but cracked status can change any time you crack a
     # new account - recompute it here, every refresh, straight from the
@@ -112,7 +112,7 @@ func refresh_status(nu, uc, uhd, state, target):
         state.users = refreshed_users
 
     nu.throttle(nu.cpu_guard_conservative())
-    log("DEBUG TIME: users-refresh block done, +" + str(get_unix_time() - dbg_t0) + "s")
+    nu.debug_time("users-refresh block done", dbg_t0)
     # whois() is documented to work on any IP (empty owner/faction_id
     # for one outside any registered range), but skip it too for your
     # own IP - same reasoning as probe_firewall() above.
@@ -123,7 +123,7 @@ func refresh_status(nu, uc, uhd, state, target):
             state.owner = who.owner == "" ? "unregistered" : who.owner + (who.faction_id == "" ? "" : " (" + who.faction_id + ")")
         catch e:
             pass
-    log("DEBUG TIME: whois() done, +" + str(get_unix_time() - dbg_t0) + "s")
+    nu.debug_time("whois() done", dbg_t0)
 
     nu.throttle(nu.cpu_guard_conservative())
     # Bare connect(target, port) never auto-authenticates, even for an
@@ -152,7 +152,7 @@ func refresh_status(nu, uc, uhd, state, target):
     var accounts_available = len(state.accounts) > 0
     if conn.success and accounts_available and conn.user == "":
         conn.success = false
-    log("DEBUG TIME: connect() done (success=" + str(conn.success) + "), +" + str(get_unix_time() - dbg_t0) + "s")
+    nu.debug_time("connect() done (success=" + str(conn.success) + ")", dbg_t0)
     if conn.success:
         # Captured before check_trace() runs, so it's still set for
         # display even when check_trace() raises below on a hopeless
@@ -181,9 +181,9 @@ func refresh_status(nu, uc, uhd, state, target):
             state.security = -1
             state.next_vuln = none
             state.daemons_here = none
-            log("DEBUG TIME: bailed out on hopeless trace, +" + str(get_unix_time() - dbg_t0) + "s")
+            nu.debug_time("bailed out on hopeless trace", dbg_t0)
             return state
-        log("DEBUG TIME: 1st check_trace() done, +" + str(get_unix_time() - dbg_t0) + "s")
+        nu.debug_time("1st check_trace() done", dbg_t0)
         state.banner = conn.banner
         state.os_name = conn.os
         state.security = get_security(conn)
@@ -210,7 +210,7 @@ func refresh_status(nu, uc, uhd, state, target):
         # protection - this window is already longer than it should be.
         conn = nu.check_trace(conn, connect_str, target).conn
         nu.throttle(nu.cpu_guard_fast())
-        log("DEBUG TIME: pre-fetch-once throttle done, +" + str(get_unix_time() - dbg_t0) + "s")
+        nu.debug_time("pre-fetch-once throttle done", dbg_t0)
         # get_users() needs an authenticated session, so a fresh/
         # uncracked target is expected to fail here. Only bother calling
         # it at all when the name list isn't already cached - specs/
@@ -227,7 +227,7 @@ func refresh_status(nu, uc, uhd, state, target):
                 pass
             conn = nu.check_trace(conn, connect_str, target).conn
             nu.throttle(nu.cpu_guard_fast())
-            log("DEBUG TIME: get_users() block done, +" + str(get_unix_time() - dbg_t0) + "s")
+            nu.debug_time("get_users() block done", dbg_t0)
 
         # None of these three are documented as requiring authentication,
         # but it's not confirmed either. Each only runs while its cached
@@ -239,7 +239,7 @@ func refresh_status(nu, uc, uhd, state, target):
                 pass
             conn = nu.check_trace(conn, connect_str, target).conn
             nu.throttle(nu.cpu_guard_fast())
-            log("DEBUG TIME: server_specs() block done, +" + str(get_unix_time() - dbg_t0) + "s")
+            nu.debug_time("server_specs() block done", dbg_t0)
         if state.jobs == none:
             try:
                 state.jobs = list_jobs(conn)
@@ -247,7 +247,7 @@ func refresh_status(nu, uc, uhd, state, target):
                 pass
             conn = nu.check_trace(conn, connect_str, target).conn
             nu.throttle(nu.cpu_guard_fast())
-            log("DEBUG TIME: list_jobs() block done, +" + str(get_unix_time() - dbg_t0) + "s")
+            nu.debug_time("list_jobs() block done", dbg_t0)
         if state.nmap_data == none:
             try:
                 state.nmap_data = scan_network(conn)
@@ -255,12 +255,12 @@ func refresh_status(nu, uc, uhd, state, target):
                 pass
             conn = nu.check_trace(conn, connect_str, target).conn
             nu.throttle(nu.cpu_guard_fast())
-            log("DEBUG TIME: scan_network() block done, +" + str(get_unix_time() - dbg_t0) + "s")
+            nu.debug_time("scan_network() block done", dbg_t0)
         try:
             state.daemons_here = list_daemons(conn)
         catch e:
             state.daemons_here = none
-        log("DEBUG TIME: list_daemons() done, +" + str(get_unix_time() - dbg_t0) + "s")
+        nu.debug_time("list_daemons() done", dbg_t0)
 
         disconnect(conn)
     else:
@@ -276,7 +276,7 @@ func refresh_status(nu, uc, uhd, state, target):
     # state.sqli_status aren't managed here at all (choices "1"/"7" own
     # those) - passed through as-is so this can't clobber them.
     uhd.save_entry(nu, {"ip": target, "ports": state.open_ports, "fw": {"active": state.fw_active, "layers": state.fw_layers, "layers_remaining": state.fw_layers_remaining}, "users": state.users, "specs": state.specs, "jobs": state.jobs, "nmap": state.nmap_data, "sqli": state.sqli_status})
-    log("DEBUG TIME: save_entry() done, refresh_status() total +" + str(get_unix_time() - dbg_t0) + "s")
+    nu.debug_time("save_entry() done (refresh_status total)", dbg_t0)
     return state
 
 # hexhaven.net's scripting reference: every line a script runs costs 1
