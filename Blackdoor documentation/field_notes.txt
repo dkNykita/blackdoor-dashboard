@@ -304,6 +304,23 @@ CONFIRMED THIS SESSION (live testing of the refactored Active tree):
     failed file (amber), and do_grab()'s final summary now says
     "Downloaded X/Y files (Z failed - see above)" instead of silently
     under-counting. ***
+  - Some targets' connect() trace_time comes back 0 (or generally at/
+    under 10s) from the very first connect - this is the box's own
+    fixed trace ceiling, not a live countdown, and it never rises above
+    that no matter what. The old check_trace() (disconnect on low trace,
+    wait for full recovery, reconnect) assumed recovery always reaches a
+    safe margin eventually - on one of these targets it doesn't, so the
+    script disconnected, waited, reconnected, immediately re-triggered,
+    and repeated forever: a genuine infinite loop with no error, no
+    crash, no way out short of killing the script by hand. *** FIXED:
+    net.bd's check_trace() now detects trace_time <= trace_critical()
+    (10) up front and raises a clear error instead of ever entering the
+    wait cycle; menu.bd catches it per-action (crack/escalate/cleanup/
+    grab) so it fails just that one action instead of the whole script,
+    and refresh_status() degrades the same way a failed connect() would.
+    Also added a MAX TRACE line to the dashboard (red, "HOPELESS" label)
+    so a target like this is visible before picking an action at all,
+    not just after one fails. Confirmed fixed live. ***
 
 STILL UNRESOLVED / CONFIRMED ABSENT:
   - No real "-flag" command-line syntax exists via @param - it binds
