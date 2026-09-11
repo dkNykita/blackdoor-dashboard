@@ -153,7 +153,6 @@ func read_entries(nu):
         # Slower per host, but this is the loop that kept overloading
         # with lighter pacing - reliability over speed here.
         nu.throttle(nu.cpu_guard_fast())
-        log("DEBUG read_entries: line = [" + line + "]")  # TEMPORARY
         var trimmed = line.trim()
         if trimmed == "":
             continue
@@ -188,14 +187,12 @@ func read_entries(nu):
             elif tok.starts_with("sqli="):
                 entry.sqli = decode_sqli(tok.substr(5, len(tok) - 5))
             i = i + 1
-        log("DEBUG read_entries: entry built OK for " + parts[0])  # TEMPORARY
         entries.append(entry)
     return entries
 
 func write_entries(nu, entries):
     var out = ""
     for e in entries:
-        log("DEBUG write_entries: entry = " + e.ip)  # TEMPORARY
         # Every entry, same reasoning as read_entries() above. ALSO
         # per-FIELD now (mirrors read_entries()'s per-token fix) - same
         # gap confirmed this session: an entry with several non-none
@@ -228,9 +225,7 @@ func write_entries(nu, entries):
         if e.sqli != none:
             line = line + " sqli=" + encode_sqli(e.sqli)
         out = out + line + "\n"
-        log("DEBUG write_entries: entry done for " + e.ip)  # TEMPORARY
     save(host_intel_path(), out)
-    log("DEBUG write_entries: save() done")  # TEMPORARY
 
 # NOT throttled, deliberately - this only ever scans the host LIST
 # (bounded by how many distinct hosts you've touched, realistically
