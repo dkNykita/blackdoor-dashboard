@@ -28,39 +28,41 @@
 # read - never guess a FASTER tier than confirmed, since that would
 # understate real per-iteration tick cost rather than overstate it.
 #
-# CONFIRMED fix (live crash): cpu_scale() feeds log_pace()/retry_delay()/
-# trace_poll_interval(), which throttle() calls on EVERY invocation -
-# hundreds of times in a normal session, including tight per-token
-# loops (hostdata.bd's read_entries()). Without caching, every single
-# one of those redid a real read_local() + string-split + per-line scan
-# just to return the same constant - multiplying real tick cost exactly
-# where the whole rest of this codebase works to minimize it, and
-# crashed the script before "Checking status..." even printed (earlier
-# than the startup overload this session already fixed twice). The
-# module-level cache below means the actual file read + parse happens
-# ONCE per script run - every call after the first is a plain variable
-# read, same cost as the old hardcoded constant it replaced.
-var _tick_rate_cache = none
-
-func local_tick_rate():
-    if _tick_rate_cache != none:
-        return _tick_rate_cache
+# CONFIRMED fix (live crash, twice): cpu_scale() feeds log_pace()/
+# retry_delay()/trace_poll_interval(), which throttle() calls on EVERY
+# invocation - hundreds of times in a normal session, including tight
+# per-token loops (hostdata.bd's read_entries()). Re-reading+parsing
+# blackdoor.conf on every one of those calls multiplied real tick cost
+# exactly where the rest of this codebase works to minimize it, and
+# crashed the script before "Checking status..." even printed. A lazy
+# cache (write the result into a module var the first time a function
+# runs, read it on later calls) did NOT fix this - crashed again,
+# even earlier - meaning a write from inside a function body doesn't
+# reliably persist back to module-level state here, the same kind of
+# gap this codebase already assumes for closures (see walk_tree()'s own
+# comment on why it uses a context parameter instead of one). Reading
+# the config file is instead done directly in a module-level statement
+# below (not inside any func) - this file's own header confirms menu.bd
+# imports it exactly once, so a plain module-level line runs exactly
+# once per script run, no function-write-back required at all.
+func _read_tick_rate_from_config():
     var content = ""
     try:
         content = read_local("~/.config/blackdoor.conf")
     catch e:
-        _tick_rate_cache = 10
-        return _tick_rate_cache
+        return 10
     for line in content.split("\n"):
         var trimmed = line.trim()
         if trimmed.starts_with("tick_speed="):
             try:
-                _tick_rate_cache = int(trimmed.replace("tick_speed=", ""))
-                return _tick_rate_cache
+                return int(trimmed.replace("tick_speed=", ""))
             catch e2:
-                _tick_rate_cache = 10
-                return _tick_rate_cache
-    _tick_rate_cache = 10
+                return 10
+    return 10
+
+var _tick_rate_cache = _read_tick_rate_from_config()
+
+func local_tick_rate():
     return _tick_rate_cache
 
 # Ratio of base-tier ticks to this machine's actual ticks - 1.0 at base
