@@ -1,0 +1,98 @@
+# utils/cleanup - Log Scrubbing & Raw Deletion
+# Two real, distinct ways to cover your tracks under /var/log - not one
+# real option and one fake one:
+#   - do_scrub_log(): the REAL scrub_log() API (LogScrubber tool, $350) -
+#     the only thing that clears both the on-disk file AND IDS's own
+#     in-memory record (per hexhaven.net's scripting reference: IDS keeps
+#     a RAM-only copy of what it's seen, independent of the file on disk).
+#   - do_raw_cleanup(): delete_file()s everything outright - doesn't touch
+#     IDS's in-memory record either, but a missing file is its own kind of
+#     evidence and (per hexhaven.net Discord discussion) is recognized by
+#     some missions as genuine track-covering where a partial edit isn't.
+#
+# REPLACES a DIY do_cleanup() that used to read_file() -> filter lines
+# containing your own IP -> write_file() the rest back. Confirmed this
+# session (hexhaven.net Discord, Maymew/publord_ozai/usesPython thread)
+# that approach was strictly worse than believed: not just "no IDS
+# benefit" (already known) but "no benefit at all" - missions that check
+# for track-covering only recognize real LogScrubber use or full file
+# deletion, never a partial DIY edit. No reason to keep that path around.
+#
+# Both share nu.walk_tree() (utils/net.bd) for the directory walk itself
+# - see there for why scrub_log() being per-FILE (not per-line, unlike
+# the old DIY version) means no special-cased callback is needed here
+# anymore.
+#
+# Usage: import "utils/cleanup" as ucl
+# Takes a utils/net module instance (nu) as a parameter instead of
+# importing it itself - see utils/net.bd for why.
+
+# Per-file callback for nu.walk_tree() - context is my_ip (do_scrub_log()
+# needs it per call, and BDScript callbacks can't close over a caller's
+# local variable, so it's threaded through explicitly instead).
+#
+# Ownership check is a placeholder - TODO: replace with a real "do I own
+# LogScrubber" check once the exact mechanism is confirmed (no documented
+# API for it as of writing, unlike server_specs(conn) for a connected
+# TARGET's hardware). Until then, a failed scrub_log() call raises with a
+# clear hint instead of silently doing nothing.
+func scrub_on_file(conn, path, f, context):
+    var my_ip = context
+    var removed = 0
+    try:
+        var sr = scrub_log(conn, path, my_ip)
+        removed = sr.removed
+        if removed > 0:
+            log("Scrubbed " + str(removed) + " lines from " + path, Color.green)
+    catch e:
+        raise("scrub_log() failed on " + path + " - is LogScrubber owned? (" + str(e) + ")")
+    return {"conn": conn, "reconnected": false, "value": removed}
+
+# Rescan-on-reconnect is kept (nu.walk_tree()'s own `reconnected` return
+# drives it) - unlike the old DIY scrub, this ACTUALLY clears IDS's
+# memory per file scrubbed, so a file skipped this pass because a
+# reconnect happened mid-walk (leaving a fresh log entry from the
+# disconnect/reconnect itself) would be a real miss, not just a cosmetic
+# one on disk.
+func do_scrub_log(nu, host, account):
+    var connect_str = account + "@" + host
+    var conn = nu.connect_or_raise(connect_str)
+    var my_ip = get_my_ip()
+    var total_removed = 0
+
+    var reconnected_this_pass = true
+    while reconnected_this_pass:
+        var r = nu.walk_tree(conn, connect_str, host, "/var/log", scrub_on_file, my_ip)
+        conn = r.conn
+        reconnected_this_pass = r.reconnected
+        for v in r.results:
+            total_removed = total_removed + v
+        if reconnected_this_pass:
+            log("Reconnected during this pass - rescanning to catch fresh entries...")
+
+    disconnect(conn)
+    log("Done. Scrubbed " + str(total_removed) + " lines mentioning " + my_ip + " - clears IDS's in-memory record too, not just the file on disk.", Color.green)
+    return total_removed
+
+# Per-file callback for nu.walk_tree() - context unused (none).
+func delete_on_file(conn, path, f, context):
+    var deleted = delete_file(conn, path)
+    if deleted:
+        log("Deleted: " + path, Color.green)
+    return {"conn": conn, "reconnected": false, "value": deleted ? 1 : 0}
+
+# No rescan-on-reconnect needed here (unlike do_scrub_log() above) -
+# nothing here depends on catching every fresh entry, there's nothing
+# left to act on either way once a file's gone.
+func do_raw_cleanup(nu, host, account):
+    var connect_str = account + "@" + host
+    var conn = nu.connect_or_raise(connect_str)
+    var r = nu.walk_tree(conn, connect_str, host, "/var/log", delete_on_file, none)
+    var total_deleted = 0
+    for v in r.results:
+        total_deleted = total_deleted + v
+
+    disconnect(r.conn)
+    log("Done. Deleted " + str(total_deleted) + " file(s) from /var/log.")
+    log("Note: doesn't clear IDS's in-memory record either - missing logs are their own tell, but confirmed recognized as valid track-covering by at least some missions (unlike a partial edit).", Color.amber)
+    return total_deleted

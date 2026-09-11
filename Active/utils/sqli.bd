@@ -1,0 +1,104 @@
+# utils/sqli - Shared SQL Injection Probing
+# Two no-purchase SQLi paths against a single host, cheapest first:
+#   1. Direct sqli(host + route) - 2 ticks, noise 0.03. Works when
+#      route is already a real authored route (e.g. "/login"), not a
+#      page path.
+#   2. Login-page fallback - only runs if a page is given. Browses
+#      host + page, reads the real <form> via find_forms(), then works
+#      through a list of classic injection payloads, re-browsing and
+#      resubmitting the form for each one, until submit_form() reports
+#      a leak or the list runs out. This is what a bought SQLKit would
+#      automate for you - doing it here by hand costs nothing.
+# No connect(), so no trace timer - noise only from the calls above.
+#
+# Usage: import "utils/sqli" as usq
+
+func normalize_path(raw):
+    var p = str(raw).replace("\"", "").trim()
+    if p == "" or p == "none":
+        return ""
+    if not p.starts_with("/"):
+        p = "/" + p
+    return p
+
+func build_url(host, path):
+    if path == "":
+        return host
+    return host + path
+
+func injection_payloads():
+    return ["' OR '1'='1", "' OR '1'='1' --", "' OR '1'='1' /*", "' OR 1=1--", "admin'--", "' UNION SELECT NULL--"]
+
+# Direct route attempt. Returns {success, data}.
+func try_direct(nu, host, route):
+    var url = build_url(host, normalize_path(route))
+    log("Trying direct SQLi against " + url + "...")
+    nu.throttle(nu.cpu_guard_conservative())
+    var r = sqli(url)
+    if r.success:
+        log("SQLi succeeded: " + r.data, Color.green)
+        return {"success": true, "data": r.data}
+    log("Direct SQLi failed" + (r.error != "" ? " (" + r.error + ")" : "") + ".", Color.amber)
+    return {"success": false, "data": ""}
+
+# Login-page fallback: discovers the real form and works through
+# injection_payloads() until one leaks or the list runs out. Returns
+# {success, data}.
+func try_form(nu, host, page):
+    var page_path = normalize_path(page)
+    if page_path == "":
+        log("No login page given - nothing else to try. Pass a page to fall back to form discovery.", Color.amber)
+        return {"success": false, "data": ""}
+
+    var url = build_url(host, page_path)
+    var payloads = injection_payloads()
+    var attempt = 0
+    for payload in payloads:
+        attempt = attempt + 1
+        nu.throttle(nu.cpu_guard_conservative())
+        var nav = browse(url, false)
+        if not nav.success:
+            raise("Couldn't load " + url + ".")
+
+        var forms = find_forms(nav.html)
+        if len(forms) == 0:
+            raise("No form found on " + url + ".")
+        if len(forms) > 1:
+            log(str(len(forms)) + " forms found on the page - submit_form() only handles a single form and will error. Remove the extras or target a page with just the login form.", Color.amber)
+
+        var form = forms[0]
+        if attempt == 1:
+            log("Form found: " + form.action + " (" + str(len(form.fields)) + " field(s))")
+        log("Attempt " + str(attempt) + "/" + str(len(payloads)) + ": " + payload)
+        for f in form.fields:
+            nu.throttle(nu.cpu_guard_conservative())
+            fill_form(f.name, payload)
+
+        var r = none
+        try:
+            r = submit_form()
+        catch e:
+            raise("submit_form() failed: " + str(e))
+
+        if r.sqli_success:
+            log("SQLi via form succeeded on attempt " + str(attempt) + " (" + payload + "): " + r.sqli_data, Color.green)
+            return {"success": true, "data": r.sqli_data}
+
+    log("Form submitted " + str(len(payloads)) + " time(s) - no SQLi leak detected.", Color.amber)
+    return {"success": false, "data": ""}
+
+# host is a bare host/IP, typed once - route and page are path-only
+# fragments (e.g. "/login", "/tools/login.html") appended onto host
+# for each attempt, so the caller never repeats the IP. page blank
+# skips the fallback entirely. Returns {success, data, method} where
+# method is "direct", "form" or "none".
+func do_sqli(nu, host, route, page):
+    var direct = try_direct(nu, host, route)
+    if direct.success:
+        return {"success": true, "data": direct.data, "method": "direct"}
+
+    var form = try_form(nu, host, page)
+    if form.success:
+        return {"success": true, "data": form.data, "method": "form"}
+
+    return {"success": false, "data": "", "method": "none"}

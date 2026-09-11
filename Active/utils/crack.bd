@@ -1,0 +1,142 @@
+# utils/crack - Shared Password Cracker
+# Softens up security (probe_vuln/exploit_vuln) then brute-forces one
+# account's password. Trace/IDS-safe via utils/net - disconnects and
+# waits out a hot trace, reconnects and resumes; only IDS going active
+# aborts for good.
+#
+# Usage: import "utils/crack" as ucr
+# Takes a utils/net module instance (nu) as a parameter instead of
+# importing it itself - see utils/net.bd for why.
+
+# scan_network() is the scripting equivalent of the terminal nmap
+# command - reads the connected server's own /etc/hosts, known_hosts,
+# SSH config and bash_history for other hosts genuinely reachable from
+# it. Needs an authenticated conn, so this only makes sense to run
+# right after a successful crack. Returns the found list so callers can
+# persist/display it, not just the log lines.
+func discover_network(nu, conn, host):
+    nu.throttle(nu.cpu_guard_fast())
+    log("Running nmap on " + host + "...")
+    var found = scan_network(conn)
+    if len(found) == 0:
+        log("No other hosts discovered.")
+    else:
+        log(str(len(found)) + " host(s) discovered:")
+        for f in found:
+            nu.throttle(nu.cpu_guard_conservative())
+            log("  " + f.ip + " (" + f.hostname + ") via " + f.source)
+    return found
+
+# "Try once" wrappers for progressive_crack_loop() below - the only real
+# difference between do_crack()'s remote path and local_crack_loop()'s
+# from-inside path was which one of these two calls to make each attempt.
+func crack_attempt(conn, account):
+    return crack(conn, account)
+
+func local_crack_attempt(conn, target_account):
+    # local_crack() takes no conn - it operates on the script's own
+    # current session. conn stays in the signature only so both wrappers
+    # match progressive_crack_loop()'s uniform attempt_fn(conn, account)
+    # call shape.
+    return local_crack(target_account)
+
+# Shared retry loop behind both do_crack()'s remote crack(conn, account)
+# and local_crack_loop()'s local_crack(target_account) - identical shape
+# (check_trace_verbose + throttle + attempt + retry-until-success), only
+# the attempt call itself differed. Both overload-pacing bugs fixed
+# earlier this session in this exact loop had to be fixed twice, once per
+# copy - collapsing it means that only happens once from now on.
+func progressive_crack_loop(nu, conn, connect_str, host, account, attempt_fn):
+    conn = nu.check_trace_verbose(conn, connect_str, host).conn
+    nu.throttle(nu.cpu_guard_fast())
+    var result = attempt_fn(conn, account)
+    while not result.success:
+        conn = nu.check_trace_verbose(conn, connect_str, host).conn
+        nu.throttle(nu.cpu_guard_fast())
+        log("Trying... " + result.hint)
+        sleep(nu.retry_delay())
+        result = attempt_fn(conn, account)
+    log("Got " + account + ": " + result.password)
+    return {"conn": conn, "password": result.password}
+
+func local_crack_loop(nu, conn, connect_str, host, target_account):
+    return progressive_crack_loop(nu, conn, connect_str, host, target_account, local_crack_attempt)
+
+# escalate_to: account name to also crack from inside after (via
+# local_crack()) once the primary account is in - "" to skip.
+func do_crack(nu, host, account, exploit, escalate_to):
+    var conn = connect(host, 22)
+    if not conn.success:
+        raise("Couldn't connect to " + host + ":22.")
+
+    if exploit:
+        # probe_vuln() is idempotent and its progress persists server-side,
+        # so checking upfront here just reads already-known state - it
+        # doesn't cost a fresh attempt. Skip the whole softening phase
+        # (and the misleading "Softening up..." log) if there's nothing
+        # left to exploit.
+        conn = nu.check_trace_verbose(conn, host, host).conn
+        var vuln = probe_vuln(conn)
+        if not vuln.found:
+            log("No known vulnerabilities on " + host + " - skipping softening phase.")
+        else:
+            log("Softening up " + host + " (security: " + str(get_security(conn)) + ")...")
+            while vuln.found:
+                conn = nu.check_trace_verbose(conn, host, host).conn
+                nu.throttle(nu.cpu_guard_fast())
+                vuln = exploit_vuln(conn)
+                if vuln.exploited:
+                    log("Exploited " + vuln.vuln_type + " - security now " + str(vuln.new_security))
+                    nu.throttle(nu.cpu_guard_fast())
+                    vuln = probe_vuln(conn)
+                else:
+                    sleep(nu.retry_delay())
+
+    # Softening's exploited branch and the "no vulns at all" skip branch
+    # both fall straight into this with zero pacing since the loop/if
+    # above - a real throttle() here (not just the free sleep()s inside
+    # them) is what actually breaks the two API-heavy blocks apart, per
+    # field_notes.txt's back-to-back-lines overload warning.
+    nu.throttle(nu.cpu_guard_fast())
+    log("Cracking " + account + "@" + host + " (security: " + str(get_security(conn)) + ")...")
+    var result = progressive_crack_loop(nu, conn, host, host, account, crack_attempt)
+    conn = result.conn
+
+    log("Try: ssh " + account + "@" + host)
+    var found = discover_network(nu, conn, host)
+
+    if escalate_to != "" and escalate_to != account:
+        # local_crack() takes just a username, no conn - it operates on
+        # this script's own current session (the one just authenticated
+        # above), so this needs no new connection and no fresh trace -
+        # quieter than a second remote crack(conn, escalate_to).
+        log("Cracking " + escalate_to + " from inside (quieter than a fresh remote crack)...")
+        # connect_str must be the authenticated identity (account@host),
+        # not bare host - if trace goes low mid-loop and check_trace()
+        # has to reconnect, a bare connect() comes back unauthenticated
+        # and local_crack() needs a real session. do_escalate() already
+        # gets this right; this path didn't.
+        var r = local_crack_loop(nu, conn, account + "@" + host, host, escalate_to)
+        conn = r.conn
+
+    store(host)
+    disconnect(conn)
+    return {"password": result.password, "nmap": found}
+
+# Crack one account "from inside" an already-authenticated session -
+# connects as an account you've already cracked, then local_crack()s a
+# different one on that live connection instead of a fresh remote
+# crack(). Standalone version of do_crack's optional escalate_to, for
+# when you want to do this on its own rather than right after a crack.
+func do_escalate(nu, host, as_account, target_account):
+    var connect_str = as_account + "@" + host
+    var conn = nu.connect_or_raise(connect_str)
+
+    log("Cracking " + target_account + " from inside as " + as_account + " (quieter than a remote crack)...")
+    var r = local_crack_loop(nu, conn, connect_str, host, target_account)
+    conn = r.conn
+    var found = discover_network(nu, conn, host)
+
+    store(host)
+    disconnect(conn)
+    return {"password": r.password, "nmap": found}

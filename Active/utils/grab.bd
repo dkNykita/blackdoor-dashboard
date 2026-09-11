@@ -1,0 +1,22 @@
+# utils/grab - Shared Recursive File Download
+# Usage: import "utils/grab" as ug
+# Takes a utils/net module instance (nu) as a parameter instead of
+# importing it itself - see utils/net.bd for why.
+
+# Per-file callback for nu.walk_tree() - context unused (none).
+func grab_on_file(conn, path, f, context):
+    var result = download(conn, path)
+    if result.success:
+        log("Downloaded: " + result.path)
+    return {"conn": conn, "reconnected": false, "value": result.success ? 1 : 0}
+
+func do_grab(nu, host, account, path):
+    var connect_str = account + "@" + host
+    var conn = nu.connect_or_raise(connect_str)
+    var r = nu.walk_tree(conn, connect_str, host, path, grab_on_file, none)
+    var count = 0
+    for v in r.results:
+        count = count + v
+    disconnect(r.conn)
+    log("Done. Downloaded " + str(count) + " files.")
+    return count

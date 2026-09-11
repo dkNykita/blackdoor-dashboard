@@ -1,0 +1,100 @@
+# utils/sync - Local Host & Wordlist Sync
+# Three bits of local file maintenance in one pass, run once at menu.bd
+# startup instead of as its own standalone script:
+#   1. Extracts every host from ~/.ssh/known_hosts into ~/host_intel.txt
+#      (one IP per line) - preserves whatever utils/hostdata has already
+#      paired onto an IP (ports/fw/users/specs/jobs/nmap/sqli) instead
+#      of blowing it away, same as rebuilding any other index.
+#   2. Adds every distinct host from ~/.ssh/credentials to the Network
+#      tab (store()) - do_crack()/do_escalate() already do this
+#      automatically after a successful crack, so this is mainly a
+#      backfill for anything cracked another way (manual ssh,
+#      credentials added by hand).
+#   3. Appends any password from ~/.ssh/credentials not already in
+#      ~/wordlists/common.txt, so passwords picked up manually feed
+#      back into the cracking dictionary.
+# Local files + store() only - no connection, no trace, no noise.
+#
+# Usage: import "utils/sync" as usy
+
+func do_sync(nu, uc, uhd):
+    var user = whoami()
+
+    # --- known_hosts -> host_intel.txt (preserving paired data) ---
+    var existing_data = uhd.read_entries(nu)
+    var raw = read_local("/home/" + user + "/.ssh/known_hosts")
+    var ip_count = 0
+    var entries = []
+    for line in raw.split("\n"):
+        # find_entry() is a plain unthrottled scan over existing_data
+        # (the host list itself, not any one host's field data - see
+        # utils/hostdata's find_entry() for why that's fine unthrottled),
+        # so this per-line throttle is the only pacing this loop needs -
+        # not the trivially-cheap line_pace() sync_hosts used to use
+        # (real work happens per line now, not just a string append).
+        nu.throttle(nu.cpu_guard_fast())
+        var trimmed = line.trim()
+        if trimmed == "" or trimmed.starts_with("#"):
+            continue
+        var parts = trimmed.split(" ")
+        var ip = parts[0]
+        ip_count = ip_count + 1
+        entries.append(uhd.find_entry(nu, existing_data, ip))
+
+    uhd.write_entries(nu, entries)
+    log("sync: " + str(ip_count) + " known host(s) in host_intel.txt.", Color.green)
+
+    # --- credentials -> Network tab (store()) + wordlist ---
+    var creds = uc.read_credentials(nu)
+
+    var seen = []
+    var hosts_added = 0
+    for c in creds:
+        if seen.contains(c.host):
+            continue
+        seen.append(c.host)
+        nu.throttle(nu.cpu_guard_fast())
+        store(c.host)
+        hosts_added = hosts_added + 1
+
+    log("sync: " + str(hosts_added) + " host(s) synced to the Network tab.", Color.green)
+
+    var wordlist_path = "/home/" + user + "/wordlists/common.txt"
+    var existing = ""
+    try:
+        existing = read_local(wordlist_path)
+    catch e:
+        existing = ""
+
+    var existing_lines = []
+    for line in existing.split("\n"):
+        # Learned the hard way: builtins like .trim()/.contains() being
+        # individually cheap doesn't mean a loop over hundreds of them is
+        # free - this crashed once common.txt grew large enough after
+        # many sessions of crack results feeding back into it. Every
+        # line, not periodic - see utils/hostdata's read_entries() for
+        # why periodic checks weren't tight enough either.
+        nu.throttle(nu.cpu_guard_fast())
+        var t = line.trim()
+        if t != "":
+            existing_lines.append(t)
+
+    try:
+        local_mkdir("/home/" + user + "/wordlists")
+    catch e:
+        pass
+
+    var wl_out = existing
+    if wl_out != "" and not wl_out.ends_with("\n"):
+        wl_out = wl_out + "\n"
+
+    var words_added = 0
+    for c in creds:
+        nu.throttle(nu.cpu_guard_fast())
+        if not existing_lines.contains(c.password):
+            wl_out = wl_out + c.password + "\n"
+            existing_lines.append(c.password)
+            words_added = words_added + 1
+
+    save(wordlist_path, wl_out)
+    log("sync: " + str(words_added) + " new password(s) added to the wordlist (" + str(len(existing_lines)) + " total).", Color.green)

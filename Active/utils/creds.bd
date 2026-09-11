@@ -1,0 +1,45 @@
+# utils/creds - Local Credential Lookup
+# Reads ~/.ssh/credentials straight off disk (0 ticks, no connection,
+# no trace/noise) to answer "have I already cracked this account on
+# this host" for a status display. Format, one per line:
+#   user@host password
+#
+# Usage: import "utils/creds" as uc
+# Takes a utils/net module instance (nu) as a parameter instead of
+# importing it itself - see utils/net.bd for why.
+
+func read_credentials(nu):
+    nu.throttle(nu.cpu_guard_conservative())
+    var raw = read_local("/home/" + whoami() + "/.ssh/credentials")
+    var creds = []
+    for line in raw.split("\n"):
+        nu.throttle(nu.cpu_guard_conservative())
+        var trimmed = line.trim()
+        if trimmed == "" or trimmed.starts_with("#"):
+            continue
+        var parts = trimmed.split(" ")
+        if len(parts) < 2:
+            continue
+        var at = parts[0].split("@")
+        if len(at) < 2:
+            continue
+        creds.append({"account": at[0], "host": at[1], "password": parts[1]})
+    return creds
+
+func is_cracked(nu, account, host):
+    for c in read_credentials(nu):
+        # read_credentials(nu) already paced building this list - this is
+        # a second full pass over it, so it needs the same per-iteration
+        # backoff, not just whatever pacing built it in the first place.
+        nu.throttle(nu.cpu_guard_conservative())
+        if c.account == account and c.host == host:
+            return true
+    return false
+
+func cracked_accounts_for(nu, host):
+    var accounts = []
+    for c in read_credentials(nu):
+        nu.throttle(nu.cpu_guard_conservative())
+        if c.host == host:
+            accounts.append(c.account)
+    return accounts

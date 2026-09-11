@@ -1,0 +1,335 @@
+# utils/hostdata - Persistent Per-Host Dashboard Data
+# ~/host_intel.txt is the dashboard's whole local memory of every host
+# it's touched - one line per IP, sourced from ~/.ssh/known_hosts via
+# utils/sync. Each line is "<ip>" (nothing known yet) plus zero or more
+# "key=value" tokens, space-separated, for whichever fields have
+# actually been observed for that host:
+#   ports=<port>:<service>,...        (from probe)
+#   fw=<0|1>:<layers>:<layers_remaining>
+#   users=<name>:<0|1 cracked>,...
+#   specs=<cpu_tier>:<cpu_ticks>:<ram_tier>:<daemons_used>:<max_daemons>
+#   jobs=<name>:<listens_for>:<status>,...
+#   nmap=<ip>:<hostname>:<source>,...  (scan_network(), post-crack only)
+#   sqli=<0|1 ran>:<0|1 success>
+# A field missing from a line means "never observed" (not "empty") -
+# writers only ever touch the one field they have fresh data for and
+# copy every other field through unchanged, same reasoning as
+# utils/sync's own merge-preserve pass over this file.
+#
+# specs/jobs/nmap/the user name list are treated as static once known -
+# menu.bd only ever fetches each of those live ONCE per host (when the
+# cached field is still none) and trusts this file from then on, rather
+# than re-querying an authenticated connection for data that isn't
+# expected to change on its own. ports/sqli were already this way
+# (action-triggered only, never auto-refreshed). fw/noise/accounts/
+# security/vuln/trace/planted-daemons genuinely can change moment to
+# moment (or cost nothing to check - no auth needed), so those stay
+# live every refresh instead.
+#
+# Dynamic dict bracket READ and WRITE (d[a_variable] on both sides) ARE
+# confirmed working this session (throwaway in-game test, Krok 8a/8b) -
+# only a computed key in an object LITERAL ({a_variable: v}) is not: that
+# one is a hard PARSE ERROR, not just unsupported at runtime. This is why
+# decode_tuple_list()/encode_tuple_list() below build/read entries via
+# bracket indexing in a loop instead of a literal, while entries
+# themselves stay fixed-shape objects with all 7 top-level fields present
+# (none if unknown) rather than a free-form bag - that part was never
+# about the dict-key question, just a stable shape for callers.
+#
+# Usage: import "utils/hostdata" as uhd
+
+func host_intel_path():
+    return "/home/" + whoami() + "/host_intel.txt"
+
+func empty_entry(ip):
+    return {"ip": ip, "ports": none, "fw": none, "users": none, "specs": none, "jobs": none, "nmap": none, "sqli": none}
+
+# --- field encode/decode ---
+
+# Generic replacement for the 4 near-identical decode_*/write_* pairs
+# this file used to have (ports/users/jobs/nmap - 2- and 3-field comma-
+# separated tuples, differing only in field names/count/type). Confirmed
+# safe this session (Krok 8a/8b): dynamic dict bracket WRITE works, so
+# item[field_names[i]] = ... can build a properly-shaped {"port": ...,
+# "service": ...}-style object without a literal per field.
+#
+# field_types[i] is "int", "bool", or anything else for a plain string -
+# ports.port needs int(), users.cracked needs "1"/"0" <-> bool, jobs/nmap
+# are all strings. nu'd and throttled per item, same reasoning as
+# read_entries()/write_entries() below - a single host can have a lot of
+# open ports after a full 1-65535 scan, so this inner loop needs its own
+# pacing, not just the outer per-host one that calls it.
+func decode_tuple_list(nu, blob, field_names, field_types):
+    if blob == "":
+        return []
+    var items = []
+    for chunk in blob.split(","):
+        nu.throttle(nu.cpu_guard_fast())
+        var kv = chunk.split(":")
+        var item = {}
+        var i = 0
+        while i < len(field_names):
+            var raw = kv[i]
+            if field_types[i] == "int":
+                item[field_names[i]] = int(raw)
+            elif field_types[i] == "bool":
+                item[field_names[i]] = raw == "1"
+            else:
+                item[field_names[i]] = raw
+            i = i + 1
+        items.append(item)
+    return items
+
+# Confirmed safe this session too: dynamic dict bracket READ
+# (item[field_names[i]]) works, needed here to serialize a field back out
+# without knowing its name in advance. No list.join() used (not a
+# confirmed List method) - fields are joined manually with ":" the same
+# way the old per-field encode_*() functions did.
+func encode_tuple_list(nu, items, field_names, field_types):
+    var out = ""
+    var first_item = true
+    for item in items:
+        nu.throttle(nu.cpu_guard_fast())
+        if not first_item:
+            out = out + ","
+        var i = 0
+        while i < len(field_names):
+            if i > 0:
+                out = out + ":"
+            var val = item[field_names[i]]
+            if field_types[i] == "bool":
+                out = out + (val ? "1" : "0")
+            else:
+                out = out + str(val)
+            i = i + 1
+        first_item = false
+    return out
+
+func decode_fw(blob):
+    var parts = blob.split(":")
+    return {"active": parts[0] == "1", "layers": int(parts[1]), "layers_remaining": int(parts[2])}
+
+func encode_fw(fw):
+    return (fw.active ? "1" : "0") + ":" + str(fw.layers) + ":" + str(fw.layers_remaining)
+
+func decode_specs(blob):
+    var parts = blob.split(":")
+    return {"cpu_tier": parts[0], "cpu_ticks": int(parts[1]), "ram_tier": parts[2], "daemons_used": int(parts[3]), "max_daemons": int(parts[4])}
+
+func encode_specs(specs):
+    return specs.cpu_tier + ":" + str(specs.cpu_ticks) + ":" + specs.ram_tier + ":" + str(specs.daemons_used) + ":" + str(specs.max_daemons)
+
+func decode_sqli(blob):
+    var parts = blob.split(":")
+    return {"ran": parts[0] == "1", "success": parts[1] == "1"}
+
+func encode_sqli(s):
+    return (s.ran ? "1" : "0") + ":" + (s.success ? "1" : "0")
+
+# --- read/write the whole file ---
+
+# nu is required (not optional/self-imported, see utils/net.bd for why)
+# because this loop is real per-line work - trim/split plus, for any
+# line with several key=value fields, a decode_*() call that itself
+# loops over a comma-separated list, unbounded by how many ports/users/
+# jobs/nmap hits a single host has on file. Unpaced (or paced only
+# periodically), that's exactly the "many lines back to back" pattern
+# that overloads on a base-tier CPU - this is called by every
+# get_*()/set_*() below, so it's the single place that actually matters
+# for staying safe. One real second per tracked host is the tradeoff.
+func read_entries(nu):
+    var raw = ""
+    try:
+        raw = read_local(host_intel_path())
+    catch e:
+        raw = ""
+
+    var entries = []
+    for line in raw.split("\n"):
+        # Throttled every single entry, not periodically - a host can
+        # carry an unbounded amount of paired data (many nmap hits, many
+        # jobs, ...) so the work between two periodic checks isn't
+        # actually bounded the way "every N simple lines" assumes.
+        # Slower per host, but this is the loop that kept overloading
+        # with lighter pacing - reliability over speed here.
+        nu.throttle(nu.cpu_guard_fast())
+        log("DEBUG read_entries: line = [" + line + "]")  # TEMPORARY
+        var trimmed = line.trim()
+        if trimmed == "":
+            continue
+        var parts = trimmed.split(" ")
+        var entry = empty_entry(parts[0])
+        var i = 1
+        while i < len(parts):
+            # Per-TOKEN throttle, not just per-line and per-list-item
+            # (inside decode_tuple_list()) - confirmed this session (live
+            # crash) that the stretch between the last per-item throttle
+            # inside one field's decode_tuple_list() and the NEXT field's
+            # own decode call (several failed starts_with() checks +
+            # decode_specs() + two empty-field decode_tuple_list() quick
+            # returns, all with zero pacing) was a real pre-existing gap
+            # in the original per-field-only pacing - the added work of
+            # decode_tuple_list()'s generic per-field loop (vs. the old
+            # single-literal construction) was enough to tip it over.
+            nu.throttle(nu.cpu_guard_fast())
+            var tok = parts[i]
+            if tok.starts_with("ports="):
+                entry.ports = decode_tuple_list(nu, tok.substr(6, len(tok) - 6), ["port", "service"], ["int", "str"])
+            elif tok.starts_with("fw="):
+                entry.fw = decode_fw(tok.substr(3, len(tok) - 3))
+            elif tok.starts_with("users="):
+                entry.users = decode_tuple_list(nu, tok.substr(6, len(tok) - 6), ["name", "cracked"], ["str", "bool"])
+            elif tok.starts_with("specs="):
+                entry.specs = decode_specs(tok.substr(6, len(tok) - 6))
+            elif tok.starts_with("jobs="):
+                entry.jobs = decode_tuple_list(nu, tok.substr(5, len(tok) - 5), ["name", "listens_for", "status"], ["str", "str", "str"])
+            elif tok.starts_with("nmap="):
+                entry.nmap = decode_tuple_list(nu, tok.substr(5, len(tok) - 5), ["ip", "hostname", "source"], ["str", "str", "str"])
+            elif tok.starts_with("sqli="):
+                entry.sqli = decode_sqli(tok.substr(5, len(tok) - 5))
+            i = i + 1
+        log("DEBUG read_entries: entry built OK for " + parts[0])  # TEMPORARY
+        entries.append(entry)
+    return entries
+
+func write_entries(nu, entries):
+    var out = ""
+    for e in entries:
+        log("DEBUG write_entries: entry = " + e.ip)  # TEMPORARY
+        # Every entry, same reasoning as read_entries() above. ALSO
+        # per-FIELD now (mirrors read_entries()'s per-token fix) - same
+        # gap confirmed this session: an entry with several non-none
+        # fields (fw/users/specs/jobs/nmap all present) ran through their
+        # "if e.X != none:" checks and encode_tuple_list() calls with
+        # zero pacing between fields, only within one field's own
+        # per-item loop. That gap crashed the script right after
+        # read_entries() finished its second pass (inside save_entry()).
+        nu.throttle(nu.cpu_guard_fast())
+        var line = e.ip
+        nu.throttle(nu.cpu_guard_fast())
+        if e.ports != none:
+            line = line + " ports=" + encode_tuple_list(nu, e.ports, ["port", "service"], ["int", "str"])
+        nu.throttle(nu.cpu_guard_fast())
+        if e.fw != none:
+            line = line + " fw=" + encode_fw(e.fw)
+        nu.throttle(nu.cpu_guard_fast())
+        if e.users != none:
+            line = line + " users=" + encode_tuple_list(nu, e.users, ["name", "cracked"], ["str", "bool"])
+        nu.throttle(nu.cpu_guard_fast())
+        if e.specs != none:
+            line = line + " specs=" + encode_specs(e.specs)
+        nu.throttle(nu.cpu_guard_fast())
+        if e.jobs != none:
+            line = line + " jobs=" + encode_tuple_list(nu, e.jobs, ["name", "listens_for", "status"], ["str", "str", "str"])
+        nu.throttle(nu.cpu_guard_fast())
+        if e.nmap != none:
+            line = line + " nmap=" + encode_tuple_list(nu, e.nmap, ["ip", "hostname", "source"], ["str", "str", "str"])
+        nu.throttle(nu.cpu_guard_fast())
+        if e.sqli != none:
+            line = line + " sqli=" + encode_sqli(e.sqli)
+        out = out + line + "\n"
+        log("DEBUG write_entries: entry done for " + e.ip)  # TEMPORARY
+    save(host_intel_path(), out)
+    log("DEBUG write_entries: save() done")  # TEMPORARY
+
+# NOT throttled, deliberately - this only ever scans the host LIST
+# (bounded by how many distinct hosts you've touched, realistically
+# tens at most), never the per-host field data (that's read_entries()'s
+# job, via decode_*(), which IS throttled - that's where an actually
+# unbounded amount of work lives). Throttling this too used to stack
+# an O(hosts) pass on top of do_sync()'s own O(hosts) known_hosts loop
+# for an O(hosts^2) throttle count - 49 throttled calls for 7 hosts,
+# each one potentially several real seconds if get_cpu() takes a while
+# to decay, adding up to minutes for what should be instant.
+func find_entry(nu, entries, host):
+    for e in entries:
+        if e.ip == host:
+            return e
+    return empty_entry(host)
+
+# get_entry() reads+parses the file ONCE and hands back every field for
+# one host at once - use this instead of six separate get_*() calls
+# when hydrating a batch of fields together (menu.bd does exactly this
+# at startup and on target-switch); each separate get_*() below is its
+# own full read_entries() pass, which adds up fast.
+func get_entry(nu, host):
+    return find_entry(nu, read_entries(nu), host)
+
+# save_entry() writes a FULLY-FORMED entry (all 7 fields, whether
+# changed or not - build it off a prior get_entry() so untouched fields
+# carry over) in one read + one write. Every set_*() below is a thin
+# wrapper around this instead of duplicating the read-modify-write dance
+# itself - one throttled implementation instead of seven near-identical
+# unpaced copies of it.
+func save_entry(nu, entry):
+    var entries = read_entries(nu)
+    var new_entries = []
+    var found = false
+    for e in entries:
+        # Not throttled - same reasoning as find_entry() above, a plain
+        # scan/copy over the host list itself, not per-host field data.
+        if e.ip == entry.ip:
+            new_entries.append(entry)
+            found = true
+        else:
+            new_entries.append(e)
+    if not found:
+        new_entries.append(entry)
+    write_entries(nu, new_entries)
+
+# --- typed getters (none if never observed) ---
+# All take nu now (see read_entries() above for why) - every getter/
+# setter here re-reads+re-parses the whole file, so it's just as
+# exposed to that cost as read_entries() itself. Prefer get_entry()
+# above when you need more than one field for the same host.
+
+func get_ports(nu, host):
+    return get_entry(nu, host).ports
+
+func get_firewall(nu, host):
+    return get_entry(nu, host).fw
+
+func get_users(nu, host):
+    return get_entry(nu, host).users
+
+func get_specs(nu, host):
+    return get_entry(nu, host).specs
+
+func get_jobs(nu, host):
+    return get_entry(nu, host).jobs
+
+func get_nmap(nu, host):
+    return get_entry(nu, host).nmap
+
+func get_sqli(nu, host):
+    return get_entry(nu, host).sqli
+
+# --- typed setters (thin wrappers around save_entry()) ---
+
+func set_ports(nu, host, ports):
+    var current = get_entry(nu, host)
+    save_entry(nu, {"ip": host, "ports": ports, "fw": current.fw, "users": current.users, "specs": current.specs, "jobs": current.jobs, "nmap": current.nmap, "sqli": current.sqli})
+
+func set_firewall(nu, host, fw):
+    var current = get_entry(nu, host)
+    save_entry(nu, {"ip": host, "ports": current.ports, "fw": fw, "users": current.users, "specs": current.specs, "jobs": current.jobs, "nmap": current.nmap, "sqli": current.sqli})
+
+func set_users(nu, host, users):
+    var current = get_entry(nu, host)
+    save_entry(nu, {"ip": host, "ports": current.ports, "fw": current.fw, "users": users, "specs": current.specs, "jobs": current.jobs, "nmap": current.nmap, "sqli": current.sqli})
+
+func set_specs(nu, host, specs):
+    var current = get_entry(nu, host)
+    save_entry(nu, {"ip": host, "ports": current.ports, "fw": current.fw, "users": current.users, "specs": specs, "jobs": current.jobs, "nmap": current.nmap, "sqli": current.sqli})
+
+func set_jobs(nu, host, jobs):
+    var current = get_entry(nu, host)
+    save_entry(nu, {"ip": host, "ports": current.ports, "fw": current.fw, "users": current.users, "specs": current.specs, "jobs": jobs, "nmap": current.nmap, "sqli": current.sqli})
+
+func set_nmap(nu, host, found_hosts):
+    var current = get_entry(nu, host)
+    save_entry(nu, {"ip": host, "ports": current.ports, "fw": current.fw, "users": current.users, "specs": current.specs, "jobs": current.jobs, "nmap": found_hosts, "sqli": current.sqli})
+
+func set_sqli(nu, host, sqli):
+    var current = get_entry(nu, host)
+    save_entry(nu, {"ip": host, "ports": current.ports, "fw": current.fw, "users": current.users, "specs": current.specs, "jobs": current.jobs, "nmap": current.nmap, "sqli": sqli})

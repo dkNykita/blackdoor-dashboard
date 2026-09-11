@@ -1,0 +1,26 @@
+# utils/firewall - Shared Firewall Bypass
+# Chips away at a target's firewall until every layer is breached and
+# filtered ports open. Progressive - each call makes partial progress
+# on the current layer. Very noisy (5.0 noise/call per the API docs) -
+# only run this if you specifically need the filtered ports open, and
+# expect it to accelerate any trace you already have running elsewhere.
+# Doesn't need a connection - safe to run before connecting to anything.
+#
+# Usage: import "utils/firewall" as ufw
+
+func do_bypass_firewall(nu, target):
+    var fw = probe_firewall(target)
+    if not fw.active:
+        log("No firewall detected on " + target + " - nothing to bypass.")
+        return
+    log("Bypassing firewall on " + target + " (" + str(fw.layers) + " layer(s))...")
+    var r = bypass_firewall(target)
+    while not r.firewall_down:
+        nu.throttle(nu.cpu_guard_fast())
+        if r.layer_breached:
+            log("Layer breached - " + str(r.layers_remaining) + " remaining.", Color.green)
+        else:
+            log("Progress: " + str(round(r.progress * 100)) + "%")
+        sleep(nu.retry_delay())
+        r = bypass_firewall(target)
+    log("Firewall down - all filtered ports open.", Color.green)

@@ -1,0 +1,249 @@
+# utils/net - Shared Connection & Trace Helpers
+# Common trace-safety and target-resolution logic shared by probe,
+# grabber, cracker and cleanup, so it only needs fixing in one place.
+#
+# Import this exactly ONCE per top-level script/menu, not from other
+# utils/*.bd modules - import isn't cached, so a script that imports
+# several action modules which each import this too re-executes this
+# whole file once per import. menu.bd hit real CPU overload from that
+# alone, before running a single line of its own logic. Other utils/*
+# modules take the resulting nu instance as a plain function parameter
+# instead of importing it themselves.
+#
+# Usage: import "utils/net" as nu
+
+# --- Tuning knobs ---
+# Every wait/pace/threshold value used anywhere in scripts/utils lives
+# here as a named function, instead of a bare number at each call site.
+# Retune game-wide by editing a single return value below.
+
+func cpu_guard_conservative():
+    # CPU guard before a light/no-connect call (whois, sqli, scan, ...).
+    return 50
+
+func cpu_guard_fast():
+    # CPU guard before a costlier authenticated/looped call.
+    return 80
+
+func retry_delay():
+    # Pause between poll attempts in a crack/bypass retry loop.
+    return 0.5
+
+func log_pace():
+    # Pause between dashboard/log blocks and before prompt()s - resets
+    # the sustained-100%-load clock instead of just throttle()'s CPU
+    # check (see menu.bd's header comment for why that matters).
+    return 1
+
+func trace_poll_interval():
+    # How often wait_for_trace_recovery() re-checks traces() while
+    # waiting for a hot trace to fully cool down.
+    return 5
+
+func trace_critical():
+    # check_trace()'s hard threshold, absolute seconds - below this,
+    # disconnect and wait rather than risk the trace completing mid-call.
+    return 10
+
+func trace_critical_pct():
+    # check_trace()'s hard threshold, percent of this trace's own total
+    # duration - a long trace_time (e.g. after pivot hops) can still have
+    # dangerously little relative margin left even while comfortably
+    # above trace_critical()'s flat 10s floor. Disconnect on whichever of
+    # the two thresholds is reached first (see should_disconnect_for_trace()).
+    return 10
+
+func trace_warn():
+    # check_trace_verbose()'s amber cutoff - was a bare 30 hardcoded
+    # directly in crack.bd before this got moved here; named alongside
+    # trace_critical() (the red cutoff) now instead of left unnamed.
+    return 30
+
+# ABANDONED this session, after 3 separate real in-game "CPU overloaded,
+# all processes terminated" kills on plain `menu` startup (do_sync()'s
+# per-line cpu_guard_fast() loop, before target resolution even ran) -
+# tried, in order: (1) skipping the wait when get_cpu() already read
+# under threshold (hexhaven Discord, Maymew's modified cleanup.bd), (2) a
+# raw unmultiplied 1/cpu_tick_rate retry-poll interval (hexhaven Discord,
+# save_cpu()) at 0.1s base-tier, (3) the same interval widened 5x to
+# 0.5s. All three killed the script. Read tick_speed=10 correctly from
+# ~/.config/blackdoor.conf each time (confirmed via direct in-game `cat`
+# beforehand) - the arithmetic wasn't the problem. Conclusion: shortening
+# throttle()'s pause BELOW log_pace()=1s isn't safe for this codebase's
+# actual per-iteration tick cost, at least not without real profiling
+# tools this environment doesn't have. Reverted to the original,
+# confirmed-safe design below - do NOT retry a shorter interval without
+# a way to see get_cpu() readings between calls, not just guess-and-kill.
+func throttle(threshold):
+    sleep(log_pace())
+    while get_cpu() > threshold:
+        sleep(log_pace())
+
+func wait_for_trace_recovery(host):
+    log("Trace low - disconnecting and waiting for full recovery...")
+    while true:
+        var found = false
+        for t in traces():
+            if t.ip == host:
+                found = true
+                log("Recovering: " + str(round(t.remaining)) + "s (" + t.status + ")")
+        if not found:
+            log("Trace fully recovered - reconnecting.")
+            return
+        sleep(trace_poll_interval())
+
+# Combines the absolute-seconds floor (trace_critical()) with a
+# percent-of-total floor (trace_critical_pct()) - disconnect as soon as
+# EITHER is crossed, whichever that turns out to be for this trace's own
+# total duration. traces() costs 0 ticks, safe to call on every check.
+# Falls back to the absolute check alone if this host has no traces()
+# entry yet (e.g. the very first check right after connect(), before a
+# trace record exists).
+func should_disconnect_for_trace(host):
+    if get_trace_time() < trace_critical():
+        return true
+    for t in traces():
+        if t.ip == host:
+            var pct = t.remaining / t.total * 100
+            return pct <= trace_critical_pct()
+    return false
+
+# connect_str is what gets passed to connect() on reconnect (e.g.
+# "root@1.2.3.4" or a bare host); host is what's matched against
+# traces() to detect full recovery. Always returns {conn, reconnected}
+# so a caller who doesn't care can just read .conn.
+#
+# ids_status(conn) has no numeric lead indicator - just quiet/flagged/
+# active, with no confirmed distance-to-next-tier (see field_notes.txt).
+# The earliest this can possibly react to rising IDS attention is the
+# instant a call first reads "flagged", so that's treated as a second
+# dc-wait-rc trigger alongside low trace, instead of silently letting it
+# ride until "active" (where the server itself can act against you -
+# rotate the account, slam a port shut - not just start a trace).
+#
+# Caller discipline matters as much as the threshold itself: this must
+# be called at least every ~2 real seconds while a connection is open
+# (per-file/per-line, never "every N iterations") so there's always
+# enough runway left to actually disconnect before a fast-draining trace
+# hits zero - a periodic/sampled check can silently let real seconds
+# pile up between checks and miss the window entirely.
+func check_trace(conn, connect_str, host):
+    var ids = ids_status(conn)
+    if ids == "active":
+        log("IDS active - aborting.")
+        disconnect(conn)
+        exit()
+    if ids == "flagged" or should_disconnect_for_trace(host):
+        if ids == "flagged":
+            log("IDS flagged - disconnecting before it escalates to active.", Color.amber)
+        disconnect(conn)
+        wait_for_trace_recovery(host)
+        var new_conn = connect(connect_str, 22)
+        if not new_conn.success:
+            raise("Couldn't reconnect as " + connect_str + ".")
+        return {"conn": new_conn, "reconnected": true}
+    return {"conn": conn, "reconnected": false}
+
+# Moved here from crack.bd (this session) - was the only place in the
+# codebase surfacing Trace:/IDS: status visibly during a loop, so a long
+# grab/cleanup run gave no feedback a crack run did. Now shared. Returns
+# the full {conn, reconnected} shape (crack.bd's old copy returned just
+# .conn - callers here updated to read .conn explicitly) so walk_tree()
+# below can also read .reconnected from it.
+func check_trace_verbose(conn, connect_str, host):
+    var tt = get_trace_time()
+    var ids = ids_status(conn)
+    log("Trace: " + str(round(tt)) + "s", tt < trace_critical() ? Color.red : (tt < trace_warn() ? Color.amber : Color.green))
+    log("IDS: " + ids, ids == "active" ? Color.red : (ids == "flagged" ? Color.amber : Color.green))
+    return check_trace(conn, connect_str, host)
+
+# Identical connect()+raise() 3-line block used to appear separately in
+# do_grab/do_scrub_log/do_raw_cleanup/do_escalate - one shared copy here.
+func connect_or_raise(connect_str):
+    var conn = connect(connect_str, 22)
+    if not conn.success:
+        raise("Couldn't connect as " + connect_str + " - not cracked and no password given.")
+    return conn
+
+# Shared directory-tree walker behind do_grab()/do_scrub_log()/
+# do_raw_cleanup() - all three used to independently implement the same
+# dirs_to_visit-stack + per-dir/per-file check_trace()+throttle() shape,
+# differing only in what happens to each non-dir file.
+#
+# on_file(conn, path, f, context) -> {conn, reconnected, value} - called
+# only for non-dir entries. `context` is passed through unchanged to
+# every call so a callback can carry data it needs (e.g. do_scrub_log()'s
+# own IP to filter by) without relying on closures - BDScript closures
+# aren't confirmed to work, and callbacks are plain top-level functions
+# with no access to the caller's local variables. Pass none if unused.
+# `results` accumulates each call's `value` into a list walk_tree()
+# itself returns - no closure needed for that either, it's just a normal
+# local list built inside this function's own loop.
+#
+# Trace check is verbose (visible Trace:/IDS: log) once per DIRECTORY,
+# silent (nu.check_trace(), no log) once per FILE - a directory with
+# hundreds of files would turn per-file verbose logging into the exact
+# "25+ log lines back to back with no sleep" CPU-overload pattern
+# field_notes.txt warns about, just relocated into this walker instead of
+# fixed by it. Directories are typically far fewer than files, so the
+# visible feedback stays useful without that risk. The underlying safety
+# check itself (check_trace(), not the verbose wrapper) still runs at
+# both levels, unchanged.
+func walk_tree(conn, connect_str, host, root, on_file, context):
+    var reconnected_any = false
+    var results = []
+    var dirs_to_visit = [root]
+    while len(dirs_to_visit) > 0:
+        var dir = dirs_to_visit.pop()
+        var rc = check_trace_verbose(conn, connect_str, host)
+        conn = rc.conn
+        if rc.reconnected:
+            reconnected_any = true
+        throttle(cpu_guard_fast())
+        var entries = list_files(conn, dir)
+        for f in entries:
+            var rc2 = check_trace(conn, connect_str, host)
+            conn = rc2.conn
+            if rc2.reconnected:
+                reconnected_any = true
+            throttle(cpu_guard_fast())
+            var path = dir + "/" + f.name
+            if f.type == "dir":
+                dirs_to_visit.append(path)
+            else:
+                var r = on_file(conn, path, f, context)
+                conn = r.conn
+                if r.reconnected:
+                    reconnected_any = true
+                results.append(r.value)
+    return {"conn": conn, "reconnected": reconnected_any, "results": results}
+
+# Consolidates the repeated "prompt -> trim -> if sentinel: default" shape
+# (~9 call sites in menu.bd, all fixed in the same pass that introduced
+# the "-" sentinel - see this module's own header history / menu.bd for
+# why bare-Enter/whitespace can't be used as the default signal). Lives
+# here, not in menu.bd, because a top-level script's own func declarations
+# cost ticks while a module's don't (confirmed by two independent players
+# on the hexhaven Discord) - menu.bd is this codebase's only top-level
+# script.
+func prompt_default(message, default_value):
+    sleep(log_pace())
+    throttle(cpu_guard_conservative())
+    var raw = prompt(message)
+    var trimmed = raw.trim()
+    return trimmed == "-" ? default_value : trimmed
+
+# Cleans a raw @param value and falls back to the current mission/
+# selected target when it's missing/empty. Returns a bare IP/host
+# string - callers that need a user still run it through parse_target().
+func resolve_raw_target(raw):
+    var t = raw
+    if t != none:
+        t = t.replace("\"", "").trim()
+    if t == none or t == "":
+        var mt = get_target()
+        if mt == none:
+            raise("No target given and no mission target set.")
+        t = mt.ip
+        log("No target given - using mission target " + t)
+    return t
