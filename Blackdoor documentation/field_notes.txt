@@ -321,6 +321,26 @@ CONFIRMED THIS SESSION (live testing of the refactored Active tree):
     Also added a MAX TRACE line to the dashboard (red, "HOPELESS" label)
     so a target like this is visible before picking an action at all,
     not just after one fails. Confirmed fixed live. ***
+  - Module (utils/*.bd) top-level statements are restricted: a module
+    can ONLY have function definitions, imports, or a `var` whose value
+    is a call-free constant (a literal - number/string/bool/none/list/
+    object literal) at its top level. Confirmed via the engine's own
+    parse error, verbatim: "Module '...' has a statement at its top
+    level that isn't a function definition, a constant `var` with a
+    call-free value, or an import." Concretely: `var x = 5` is fine at
+    module top level, `var x = some_func()` is NOT - it's rejected
+    before the script ever runs, not a runtime error. (A top-level
+    SCRIPT like menu.bd doesn't have this restriction - it already runs
+    function calls in its own top-level statements throughout.) Also
+    suspected (not confirmed with the same certainty - only one
+    live data point): writing to a module-level var from inside a
+    function body, intending it as a cache that persists across later
+    calls to other functions in the same module, did not appear to take
+    effect - a script that should have been cheap on its second+ call
+    crashed as if it were still doing the expensive first-call work
+    every time. Consistent with this codebase's existing no-confirmed-
+    closures caution, but worth a cleaner isolated test before treating
+    it as certain.
 
 STILL UNRESOLVED / CONFIRMED ABSENT:
   - No real "-flag" command-line syntax exists via @param - it binds
