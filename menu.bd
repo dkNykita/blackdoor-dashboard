@@ -559,6 +559,12 @@ func print_dashboard(target):
 
 sleep(1)  # CONFIRMED fix - see comment above the imports
 
+# One-time, informational only - confirms nu.local_tick_rate()'s
+# ~/.config/blackdoor.conf read is actually working on THIS machine
+# before anything is ever built on top of it. See net.bd's cpu_scale()
+# for why nothing below actually acts on this value yet.
+log("Local CPU: " + str(nu.local_tick_rate()) + " ticks/sec (scale " + str(nu.cpu_scale()) + ")", Color.muted)
+
 # Local file maintenance (host_intel.txt entries, Network tab, wordlist) -
 # see utils/sync for why this replaced a standalone sync_hosts script.
 # NOT run automatically here anymore - do_sync()'s per-line throttled

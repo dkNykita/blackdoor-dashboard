@@ -17,6 +17,50 @@
 # here as a named function, instead of a bare number at each call site.
 # Retune game-wide by editing a single return value below.
 
+# --- CPU tier detection (prep only - see cpu_scale()'s own comment) ---
+
+# Player's own script-execution speed (shop_hw.txt: base tier 10
+# ticks/sec, Mk.II 20, Mk.III 40, Mk.IV 80). No API reports this
+# directly - server_specs(conn) is remote-only, for whatever you're
+# connected to, not your own machine. The one known way (hexhaven
+# Discord) is reading ~/.config/blackdoor.conf's "tick_speed=N" line
+# directly. Falls back to base tier (10) if the file/line can't be
+# read - never guess a FASTER tier than confirmed, since that would
+# understate real per-iteration tick cost rather than overstate it.
+func local_tick_rate():
+    var content = ""
+    try:
+        content = read_local("~/.config/blackdoor.conf")
+    catch e:
+        return 10
+    for line in content.split("\n"):
+        var trimmed = line.trim()
+        if trimmed.starts_with("tick_speed="):
+            try:
+                return int(trimmed.replace("tick_speed=", ""))
+            catch e2:
+                return 10
+    return 10
+
+# Ratio of base-tier ticks to this machine's actual ticks - 1.0 at base
+# tier, 0.5 at Mk.II, 0.25 at Mk.III, 0.125 at Mk.IV. Detection only,
+# by design: throttle()/log_pace()/etc. below do NOT multiply by this
+# yet. Krok 0c (this session) tried exactly this kind of scaling -
+# using a correctly-read tick_speed to shorten throttle()'s pause below
+# log_pace()=1s - and killed the script 3 separate times, live, all at
+# BASE tier where this ratio is 1.0 (so the math wasn't the problem -
+# going below 1s at all was, for reasons never pinned down without a
+# real profiler). This machine is still base tier as of this function's
+# introduction, so cpu_scale() itself is a safe no-op right now (always
+# 1.0) - but a future session should NOT wire it directly into the
+# pacing functions below just because the ratio looks favorable on
+# paper. Treat any resulting value < 1.0 as unvalidated: apply it to
+# ONE call site, on an actual higher-tier machine, and live-test that
+# specific change in isolation before trusting it anywhere else - the
+# same incremental caution 0c skipped the first time.
+func cpu_scale():
+    return 10 / local_tick_rate()
+
 func cpu_guard_conservative():
     # CPU guard before a light/no-connect call (whois, sqli, scan, ...).
     return 50
