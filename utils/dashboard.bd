@@ -1,0 +1,454 @@
+# utils/dashboard - Target Status & Dashboard Display
+# refresh_status()/print_dashboard()/mark_cracked()/print_separator()
+# moved here from menu.bd (Krok 12) - top-level SCRIPT func declarations
+# cost real ticks, module func declarations are free (confirmed,
+# hexhaven Discord - the same reasoning net.bd's prompt_default() was
+# placed on earlier this session). print_dashboard() alone was ~135
+# lines; moving all four out of menu.bd's own declaration cost shrinks
+# the unpaced startup stretch Krok 0d had to patch around with sleep(1)s.
+#
+# All four operate on a `state` dict instead of menu.bd's old ~20
+# top-level vars - this codebase never trusts implicit mutation-by-
+# reference to persist across a call (see net.bd's module-top-level-var
+# caution, discovered this session), so every function here takes
+# `state` in and explicitly returns the (possibly updated) `state` back
+# out - same discipline as `conn = nu.check_trace(...).conn` elsewhere.
+# menu.bd reassigns `state = udb.xxx(...)` every time it calls one of
+# these that can change it (print_dashboard() only reads, so it doesn't
+# need to return anything).
+#
+# Usage: import "utils/dashboard" as udb
+
+func print_separator():
+    log("  --------------------------------")
+
+# Persists a just-cracked account to host_intel.txt right away, instead
+# of waiting for the refresh_status() call that follows it (which reads
+# firewall/noise/whois/connects/etc first) to get there via its own
+# save_entry() at the end. A crack is real, costly work (ticks + noise)
+# - if refresh_status() itself hits trouble afterward, the crack result
+# shouldn't be lost with it. Updates state.users too, so the very next
+# print_dashboard() already reflects it even before refresh finishes.
+#
+# Calls uhd.save_entry() directly instead of uhd.set_users() - set_users()
+# does its own get_entry() internally, which on top of the get_entry()
+# already done below would mean 2 reads + 1 write for one field update.
+# `current`'s other fields (ports/fw/specs/jobs/nmap/sqli) are already in
+# hand here, so building the full entry once and saving it directly is a
+# straight 1 read + 1 write instead.
+func mark_cracked(nu, uhd, state, target, account_name):
+    var current = uhd.get_entry(nu, target)
+    var updated = []
+    var found = false
+    if current.users != none:
+        for u in current.users:
+            if u.name == account_name:
+                updated.append({"name": u.name, "cracked": true})
+                found = true
+            else:
+                updated.append(u)
+    if not found:
+        updated.append({"name": account_name, "cracked": true})
+    uhd.save_entry(nu, {"ip": target, "ports": current.ports, "fw": current.fw, "users": updated, "specs": current.specs, "jobs": current.jobs, "nmap": current.nmap, "sqli": current.sqli})
+    state.users = updated
+    return state
+
+func refresh_status(nu, uc, uhd, state, target):
+    # CONFIRMED fix (live crash): every caller path into this function
+    # (startup's first call, or any dispatch-loop "refresh_status(target)")
+    # can arrive with an unpaced stretch right before it and nothing here
+    # reset the clock until AFTER the opening log() line - moved the
+    # throttle() ahead of it.
+    var dbg_t0 = get_unix_time()
+    nu.throttle(nu.cpu_guard_conservative())
+    log("Checking status...")
+    log("DEBUG TIME: 1st throttle done, +" + str(get_unix_time() - dbg_t0) + "s")
+    # throttle() polls in small steps until CPU clears the threshold,
+    # so this naturally takes less real time on a better CPU tier - see
+    # net.bd's CPU tier auto-scaling comment for why nothing here scales
+    # by tier explicitly (tried, disproven live).
+    nu.throttle(nu.cpu_guard_conservative())
+    log("DEBUG TIME: 2nd throttle done, +" + str(get_unix_time() - dbg_t0) + "s")
+    # probe_firewall() raises ("unknown target") instead of returning a
+    # failure shape when target isn't a real, registered server - your
+    # own IP is exactly this case (confirmed: not a valid target the
+    # same way a remote server is). Known in advance for
+    # state.target_is_own_ip, so skip the call rather than attempt-and-
+    # catch every refresh.
+    var fw = {"active": false, "layers": 0, "layers_remaining": 0}
+    if not state.target_is_own_ip:
+        try:
+            fw = probe_firewall(target)
+        catch e:
+            log("Target not recognized: " + target, Color.red)
+    state.fw_active = fw.active
+    state.fw_layers = fw.layers
+    state.fw_layers_remaining = fw.layers_remaining
+    log("DEBUG TIME: probe_firewall block done, +" + str(get_unix_time() - dbg_t0) + "s")
+    # Persisted once, at the very end of this function (see save_entry()
+    # call below) - NOT here. Every uhd.set_*() is its own full
+    # read_entries()+write_entries() pass over host_intel.txt; calling
+    # several of them back to back in one refresh_status() run meant up
+    # to five full file round-trips per dashboard refresh - the actual
+    # overload here, not something more pacing could fix.
+
+    nu.throttle(nu.cpu_guard_conservative())
+    state.noise = get_noise()
+    log("DEBUG TIME: get_noise() done, +" + str(get_unix_time() - dbg_t0) + "s")
+
+    nu.throttle(nu.cpu_guard_conservative())
+    state.accounts = uc.cracked_accounts_for(nu, target)
+    log("DEBUG TIME: cracked_accounts_for() done, +" + str(get_unix_time() - dbg_t0) + "s")
+    # The USERS name list is fetched live only once (below) and cached
+    # from then on, but cracked status can change any time you crack a
+    # new account - recompute it here, every refresh, straight from the
+    # free local `accounts` read above. No connection needed for this
+    # part, so it stays accurate even on a refresh that can't connect.
+    if state.users != none:
+        var refreshed_users = []
+        for u in state.users:
+            nu.throttle(nu.cpu_guard_conservative())
+            refreshed_users.append({"name": u.name, "cracked": state.accounts.contains(u.name)})
+        state.users = refreshed_users
+
+    nu.throttle(nu.cpu_guard_conservative())
+    log("DEBUG TIME: users-refresh block done, +" + str(get_unix_time() - dbg_t0) + "s")
+    # whois() is documented to work on any IP (empty owner/faction_id
+    # for one outside any registered range), but skip it too for your
+    # own IP - same reasoning as probe_firewall() above.
+    state.owner = "unregistered"
+    if not state.target_is_own_ip:
+        try:
+            var who = whois(target)
+            state.owner = who.owner == "" ? "unregistered" : who.owner + (who.faction_id == "" ? "" : " (" + who.faction_id + ")")
+        catch e:
+            pass
+    log("DEBUG TIME: whois() done, +" + str(get_unix_time() - dbg_t0) + "s")
+
+    nu.throttle(nu.cpu_guard_conservative())
+    # Bare connect(target, port) never auto-authenticates, even for an
+    # already-cracked target - get_users() would fail every time
+    # regardless of crack status. Use a cracked account (any known one)
+    # to connect authenticated when we have one, so USERS actually works
+    # once something's been cracked.
+    var connect_str = target
+    if len(state.accounts) > 0:
+        connect_str = state.accounts[0] + "@" + target
+    # connect() raises the same "unknown target" way for your own IP -
+    # skip it and fall straight into the existing conn.success == false
+    # path below instead of attempting it every refresh.
+    var conn = {"success": false}
+    if not state.target_is_own_ip:
+        try:
+            conn = connect(connect_str, 22)
+        catch e:
+            pass
+    # connect().success only means the port was reachable, NOT that
+    # authentication succeeded (see utils/net.bd's connect_or_raise() for
+    # the full explanation) - only actually a problem here when we asked
+    # for an account (accounts_available): an intentionally-anonymous
+    # bare-target connect naturally has an empty user too, that's not a
+    # failure and shouldn't be treated as one.
+    var accounts_available = len(state.accounts) > 0
+    if conn.success and accounts_available and conn.user == "":
+        conn.success = false
+    log("DEBUG TIME: connect() done (success=" + str(conn.success) + "), +" + str(get_unix_time() - dbg_t0) + "s")
+    if conn.success:
+        # Captured before check_trace() runs, so it's still set for
+        # display even when check_trace() raises below on a hopeless
+        # ceiling - that's the one case the dashboard most needs to show
+        # it for.
+        state.trace_ceiling = conn.trace_time
+        # Trace/IDS may already be hot from whatever the previous menu
+        # action left behind - one check_trace() right after connecting
+        # covers that (disconnects/waits/reconnects, or aborts outright
+        # on active IDS) before spending any reads on this dip.
+        #
+        # A target whose trace ceiling itself is hopeless (<= 10s from
+        # the moment you connect - confirmed live) makes check_trace()
+        # raise() instead of looping forever waiting for a "recovery"
+        # that just returns to the same unsafe ceiling (see net.bd's
+        # trace_hopeless()). Caught here and treated exactly like a
+        # failed connect() - nothing below this point has run yet, so
+        # bailing out now loses nothing that wasn't already saved by
+        # whichever action ran before this refresh.
+        try:
+            conn = nu.check_trace(conn, connect_str, target).conn
+        catch e:
+            log(str(e), Color.amber)
+            state.banner = ""
+            state.os_name = ""
+            state.security = -1
+            state.next_vuln = none
+            state.daemons_here = none
+            log("DEBUG TIME: bailed out on hopeless trace, +" + str(get_unix_time() - dbg_t0) + "s")
+            return state
+        log("DEBUG TIME: 1st check_trace() done, +" + str(get_unix_time() - dbg_t0) + "s")
+        state.banner = conn.banner
+        state.os_name = conn.os
+        state.security = get_security(conn)
+        # probe_vuln() is idempotent and read-only - it doesn't exploit
+        # anything, just reports whichever vulnerability crack would
+        # find next. Safe to check here just for display.
+        var vuln = probe_vuln(conn)
+        if vuln.found:
+            state.next_vuln = vuln
+        else:
+            state.next_vuln = none
+        # Confirmed cause of a real overload: on a target where users/
+        # specs/jobs/nmap are ALL still none (a genuinely fresh host, or
+        # one that never finished persisting before an earlier crash),
+        # every fetch-once block below fires in the same dip - up to 5
+        # real API calls back to back with zero pacing, the exact "several
+        # calls in a row" pattern field_notes.txt warns about. Each gap
+        # below pairs nu.check_trace() (trace/IDS safety - the CPU fix
+        # extended this connected window with real wall-clock waits, so
+        # the ORIGINAL single check-right-after-connect no longer covers
+        # a trace that goes low partway through) with nu.throttle()
+        # (CPU safety). cpu_guard_fast() (80%) instead of the default
+        # 50% keeps each CPU wait as short as it can be while still real
+        # protection - this window is already longer than it should be.
+        conn = nu.check_trace(conn, connect_str, target).conn
+        nu.throttle(nu.cpu_guard_fast())
+        log("DEBUG TIME: pre-fetch-once throttle done, +" + str(get_unix_time() - dbg_t0) + "s")
+        # get_users() needs an authenticated session, so a fresh/
+        # uncracked target is expected to fail here. Only bother calling
+        # it at all when the name list isn't already cached - specs/
+        # jobs/nmap/this get the same fetch-once treatment. Any failure
+        # (still uncracked, or this dip just can't reach it) leaves
+        # state.users exactly as it was.
+        if state.users == none:
+            try:
+                var raw_users = get_users(conn)
+                state.users = []
+                for u in raw_users:
+                    state.users.append({"name": u.name, "cracked": state.accounts.contains(u.name)})
+            catch e:
+                pass
+            conn = nu.check_trace(conn, connect_str, target).conn
+            nu.throttle(nu.cpu_guard_fast())
+            log("DEBUG TIME: get_users() block done, +" + str(get_unix_time() - dbg_t0) + "s")
+
+        # None of these three are documented as requiring authentication,
+        # but it's not confirmed either. Each only runs while its cached
+        # value is still none.
+        if state.specs == none:
+            try:
+                state.specs = server_specs(conn)
+            catch e:
+                pass
+            conn = nu.check_trace(conn, connect_str, target).conn
+            nu.throttle(nu.cpu_guard_fast())
+            log("DEBUG TIME: server_specs() block done, +" + str(get_unix_time() - dbg_t0) + "s")
+        if state.jobs == none:
+            try:
+                state.jobs = list_jobs(conn)
+            catch e:
+                pass
+            conn = nu.check_trace(conn, connect_str, target).conn
+            nu.throttle(nu.cpu_guard_fast())
+            log("DEBUG TIME: list_jobs() block done, +" + str(get_unix_time() - dbg_t0) + "s")
+        if state.nmap_data == none:
+            try:
+                state.nmap_data = scan_network(conn)
+            catch e:
+                pass
+            conn = nu.check_trace(conn, connect_str, target).conn
+            nu.throttle(nu.cpu_guard_fast())
+            log("DEBUG TIME: scan_network() block done, +" + str(get_unix_time() - dbg_t0) + "s")
+        try:
+            state.daemons_here = list_daemons(conn)
+        catch e:
+            state.daemons_here = none
+        log("DEBUG TIME: list_daemons() done, +" + str(get_unix_time() - dbg_t0) + "s")
+
+        disconnect(conn)
+    else:
+        state.banner = ""
+        state.os_name = ""
+        state.security = -1
+        state.next_vuln = none
+        state.daemons_here = none
+        state.trace_ceiling = none
+
+    # One read + one write for everything this function touched, instead
+    # of a separate full file round-trip per field. state.open_ports/
+    # state.sqli_status aren't managed here at all (choices "1"/"7" own
+    # those) - passed through as-is so this can't clobber them.
+    uhd.save_entry(nu, {"ip": target, "ports": state.open_ports, "fw": {"active": state.fw_active, "layers": state.fw_layers, "layers_remaining": state.fw_layers_remaining}, "users": state.users, "specs": state.specs, "jobs": state.jobs, "nmap": state.nmap_data, "sqli": state.sqli_status})
+    log("DEBUG TIME: save_entry() done, refresh_status() total +" + str(get_unix_time() - dbg_t0) + "s")
+    return state
+
+# hexhaven.net's scripting reference: every line a script runs costs 1
+# tick, ticks run at CPU speed (base tier: 10/sec), and 5 STRAIGHT
+# seconds at 100% kills every running script. A plain block of ~25
+# log()/if lines back to back (no API calls at all) is itself several
+# seconds of continuous 100% on a base CPU - printing the dashboard text
+# can overload on its own. sleep(nu.log_pace()) every handful of lines resets that
+# sustained-load clock, not just the throttle() calls around costlier
+# calls elsewhere. print_separator() is just another log() line so it
+# rides along with that same budget - no extra pacing needed for it.
+func print_dashboard(nu, state, target):
+    # CONFIRMED fix (live crash): every path into this function - the
+    # dispatch loop looping straight back to it after an action, or "r" -
+    # can arrive with zero pacing since whatever ran right before it (a
+    # walk_tree() action, another refresh_status()...) doesn't throttle
+    # on its own way out. This function's own opening burst below (6
+    # log() lines) then had nothing to reset the sustained-load clock
+    # before its first sleep (the one after the first print_separator()),
+    # so a busy caller plus this open could tip over the 5s/100% kill.
+    nu.throttle(nu.cpu_guard_conservative())
+    var mt = get_target()
+    var name = ""
+    if mt != none and mt.ip == target:
+        name = mt.hostname
+    log("")
+    log("========== DASHBOARD ==========")
+    log("Target: " + target + " " + name)
+    log("Registry: " + state.owner)
+    if state.banner != "":
+        log("Banner: " + state.banner)
+        log("OS: " + state.os_name)
+    print_separator()
+    sleep(nu.log_pace())
+
+    log("Security:")
+    if state.fw_active:
+        log("  FIREWALL: " + str(state.fw_layers) + " layer(s), " + str(state.fw_layers_remaining) + " remaining", Color.red)
+    else:
+        log("  FIREWALL: none detected", Color.green)
+    log("  NOISE: " + str(state.noise), state.noise <= 0 ? Color.green : (state.noise < 50 ? Color.amber : Color.red))
+    print_separator()
+    sleep(nu.log_pace())
+
+    if state.open_ports == none:
+        log("  PORTS: not scanned (option 1)", Color.red)
+    elif len(state.open_ports) == 0:
+        log("  PORTS: none open", Color.green)
+    else:
+        log("  PORTS: " + str(len(state.open_ports)) + " open")
+        for p in state.open_ports:
+            # A full 1-65535 scan on a permissive box could list a lot of
+            # ports - same "unpaced list-display loop" risk as anywhere
+            # else, not just the file-parsing loops in utils/hostdata.
+            nu.throttle(nu.cpu_guard_conservative())
+            log("    " + str(p.port) + " - " + p.service, Color.green)
+    print_separator()
+    sleep(nu.log_pace())
+
+    if state.security >= 0:
+        log("  SECURITY: " + str(state.security), state.security < 0.3 ? Color.green : (state.security < 0.7 ? Color.amber : Color.red))
+        if state.next_vuln != none:
+            log("  VULN: " + state.next_vuln.vuln_type + " - " + state.next_vuln.description + " (-" + str(state.next_vuln.security_reduction) + " security if exploited)", Color.amber)
+        else:
+            log("  VULN: none remaining", Color.green)
+    var trace_found = false
+    for t in traces():
+        if t.ip == target:
+            trace_found = true
+            var pct = t.remaining / t.total * 100
+            log("  TRACE: " + t.status + " - " + str(round(t.remaining)) + "/" + str(t.total) + "s", pct < 30 ? Color.red : (pct < 60 ? Color.amber : Color.green))
+    if not trace_found:
+        log("  TRACE: none active", Color.green)
+    # connect()'s own trace_time - this target's fixed ceiling, not the
+    # live countdown TRACE above shows. Surfaced separately because a
+    # target at/under nu.trace_critical() here can never be worked
+    # continuously (net.bd's trace_hopeless()/check_trace() abort any
+    # action against it outright, confirmed live as an infinite loop
+    # before that fix) - visible before picking an action, not just
+    # after one fails.
+    if state.trace_ceiling == none:
+        log("  MAX TRACE: unknown (not connected yet)", Color.muted)
+    elif state.trace_ceiling <= nu.trace_critical():
+        log("  MAX TRACE: " + str(state.trace_ceiling) + "s - HOPELESS, actions here will fail immediately", Color.red)
+    else:
+        log("  MAX TRACE: " + str(state.trace_ceiling) + "s", state.trace_ceiling < nu.trace_warn() ? Color.amber : Color.green)
+    print_separator()
+    sleep(nu.log_pace())
+    nu.throttle(nu.cpu_guard_conservative())
+
+    # No separate CRACK section - root's cracked status (straight from
+    # the free local credentials-file read, same as CRACK used to be)
+    # is always the first USERS line instead, so it's still visible even
+    # when the rest of USERS isn't accessible yet.
+    log("Status:")
+    log("  USERS:")
+    log("    root: " + (state.accounts.contains("root") ? "Y" : "N"), state.accounts.contains("root") ? Color.green : Color.red)
+    if state.users == none:
+        log("    (other accounts not accessible - target not cracked yet)", Color.amber)
+    else:
+        for u in state.users:
+            nu.throttle(nu.cpu_guard_conservative())
+            if u.name != "root":
+                log("    " + u.name + ": " + (u.cracked ? "Y" : "N"), u.cracked ? Color.green : Color.red)
+    print_separator()
+    sleep(nu.log_pace())
+
+    if state.specs == none:
+        log("  SPECS: not accessible", Color.red)
+    else:
+        # cpu_tier/ram_tier are just display strings ("Mk.III", "16GB",
+        # "medium", ...) with no confirmed fixed vocabulary - color off
+        # the actual numbers/known words instead of guessing at the tier
+        # label itself. Base/Mk.I is 10 ticks/sec, Mk.II 20, Mk.III+ 40
+        # and up (shop_hw.txt) - same doubling scale a target box's own
+        # cpu_ticks runs on.
+        log("  CPU: " + state.specs.cpu_tier + " (" + str(state.specs.cpu_ticks) + " ticks/sec)", state.specs.cpu_ticks <= 10 ? Color.red : (state.specs.cpu_ticks <= 20 ? Color.amber : Color.green))
+        log("  RAM: " + state.specs.ram_tier, state.specs.ram_tier == "low" ? Color.red : (state.specs.ram_tier == "medium" ? Color.amber : (state.specs.ram_tier == "high" ? Color.green : Color.muted)))
+        log("  DAEMON SLOTS: " + str(state.specs.daemons_used) + "/" + str(state.specs.max_daemons) + " used", state.specs.daemons_used >= state.specs.max_daemons ? Color.red : (state.specs.daemons_used == 0 ? Color.green : Color.amber))
+    if state.jobs == none:
+        log("  JOBS: not accessible")
+    else:
+        log("  JOBS: " + str(len(state.jobs)) + " background job(s)")
+        for j in state.jobs:
+            nu.throttle(nu.cpu_guard_conservative())
+            log("    " + j.name + " (listens for " + j.listens_for + ") - " + j.status)
+    print_separator()
+    sleep(nu.log_pace())
+
+    # scan_network() (nmap) needs an authenticated conn same as USERS -
+    # only ever populated once something here has been cracked.
+    if state.nmap_data == none:
+        log("  NETWORK: not scanned (crack the target first)", Color.red)
+    elif len(state.nmap_data) == 0:
+        log("  NETWORK: no other hosts discovered", Color.green)
+    else:
+        log("  NETWORK: " + str(len(state.nmap_data)) + " host(s) discovered")
+        for f in state.nmap_data:
+            nu.throttle(nu.cpu_guard_conservative())
+            log("    " + f.ip + " (" + f.hostname + ") via " + f.source, Color.cyan)
+    print_separator()
+    sleep(nu.log_pace())
+
+    if state.daemons_here == none:
+        log("  DAEMONS: not accessible", Color.red)
+    else:
+        log("  DAEMONS: " + str(len(state.daemons_here)) + " planted here")
+        for d in state.daemons_here:
+            nu.throttle(nu.cpu_guard_conservative())
+            log("    " + d.script_path + " by " + d.installed_by + " (listens for " + d.event + ")")
+    print_separator()
+    sleep(nu.log_pace())
+
+    if state.sqli_status == none:
+        log("  SQLI: not attempted", Color.muted)
+    elif state.sqli_status.success:
+        log("  SQLI: succeeded (option 7)", Color.green)
+    else:
+        log("  SQLI: attempted, no leak (option 7)", Color.amber)
+    print_separator()
+    sleep(nu.log_pace())
+
+    # Per-session guesses, not live checks. logs_dirty: crack/grab may
+    # have left fresh log entries not yet addressed. ids_log_cleared:
+    # true only right after a real do_scrub_log() (LogScrubber) run -
+    # the only action that actually clears IDS's in-memory record, not
+    # just the on-disk file (raw delete and crack/grab both leave it
+    # untouched either way).
+    if state.logs_dirty:
+        log("  LOG FILE: not yet cleaned (crack/grab may have left traces)", Color.amber)
+    elif state.ids_log_cleared:
+        log("  LOG FILE: scrubbed via LogScrubber - IDS's memory cleared too", Color.green)
+    else:
+        log("  LOG FILE: unedited or deleted (IDS's memory not affected either way)", Color.amber)
+    log("================================")
