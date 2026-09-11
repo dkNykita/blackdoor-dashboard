@@ -139,6 +139,14 @@ var target_is_own_ip = false
 sleep(1)  # CONFIRMED fix - see comment above the imports
 
 func refresh_status(target):
+    # CONFIRMED fix (live crash): same missing-transition-gap pattern as
+    # print_dashboard()'s own entry throttle below - every caller path
+    # into this function (startup's first call, or any dispatch-loop
+    # "refresh_status(target)") can arrive with an unpaced stretch right
+    # before it (resolve_raw_target() + get_entry() + assignments at
+    # startup; a whole action's worth of work on every other call) and
+    # nothing here reset the clock until AFTER the opening log() line.
+    nu.throttle(nu.cpu_guard_conservative())
     log("Checking status...")
     # throttle() polls in small steps until CPU clears the threshold,
     # so this naturally takes less real time on a better CPU tier -
