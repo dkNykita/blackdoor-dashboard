@@ -351,6 +351,17 @@ func mark_cracked(target, account_name):
 # calls elsewhere. print_separator() is just another log() line so it
 # rides along with that same budget - no extra pacing needed for it.
 func print_dashboard(target):
+    # CONFIRMED fix (live crash): every path into this function - the
+    # dispatch loop looping straight back to it after an action, or "r" -
+    # can arrive with zero pacing since whatever ran right before it (a
+    # walk_tree() action, another refresh_status()...) doesn't throttle
+    # on its own way out. This function's own opening burst below (6
+    # log() lines) then had nothing to reset the sustained-load clock
+    # before its first sleep (the one after the first print_separator()),
+    # so a busy caller plus this open could tip over the 5s/100% kill.
+    # Matches the same missing-transition-gap pattern as menu.bd's
+    # import/var/func startup fix - see that comment for the full story.
+    nu.throttle(nu.cpu_guard_conservative())
     var mt = get_target()
     var name = ""
     if mt != none and mt.ip == target:
