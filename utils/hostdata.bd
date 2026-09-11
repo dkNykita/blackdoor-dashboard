@@ -170,8 +170,9 @@ func read_entries(nu):
     # critical by the time read_local() and the loop's own first
     # iteration ran. Moved a throttle() here, first line, matching the
     # same fix already proven at those other two entry points.
-    nu.throttle(nu.cpu_guard_fast())
     var dbg_t0 = get_unix_time()
+    nu.throttle(nu.cpu_guard_fast())
+    nu.debug_time("entry throttle done", dbg_t0)
     var raw = ""
     try:
         raw = read_local(host_intel_path())
