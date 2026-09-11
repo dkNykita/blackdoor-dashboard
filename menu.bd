@@ -113,6 +113,14 @@ var owner = ""
 var banner = ""
 var os_name = ""
 var security = -1
+# connect()'s own trace_time - this connection's trace ceiling, fixed at
+# connect time (not the live countdown get_trace_time() reports while
+# connected). none until the first successful connect to this target.
+# Shown on the dashboard so a hopeless target (<= net.bd's
+# trace_critical(), confirmed to loop check_trace() forever if you try
+# to work through it - see net.bd's trace_hopeless()) is visible BEFORE
+# picking an action, not discovered via a failed one.
+var trace_ceiling = none
 var users = none
 var next_vuln = none
 var open_ports = none
@@ -216,6 +224,11 @@ func refresh_status(target):
     if conn.success and accounts_available and conn.user == "":
         conn.success = false
     if conn.success:
+        # Captured before check_trace() runs, so it's still set for
+        # display even when check_trace() raises below on a hopeless
+        # ceiling - that's the one case the dashboard most needs to show
+        # it for. See the trace_ceiling declaration up top.
+        trace_ceiling = conn.trace_time
         # Trace/IDS may already be hot from whatever the previous menu
         # action left behind - one check_trace() right after connecting
         # covers that (disconnects/waits/reconnects, or aborts outright
@@ -318,6 +331,7 @@ func refresh_status(target):
         security = -1
         next_vuln = none
         daemons_here = none
+        trace_ceiling = none
 
     # One read + one write for everything this function touched, instead
     # of a separate full file round-trip per field (see comment up top).
@@ -432,6 +446,19 @@ func print_dashboard(target):
             log("  TRACE: " + t.status + " - " + str(round(t.remaining)) + "/" + str(t.total) + "s", pct < 30 ? Color.red : (pct < 60 ? Color.amber : Color.green))
     if not trace_found:
         log("  TRACE: none active", Color.green)
+    # connect()'s own trace_time - this target's fixed ceiling, not the
+    # live countdown TRACE above shows. Surfaced separately because a
+    # target at/under nu.trace_critical() here can never be worked
+    # continuously (net.bd's trace_hopeless()/check_trace() abort any
+    # action against it outright, confirmed live as an infinite loop
+    # before that fix) - visible before picking an action, not just
+    # after one fails.
+    if trace_ceiling == none:
+        log("  MAX TRACE: unknown (not connected yet)", Color.muted)
+    elif trace_ceiling <= nu.trace_critical():
+        log("  MAX TRACE: " + str(trace_ceiling) + "s - HOPELESS, actions here will fail immediately", Color.red)
+    else:
+        log("  MAX TRACE: " + str(trace_ceiling) + "s", trace_ceiling < nu.trace_warn() ? Color.amber : Color.green)
     print_separator()
     sleep(nu.log_pace())
     nu.throttle(nu.cpu_guard_conservative())
