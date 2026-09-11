@@ -245,7 +245,14 @@ func prompt_default(message, default_value):
     throttle(cpu_guard_conservative())
     var raw = prompt(message)
     var trimmed = raw.trim()
-    return trimmed == "-" ? default_value : trimmed
+    var resolved = trimmed == "-" ? default_value : trimmed
+    # Echoed back so it's still visible when reviewing pasted script
+    # output later - the terminal shows your own keystrokes live, but
+    # that's gone from the log the moment you scroll or copy it, and a
+    # resolved default (the whole point of typing "-") never appeared as
+    # typed text anywhere.
+    log("-> " + (resolved == "" ? "(none)" : resolved), Color.cyan)
+    return resolved
 
 # Cleans a raw @param value and falls back to the current mission/
 # selected target when it's missing/empty. Returns a bare IP/host

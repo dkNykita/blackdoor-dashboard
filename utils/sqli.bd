@@ -68,11 +68,18 @@ func try_form(nu, host, page):
         nu.throttle(nu.cpu_guard_conservative())
         var nav = browse(url, false)
         if not nav.success:
-            raise("Couldn't load " + url + ".")
+            # Was a raise() (uncaught, crashed the whole script - live
+            # confirmed) - the page not loading can't change between
+            # payload attempts, so there's nothing left to retry either
+            # way; graceful return achieves the same "stop trying" effect
+            # without taking the script down with it.
+            log("Couldn't load " + url + ".", Color.amber)
+            return {"success": false, "data": ""}
 
         var forms = find_forms(nav.html)
         if len(forms) == 0:
-            raise("No form found on " + url + ".")
+            log("No form found on " + url + ".", Color.amber)
+            return {"success": false, "data": ""}
         if len(forms) > 1:
             log(str(len(forms)) + " forms found on the page - submit_form() only handles a single form and will error. Remove the extras or target a page with just the login form.", Color.amber)
 
@@ -88,7 +95,8 @@ func try_form(nu, host, page):
         try:
             r = submit_form()
         catch e:
-            raise("submit_form() failed: " + str(e))
+            log("submit_form() failed (" + str(e) + ").", Color.amber)
+            return {"success": false, "data": ""}
 
         if r.sqli_success:
             log("SQLi via form succeeded on attempt " + str(attempt) + " (" + payload + "): " + r.sqli_data, Color.green)

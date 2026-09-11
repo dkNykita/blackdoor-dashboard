@@ -621,6 +621,7 @@ while true:
         nu.throttle(nu.cpu_guard_conservative())
         var full_answer = prompt("Full 1-65535 port scan instead of common ports? (y/N): ")
         full_answer = full_answer.trim()
+        log("-> " + (full_answer == "" ? "(none)" : full_answer), Color.cyan)
         if full_answer == "y" or full_answer == "Y":
             open_ports = up.do_probe_full(nu, target)
         else:
@@ -633,12 +634,9 @@ while true:
         refresh_status(target)
     elif choice == "3":
         var account = nu.prompt_default("Account to crack (type - for root): ", "root")
-        log("Cracking account: " + account, Color.cyan)
         var escalate_to = ""
         if account != "root":
             escalate_to = nu.prompt_default("Also crack this account from inside after (type - to skip): ", "")
-            if escalate_to != "":
-                log("Also escalating to: " + escalate_to, Color.cyan)
         var crack_result = ucr.do_crack(nu, target, account, true, escalate_to)
         # do_crack() only ever returns after a real success (it retries
         # internally until it does, or aborts the whole script on active
@@ -658,12 +656,11 @@ while true:
     elif choice == "4":
         var default_as = len(accounts) > 0 ? accounts[0] : "root"
         var as_account = nu.prompt_default("Connect as which already-cracked account (type - for " + default_as + "): ", default_as)
-        log("Connecting as: " + as_account, Color.cyan)
         sleep(nu.log_pace())
         nu.throttle(nu.cpu_guard_conservative())
         var target_input = prompt("Account to crack from inside: ")
         var target_account = target_input.trim()
-        log("Cracking from inside: " + target_account, Color.cyan)
+        log("-> " + (target_account == "" ? "(none)" : target_account), Color.cyan)
         var escalate_result = ucr.do_escalate(nu, target, as_account, target_account)
         # Same reasoning as choice "3" - reaching this line means
         # target_account is genuinely cracked, persist it right away.
@@ -679,6 +676,7 @@ while true:
         nu.throttle(nu.cpu_guard_conservative())
         var cleanup_mode = prompt("Use LogScrubber - clears IDS's memory too, needs the tool owned (type - for this), or delete the files outright? (scrub/delete): ")
         cleanup_mode = cleanup_mode.trim()
+        log("-> " + (cleanup_mode == "" ? "(none)" : cleanup_mode), Color.cyan)
         if cleanup_mode == "delete" or cleanup_mode == "d":
             ucl.do_raw_cleanup(nu, target, account3)
             logs_dirty = false
