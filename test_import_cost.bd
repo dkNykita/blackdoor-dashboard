@@ -26,6 +26,4 @@ import "/home/Nykita/scripts/utils/hostdata" as uhd
 sleep(1)
 import "/home/Nykita/scripts/utils/sync" as usy
 sleep(1)
-import "/home/Nykita/scripts/utils/dashboard" as udb
-sleep(1)
-log("All 11 imports done, +" + str(get_unix_time() - t0) + "s")
+log("All 10 imports done (no dashboard.bd), +" + str(get_unix_time() - t0) + "s")
