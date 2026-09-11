@@ -200,6 +200,43 @@ CONFIRMED WORKING (undocumented in api_documentation.txt):
     CORRECTIONS below - an earlier version of this note claimed a
     whitespace workaround exists; retesting showed it doesn't.
 
+CONFIRMED WORKING (from documentation_from_editor.txt, the in-editor/
+built-in reference - not in api_documentation.txt or previously noted
+here):
+  - connect(target, port).success only means the port was reachable -
+    it does NOT mean authentication succeeded. Wrong/uncracked
+    credentials still return success:true with user empty and no crack
+    recorded. The only reliable "did I actually log in" check is
+    user != "". *** ACTION NEEDED IN OUR CODE: nothing in Active/ checks
+    this anywhere - net.bd's connect_or_raise() and every place that
+    calls it (do_grab/do_scrub_log/do_raw_cleanup/do_escalate in
+    grab.bd/cleanup.bd/crack.bd) only check .success, so a genuinely
+    uncracked account could silently be treated as connected instead of
+    raising a clear error. menu.bd's refresh_status() has the same gap
+    on its own connect() attempt. do_crack()'s OWN initial connect(host,
+    22) (bare host, no account) is fine as-is - that one is deliberately
+    pre-auth, .user=="" is expected there, don't add the check to it.
+    Flagged for a follow-up fix, not yet applied - user wants to finish
+    testing the current refactor pass first. ***
+  - connect() also returns an ssh_denied field - present but meaning/
+    exact trigger not yet explored.
+  - scan(target, port) returns a reachable field (false if the host
+    itself couldn't be reached at all, distinct from the port simply
+    being closed/filtered) - not in api_documentation.txt's shape for
+    this call, and probe.bd doesn't read it.
+  - read_file(conn, path) and download(conn, path) both return a
+    race_locked field - present but unexplored, no doc explains what
+    triggers it or what a script should do differently if it's true.
+  - obj.keys() / obj.values() / obj.has(key) / obj.remove(key) are real,
+    documented built-in Object methods - independently validates this
+    session's own in-game-tested finding (Krok 8a/8b in the refactor
+    plan) that dynamic dict bracket READ/WRITE (d[a_variable]) works,
+    just not a computed key inside an object LITERAL ({a_variable: v},
+    which is a hard parse error). Wasn't needed for the refactor in the
+    end (bracket indexing already covered it), but confirms the
+    underlying capability is a real, intentional part of the language,
+    not an accident.
+
 CORRECTIONS (a third-party note claimed this; testing showed otherwise):
   - get_users(conn) does NOT include a per-user security field. Actual
     confirmed shape: {name, home, shell}. There is no scriptable way to
