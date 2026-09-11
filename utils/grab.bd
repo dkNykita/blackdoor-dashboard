@@ -8,6 +8,11 @@ func grab_on_file(conn, path, f, context):
     var result = download(conn, path)
     if result.success:
         log("Downloaded: " + result.path)
+    else:
+        # TEMP DEBUG (Krok 11) - do_grab() was seen downloading 0 files
+        # with no visible error. Dumping the failed result to find out
+        # why before designing a real fix - remove once diagnosed.
+        log("DEBUG grab failed on " + path + ": " + str(result))
     return {"conn": conn, "reconnected": false, "value": result.success ? 1 : 0}
 
 func do_grab(nu, host, account, path):

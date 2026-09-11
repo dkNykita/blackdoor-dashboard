@@ -159,9 +159,23 @@ func check_trace_verbose(conn, connect_str, host):
 
 # Identical connect()+raise() 3-line block used to appear separately in
 # do_grab/do_scrub_log/do_raw_cleanup/do_escalate - one shared copy here.
+#
+# connect().success only means the port was reachable, NOT that
+# authentication succeeded - wrong/uncracked credentials still return
+# success:true with user empty and no crack recorded (confirmed this
+# session, documentation_from_editor.txt - not in api_documentation.txt).
+# Every caller here passes an "account@host" string expecting a genuine
+# authenticated session, so both conditions get checked and raise with a
+# distinct message - "port unreachable" vs. "port reachable, not
+# authenticated" are different problems worth telling apart. Deliberately
+# unauthenticated bare-host connects (do_crack()'s own initial connect())
+# don't go through this function, so this stricter check doesn't affect
+# them.
 func connect_or_raise(connect_str):
     var conn = connect(connect_str, 22)
     if not conn.success:
+        raise("Couldn't connect as " + connect_str + " - port unreachable.")
+    if conn.user == "":
         raise("Couldn't connect as " + connect_str + " - not cracked and no password given.")
     return conn
 

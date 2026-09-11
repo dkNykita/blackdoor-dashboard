@@ -34,7 +34,17 @@ func try_direct(nu, host, route):
     var url = build_url(host, normalize_path(route))
     log("Trying direct SQLi against " + url + "...")
     nu.throttle(nu.cpu_guard_conservative())
-    var r = sqli(url)
+    # sqli() can RAISE instead of returning {success:false} - confirmed
+    # live ("no routes on target"), undocumented in api_documentation.txt.
+    # Caught here (not re-raised) so a target with no direct route still
+    # falls through to try_form() in do_sqli() below, the same as a
+    # graceful {success:false} would.
+    var r = none
+    try:
+        r = sqli(url)
+    catch e:
+        log("Direct SQLi failed (" + str(e) + ").", Color.amber)
+        return {"success": false, "data": ""}
     if r.success:
         log("SQLi succeeded: " + r.data, Color.green)
         return {"success": true, "data": r.data}

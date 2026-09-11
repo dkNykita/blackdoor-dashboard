@@ -206,6 +206,15 @@ func refresh_status(target):
             conn = connect(connect_str, 22)
         catch e:
             pass
+    # connect().success only means the port was reachable, NOT that
+    # authentication succeeded (see utils/net.bd's connect_or_raise() for
+    # the full explanation) - only actually a problem here when we asked
+    # for an account (accounts_available): an intentionally-anonymous
+    # bare-target connect naturally has an empty user too, that's not a
+    # failure and shouldn't be treated as one.
+    var accounts_available = len(accounts) > 0
+    if conn.success and accounts_available and conn.user == "":
+        conn.success = false
     if conn.success:
         # Trace/IDS may already be hot from whatever the previous menu
         # action left behind - one check_trace() right after connecting
