@@ -1,0 +1,308 @@
+GETTING STARTED
+Scripts must be .bd files in ~/scripts/ to run as commands. Type the name without the extension.
+
+Scripts run line by line. Each line costs one tick. Faster CPU = more ticks per second = faster scripts.
+
+Type help for commands. Check ~/docs/ for guides. Use log() for output.
+
+PARAMETERS
+  @param comments are optional - they add usage hints and
+  validation. get_param() works without them.
+# @param name "description"
+  required param - script errors if not provided
+# @param name "description" default=VALUE
+  optional param with a default value
+# @param name "description" optional
+  optional param, defaults to empty string
+get_param("name")           read param value
+get_param("name", "fallback")  with inline default
+
+VARIABLES
+var x = 10
+  number, string, true/false, none
+var ports = [22, 80, 443]
+  list literal
+ports[0]  ports[-1]
+  index (-1 = last item)
+
+CONTROL FLOW
+if x > 5:
+  run the block only when true
+elif x == 3:
+  otherwise, try this condition
+else:
+  run if none of the above matched
+for item in list:
+  repeat once for each item in a list
+for i in range(1, 100):
+  repeat with a counter (1 up to 99)
+while condition:
+  keep repeating until condition is false
+break / continue
+  stop the loop / skip to next iteration
+pass
+  do nothing - a placeholder where a statement is required
+return
+  exit early - works at the top level too, not just
+  inside func. Guard clause: if not x: return
+
+FUNCTIONS
+func name(a, b):
+  define a reusable block of code
+return value
+  exit the function and send a result back
+import "utils"
+  load functions from another .bd file
+import "utils" as u
+  import with a shorter alias
+
+OPERATORS
++ - * / %
+  arithmetic (% = remainder after division)
+x += 1  x -= 1
+  shorthand for x = x + 1 / x = x - 1
+== != < > <= >=
+  compare two values, result is true/false
+and / or / not
+  combine or invert conditions
+& | ^ ~ << >>
+  bitwise and / or / xor / not / left-shift / right-shift
+x ? y : z
+  ternary - y if x is truthy, else z
+"a" + "b" -> "ab"
+  join two strings together
+"x is %d" % 5 -> "x is 5"
+  string formatting - %s/%d/%f, %% for a literal percent.
+  one value, or a list for multiple placeholders
+[1,2] + [3,4] -> [1,2,3,4]
+  join two lists together
+
+LIST METHODS
+list.append(val)
+  add an item to the end of the list
+list.insert(i, val)
+  insert val at index i, shifting the rest right
+list.pop() / list.pop(i)
+  remove and return the last item, or item i
+list.remove(i)
+  remove the item at index i
+list.contains(val)
+  true if val is anywhere in the list
+list.size()
+  number of items in the list
+
+STRING METHODS
+s.upper() / s.lower()
+  convert to uppercase / lowercase
+s.contains(sub)
+  true if sub appears anywhere in s
+s.find(sub)
+  index of sub in s, or -1 if not found
+s.substr(start, length?)
+  extract a portion of the string
+s.trim()
+  strip leading and trailing whitespace
+s.starts_with(sub) / s.ends_with(sub)
+  check the beginning or end of a string
+s.replace(old, new)
+  swap every occurrence of old with new
+s.split(sep)
+  cut a string into a list at each separator
+s.size()
+  number of characters in the string
+
+OBJECT METHODS
+obj.keys() / obj.values()
+  list of an object's property names, or their values
+obj.has(key)
+  true if key is a property on obj
+obj.remove(key)
+  remove the property named key
+
+BUILTINS
+log(msg)
+  print text to the terminal
+range(n) or range(start, end)
+  generate a list of numbers to loop over
+len(list_or_string)
+  count items in a list, or characters in a string
+str(val) / int(val)
+  convert a number to a string or vice versa
+type(val)
+  returns "number", "string", "list", etc.
+round(n) / floor(n) / ceil(n)
+  round to nearest / down / up
+get_param(name, default?)
+  read an argument passed to this script
+get_args()
+  ALL args this script was called with, even ones with no @param
+exit()
+  halt the whole script immediately, even from inside a function
+raise("message") / error("message")
+  abort with an error - same as exit(), but flags it as a failure
+parse_target("user@host")
+  split into {user, host} - use .user and .host
+
+API FUNCTIONS
+browse(url, visible=true)
+  Navigate the browser pane to a URL, same as the terminal browse command. visible is optional - pass false to skip the pane swap (e.g. a script hitting many URLs in a loop, where popping the pane open every call is disruptive) and stay in the terminal; the page still loads and click()/fill_form()/submit_form() work identically either way. Returns {success, html}.
+brute_web(conn) or brute_web(conn, username)
+  Crack a web login. Returns {success, progress, hint, password}.
+bypass_firewall(target)
+  Bypass one tick of firewall. Progressive. Returns {success, layers_remaining, progress, layer_breached, firewall_down}.
+cd(path) or cd(conn, path)
+  Change the current directory (relative or absolute) that other path-taking functions resolve non-absolute paths against. cd(path) affects the Local Filesystem functions (my_files, read_local, save, etc); cd(conn, path) affects the remote ones (list_files, read_file, etc). Returns bool.
+clear()
+  Clear the terminal screen, same as the terminal command. Returns void.
+click(text)
+  Click a link on the current page by its visible text. Returns {success, html}.
+cmd_inject(url)
+  Test a web form for command injection. No connect() needed - same as wget()/browse(), this is a plain HTTP request. Returns {success, output, error}.
+connect(target, port)
+  Open a connection; target can be "user@host" with an optional 3rd arg (id_rsa path or password) to authenticate. `success` only means the network connection opened (port reachable) - wrong credentials still return success:true with `user` empty and no crack recorded, so check `user != ""` to confirm login actually worked. Returns {id, success, banner, hostname, os, port, target, trace_time, user, ssh_denied}.
+crack(conn) or crack(conn, username)
+  Crack a user. Returns {success, progress, hint, attempts, difficulty, password}.
+delete_file(conn, path)
+  Delete a file. Rejects directories - use rm_dir() for those. Returns bool.
+disconnect(conn)
+  Close a connection.
+download(conn, path)
+  Download a file to your machine. Returns {success, path, size, local_path, error, owner, race_locked}.
+emit_event(conn, name, payload={})
+  Manually push a named event onto the connected server's event bus right now. Any job or daemon listening for name reacts identically to a manual or natural trigger. Returns {fired, jobs_run, capped, daemons_fired} - fired is true if either a job ran or a daemon was queued; jobs_run/capped cover only the synchronous job cascade (a daemon dispatch is never synchronous with this call).
+error(message)
+  Alias for raise(message).
+exit()
+  Halt the whole script immediately, even from inside a function. Unlike return, which only pops back to whatever called that function.
+exploit_vuln(conn)
+  Chip away at the current vulnerability. Usually takes several calls - 'exploited' is true and security_reduction applies on the call that finishes it. Returns {found, exploited, progress, vuln_type, description, severity, security_reduction, new_security, tip}.
+file_size(conn, path)
+  Get file size. Returns int.
+fill_form(field, value)
+  Fill a form field on the current page. Returns bool.
+find_forms(html)
+  Parse <form> elements out of an HTML string. Returns [{action, fields}], fields is [{name, type}].
+find_links(html)
+  Parse <a href> links out of an HTML string. Returns [{text, href}].
+get_args()
+  Every argument this script was called with, even ones with no matching @param. Returns a list.
+get_cpu()
+  Current aggregate CPU load across all your running processes (0-100). Returns float.
+get_cwd() or get_cwd(conn)
+  Current directory set by cd(). get_cwd() (local) starts wherever the terminal was locally browsing when the script launched; get_cwd(conn) (remote) starts in the authenticated user's home directory once connected. Returns string.
+get_detection()
+  Alias for get_noise(). Returns float.
+get_hostname()
+  Returns the hostname of the connected server.
+get_my_ip()
+  Your current exit IP (changes with proxy bouncing). Returns string.
+get_noise()
+  Current noise level (0-100). Returns float.
+get_param(name)
+  Read a value passed to this script (see # @param comments). Returns the value, or none if not passed.
+get_security(conn)
+  Server security level 0.0-1.0.
+get_target()
+  Returns the current mission target {ip, hostname}, or none if no target is set. Valid mid-mission even when disconnected.
+get_time()
+  Alias for get_trace_time(). Returns float.
+get_trace_time()
+  Seconds remaining before trace completes. Returns float.
+get_unix_time()
+  Real wall-clock time, in seconds since the Unix epoch. Not related to get_time()/get_trace_time() (the trace countdown) - use this for benchmarking your own script's real elapsed time. Returns int.
+get_users(conn)
+  List user accounts. Must be authenticated first.
+ids_status(conn)
+  Current IDS watch level for the connected server: "quiet", "flagged", or "active". Poll it to react (scrub_log(), disconnect) before real pressure lands.
+list_files(conn, path)
+  List files in a directory. Returns [{name, path, type, size, owner}].
+list_jobs(conn)
+  List the connected server's own background jobs -> [{name, listens_for, status}]. status is "open" or "requires <user>". Hidden/ambient jobs don't appear.
+local_cp(src, dst)
+  Copy a local file (relative or absolute). Returns bool.
+local_crack(username)
+  Crack a user from inside. Progressive, less noise. Returns {success, progress, hint, password}.
+local_mkdir(path)
+  Create a directory (relative or absolute) on your local machine. Returns bool.
+local_mv(src, dst)
+  Move/rename a local file (relative or absolute). Returns bool.
+local_rm(path)
+  Delete a local file (relative or absolute). Returns bool.
+mine(kind)
+  The ONE thing a Passive Income Daemon's callback calls, every tick. One call doesn't pay out on its own - it progresses a chunk, same as a real miner doing many hashes per block, and only a completed chunk credits the trusted per-server pending_yield ledger. Takes no amount - yield is computed by the engine from the box's specs and kind, so there's nothing to spoof by passing a bigger number yourself. kind is "miner" (money) or "boinc" (reputation). Requires an existing daemon_listen() registration on this connection. Returns {success, completed, chunk_id, progress, estimated_output, pending_total} - completed is true only on the call that finished the current chunk (chunk_id/progress already describe the NEXT one by then).
+my_files(path?)
+  List local files/dirs at path (default /home, relative or absolute) -> [{name, path, type, size}]. One level at a time, same as list_files() - call it again on a "dir" entry to go deeper.
+netcat(target, port)
+  Connect to a challenge port. Returns {id, success, hostname, target, task, window_seconds, retry_seconds} - task is a string to solve (currently: reverse it) and reply with via netcat_send() before window_seconds real seconds run out. retry_seconds > 0 means this port is temporarily locked out after a recent failure - wait that long before it'll answer again.
+netcat_send(conn, response)
+  Answer the live challenge from netcat(). Single-shot - correct, wrong, or expired all clear it, so a fresh netcat() is needed to try again. A wrong answer or an expired challenge locks the port out for a while - retry_seconds in the result says how long. Returns {success, correct, remaining_seconds, retry_seconds}. A correct answer opens every currently-filtered port on the server.
+parse_target(str)
+  Parse a "user@host" string into {user, host}. Returns the parsed object.
+probe_firewall(target)
+  Check firewall status. Returns {active, layers, layers_remaining}.
+probe_vuln(conn)
+  Check the next vulnerability without exploiting it. Idempotent - repeated calls return the same result until exploit_vuln() finishes it. Probing first makes exploit_vuln faster. Returns {found, exploited, progress, vuln_type, description, severity, security_reduction, new_security, tip}.
+raise(message)
+  Abort the script as an error, not a clean stop. Alias: error().
+read_file(conn, path)
+  Read file contents. Returns {success, content, size, owner, encrypted, race_locked}.
+read_local(path)
+  Read a local file (relative or absolute). Returns string.
+reset_crack(conn, username)
+  Testing tool: clears the permanent cracked record for a user, so the next crack()/local_crack() call actually redoes the work. Does not touch ~/.ssh/credentials. Returns bool.
+resolve_hostname(hostname)
+  Resolve a hostname to an IP via /etc/hosts. Returns the IP string, or none if not found.
+rm_dir(conn, path)
+  Recursively delete a directory and everything inside it. Returns bool.
+save(name, data)
+  Save data to a local file (relative or absolute). Returns {success, path, error}.
+scan(target, port)
+  Scan a port. Returns {open, service, version, banner, response_time, filtered, reachable}. reachable is false if the host itself couldn't be reached at all.
+scan_network(conn)
+  Discover servers connected to the connected server, by reading its own /etc/hosts, SSH known_hosts, SSH config, and bash_history -> [{ip, hostname, source}]. Only genuinely registered and online servers show up - a reference to something that isn't actually there (yet) simply doesn't appear. Same pairing as traces/traces() - the nmap terminal command wraps this. Always available - no separate unlock step (a deliberate simplification from the doc's original 'unlocked once nmap is used' framing, see docs/api.md).
+server_specs(conn)
+  This box's Server Specs, unavailable without a live connection - {cpu_tier, cpu_ticks, ram_tier, max_daemons, daemons_used, ram_slots, ram_used}. cpu_ticks is the rate anything running ON this box (a daemon dispatch, a remote_run() payload) actually executes at. max_daemons/ram_slots are independent caps - how many daemons can idle here vs. how many can run at once.
+set_char(str, pos, char)
+  Replace character at pos with char. Returns new string.
+sleep(seconds)
+  Wait. Reduces noise slightly. Returns void.
+smtp_connect(target)
+  Open a connection to a mail server (port 25). No auth required - sending doesn't need it, same as real open-relay spoofing. Returns {id, success, banner}.
+smtp_login(conn, user, password)
+  Authenticate to a mailbox. Returns bool. Required before smtp_read() for that user; not required for smtp_send().
+smtp_read(conn, user)
+  Read a mailbox. Requires smtp_login() for that user first. Returns [{from, subject, body}].
+smtp_send(conn, from, to, subject, body)
+  Send an email. `from` is not checked against anything - this is how spoofing works. Returns bool.
+sqli(url, payload="' or 1=1 --")
+  Test a web form for SQL injection. payload is optional and defaults to a real classic probe (still just a full-table dump) - a real row-filter (column='value') and/or column projection (UNION SELECT col1, col2) narrows the leak and costs less noise. No connect() needed - same as wget()/browse(), this is a plain HTTP request. Returns {success, data, error}.
+store(target)
+  Add a server to the Network tab, same as the `store` terminal command. Returns bool.
+su(username) or su(username, password)
+  Switch user. Returns bool.
+submit_form()
+  Submit the current page's form. Returns {success, html, sqli_success, sqli_data} - the last two are only meaningful if the submission happened to trigger a SQL injection leak.
+to_char(code)
+  Convert a byte value (0-255) to a single character string.
+to_code(char)
+  Convert a single character string to its character code (integer). Inverse of to_char().
+touch(conn, path)
+  Create an empty remote file if it doesn't already exist. Unlike write_file(), never overwrites an existing file's content. Returns bool.
+touch_local(path)
+  Create an empty local file (relative or absolute) if it doesn't already exist. Unlike save()/write_local(), never overwrites an existing file's content. Returns bool.
+traces()
+  Lists every trace worth caring about: the current active/paused one plus any other server still recovering from a previous visit. Returns [{ip, hostname, status, remaining, total}], status is "active", "paused", or "cooling".
+unstore(target)
+  Remove a server from the Network tab, same as the `unstore` terminal command. Returns bool.
+upload(conn, file, path)
+  Upload a file to target. Returns bool.
+wget(url) or wget(url, username, password)
+  HTTP fetch, no connect() needed. Credentials (if passed) only authorize this call, same as the terminal command. Returns {success, path, size, local_path, error}.
+whoami() or whoami(conn)
+  Returns your current username on the connected server. If conn is passed, it's validated like any other connection - errors if it's gone stale.
+whois(ip)
+  Registry lookup, not a probe - works on any IP, no connection needed. Returns {ip, owner, faction_id} - owner/faction_id are empty strings if the address isn't inside any faction's registered range. Same pairing as nmap/scan_network() - the whois terminal command wraps this.
+write_file(conn, path, content)
+  Write content to a remote file. Returns {success, path, error}.
+write_local(path, content)
+  Write content to a local file (relative or absolute), creating it if needed. Alias for save() - handy for testing filters/formatting locally before writing to a remote file. Returns {success, path, error}.
