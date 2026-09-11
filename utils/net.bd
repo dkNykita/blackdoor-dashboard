@@ -92,6 +92,21 @@ func wait_for_trace_recovery(host):
             return
         sleep(trace_poll_interval())
 
+# Some targets' own trace ceiling (connect()'s own trace_time field -
+# the budget this specific connection starts with, not a live countdown
+# yet) sits AT OR UNDER trace_critical() from the moment you connect -
+# confirmed live (a target with trace_time 0). check_trace()'s normal
+# disconnect+wait_for_trace_recovery()+reconnect cycle can never help
+# here: "recovery" just returns you to the same hopeless ceiling, so the
+# script disconnects, waits, reconnects, immediately re-triggers, and
+# repeats forever - no progress, no error, no way out short of killing
+# the script by hand (confirmed live: exactly this infinite loop).
+# There is no safe way to operate continuously against a target like
+# this - check_trace() uses this to abort the action outright instead
+# of ever entering that cycle.
+func trace_hopeless(conn):
+    return conn.trace_time <= trace_critical()
+
 # Combines the absolute-seconds floor (trace_critical()) with a
 # percent-of-total floor (trace_critical_pct()) - disconnect as soon as
 # EITHER is crossed, whichever that turns out to be for this trace's own
@@ -133,6 +148,9 @@ func check_trace(conn, connect_str, host):
         log("IDS active - aborting.")
         disconnect(conn)
         exit()
+    if trace_hopeless(conn):
+        disconnect(conn)
+        raise("Target's trace ceiling is only " + str(conn.trace_time) + "s (<=" + str(trace_critical()) + "s) - can't be waited out, would loop forever. Aborting this action.")
     if ids == "flagged" or should_disconnect_for_trace(host):
         if ids == "flagged":
             log("IDS flagged - disconnecting before it escalates to active.", Color.amber)
@@ -141,6 +159,9 @@ func check_trace(conn, connect_str, host):
         var new_conn = connect(connect_str, 22)
         if not new_conn.success:
             raise("Couldn't reconnect as " + connect_str + ".")
+        if trace_hopeless(new_conn):
+            disconnect(new_conn)
+            raise("Reconnected, but target's trace ceiling is only " + str(new_conn.trace_time) + "s - can't be waited out. Aborting this action.")
         return {"conn": new_conn, "reconnected": true}
     return {"conn": conn, "reconnected": false}
 

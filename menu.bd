@@ -220,7 +220,25 @@ func refresh_status(target):
         # action left behind - one check_trace() right after connecting
         # covers that (disconnects/waits/reconnects, or aborts outright
         # on active IDS) before spending any reads on this dip.
-        conn = nu.check_trace(conn, connect_str, target).conn
+        #
+        # A target whose trace ceiling itself is hopeless (<= 10s from
+        # the moment you connect - confirmed live) makes check_trace()
+        # raise() instead of looping forever waiting for a "recovery"
+        # that just returns to the same unsafe ceiling (see net.bd's
+        # trace_hopeless()). Caught here and treated exactly like a
+        # failed connect() - nothing below this point has run yet, so
+        # bailing out now loses nothing that wasn't already saved by
+        # whichever action ran before this refresh.
+        try:
+            conn = nu.check_trace(conn, connect_str, target).conn
+        catch e:
+            log(str(e), Color.amber)
+            banner = ""
+            os_name = ""
+            security = -1
+            next_vuln = none
+            daemons_here = none
+            return
         banner = conn.banner
         os_name = conn.os
         security = get_security(conn)
@@ -637,19 +655,25 @@ while true:
         var escalate_to = ""
         if account != "root":
             escalate_to = nu.prompt_default("Also crack this account from inside after (type - to skip): ", "")
-        var crack_result = ucr.do_crack(nu, target, account, true, escalate_to)
         # do_crack() only ever returns after a real success (it retries
         # internally until it does, or aborts the whole script on active
-        # IDS) - reaching this line means account (and escalate_to, if
-        # used) are genuinely cracked. Persist that right now rather than
-        # leaving it riding on refresh_status() below to get there.
-        mark_cracked(target, account)
-        if escalate_to != "":
-            mark_cracked(target, escalate_to)
-        nmap_data = crack_result.nmap
-        uhd.set_nmap(nu, target, nmap_data)
-        logs_dirty = true
-        ids_log_cleared = false
+        # IDS - or now, raises if the target's trace ceiling is hopeless,
+        # see net.bd's trace_hopeless()). Caught here so a hopeless
+        # target fails just this action instead of crashing the script.
+        try:
+            var crack_result = ucr.do_crack(nu, target, account, true, escalate_to)
+            # Reaching this line means account (and escalate_to, if used)
+            # are genuinely cracked. Persist that right now rather than
+            # leaving it riding on refresh_status() below to get there.
+            mark_cracked(target, account)
+            if escalate_to != "":
+                mark_cracked(target, escalate_to)
+            nmap_data = crack_result.nmap
+            uhd.set_nmap(nu, target, nmap_data)
+            logs_dirty = true
+            ids_log_cleared = false
+        catch e:
+            log(str(e), Color.amber)
         sleep(nu.log_pace())
         nu.throttle(nu.cpu_guard_conservative())
         refresh_status(target)
@@ -661,12 +685,16 @@ while true:
         var target_input = prompt("Account to crack from inside: ")
         var target_account = target_input.trim()
         log("-> " + (target_account == "" ? "(none)" : target_account), Color.cyan)
-        var escalate_result = ucr.do_escalate(nu, target, as_account, target_account)
-        # Same reasoning as choice "3" - reaching this line means
-        # target_account is genuinely cracked, persist it right away.
-        mark_cracked(target, target_account)
-        nmap_data = escalate_result.nmap
-        uhd.set_nmap(nu, target, nmap_data)
+        # Same trace_hopeless() reasoning as choice "3" above.
+        try:
+            var escalate_result = ucr.do_escalate(nu, target, as_account, target_account)
+            # Reaching this line means target_account is genuinely
+            # cracked, persist it right away.
+            mark_cracked(target, target_account)
+            nmap_data = escalate_result.nmap
+            uhd.set_nmap(nu, target, nmap_data)
+        catch e:
+            log(str(e), Color.amber)
         sleep(nu.log_pace())
         nu.throttle(nu.cpu_guard_conservative())
         refresh_status(target)
@@ -677,20 +705,28 @@ while true:
         var cleanup_mode = prompt("Use LogScrubber - clears IDS's memory too, needs the tool owned (type - for this), or delete the files outright? (scrub/delete): ")
         cleanup_mode = cleanup_mode.trim()
         log("-> " + (cleanup_mode == "" ? "(none)" : cleanup_mode), Color.cyan)
-        if cleanup_mode == "delete" or cleanup_mode == "d":
-            ucl.do_raw_cleanup(nu, target, account3)
-            logs_dirty = false
-            ids_log_cleared = false
-        else:
-            ucl.do_scrub_log(nu, target, account3)
-            logs_dirty = false
-            ids_log_cleared = true
+        # Same trace_hopeless() reasoning as choice "3" above.
+        try:
+            if cleanup_mode == "delete" or cleanup_mode == "d":
+                ucl.do_raw_cleanup(nu, target, account3)
+                logs_dirty = false
+                ids_log_cleared = false
+            else:
+                ucl.do_scrub_log(nu, target, account3)
+                logs_dirty = false
+                ids_log_cleared = true
+        catch e:
+            log(str(e), Color.amber)
     elif choice == "6":
         var account2 = nu.prompt_default("Account to grab as (type - for root): ", "root")
         var path = nu.prompt_default("Directory to grab from (type - for /var/data): ", "/var/data")
-        ug.do_grab(nu, target, account2, path)
-        logs_dirty = true
-        ids_log_cleared = false
+        # Same trace_hopeless() reasoning as choice "3" above.
+        try:
+            ug.do_grab(nu, target, account2, path)
+            logs_dirty = true
+            ids_log_cleared = false
+        catch e:
+            log(str(e), Color.amber)
     elif choice == "7":
         var route_input = nu.prompt_default("Route to try directly (type - for /login): ", "/login")
         var page_input = nu.prompt_default("Login page to fall back to if that fails (type - to skip): ", "")
