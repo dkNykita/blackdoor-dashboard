@@ -1,9 +1,5 @@
-# test_state_literal.bd - THROWAWAY test, round 2: minimal 2-key
-# multi-line object literal, to isolate whether multi-line literals
-# work at all or something specific to the bigger one broke it.
+# test_state_literal.bd - THROWAWAY test, round 3: single-line object
+# literal, to check if multi-line formatting itself is the problem.
 
-var small = {
-    "a": 1,
-    "b": 2
-}
-log("Small literal OK: " + str(small))
+var small = {"a": 1, "b": 2}
+log("Single-line literal OK: " + str(small))
