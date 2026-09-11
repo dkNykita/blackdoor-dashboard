@@ -360,6 +360,16 @@ CONFIRMED THIS SESSION (live testing of the refactored Active tree):
     every time. Consistent with this codebase's existing no-confirmed-
     closures caution, but worth a cleaner isolated test before treating
     it as certain.
+  - Object literals can't contain a comment line between properties -
+    confirmed via the engine's own parse error, verbatim: "Expected
+    property name in object literal." A `#` comment on its own line
+    works everywhere else in this codebase (between statements, inside
+    function/if/loop bodies, between object literal properties is the
+    one place it's rejected) - the parser expects the next token after
+    a comma to be a property name, and a comment line isn't one. Any
+    per-field documentation for a multi-key literal (e.g. a `state`
+    dict consolidating several vars, Krok 12) has to move to a block
+    comment ABOVE the literal instead of living inline next to each key.
 
 STILL UNRESOLVED / CONFIRMED ABSENT:
   - No real "-flag" command-line syntax exists via @param - it binds

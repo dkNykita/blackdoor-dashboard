@@ -128,13 +128,34 @@ log("DEBUG TIME: imports done at +" + str(get_unix_time() - startup_t0) + "s", C
 # unblocks this - a computed key in an object LITERAL is the one thing
 # that still doesn't parse, and this literal below uses only plain
 # string keys, never a computed one.
+#
+# CONFIRMED (parse error, live): a comment line BETWEEN properties
+# inside an object literal doesn't parse either ("Expected property
+# name in object literal") - unlike everywhere else in this codebase,
+# comments aren't allowed inside a literal's braces at all. Field notes
+# moved up here instead of staying inline next to each key:
+# - ids_log_cleared: separate from logs_dirty - true only right after a
+#   successful do_scrub_log() (real LogScrubber, clears IDS's in-memory
+#   record too), false after raw delete or crack/grab (neither touches
+#   IDS's memory). Both are per-session guesses, not live checks - see
+#   print_dashboard()'s own LOG FILE section in utils/dashboard.bd.
+# - trace_ceiling: connect()'s own trace_time - this connection's trace
+#   ceiling, fixed at connect time (not the live countdown
+#   get_trace_time() reports while connected). none until the first
+#   successful connect to this target. Shown on the dashboard so a
+#   hopeless target (<= net.bd's trace_critical(), confirmed to loop
+#   check_trace() forever if you try to work through it - see net.bd's
+#   trace_hopeless()) is visible BEFORE picking an action, not
+#   discovered via a failed one.
+# - target_is_own_ip: set once per target (startup, "t") -
+#   probe_firewall()/whois()/connect() all raise rather than degrade
+#   gracefully on your own IP (confirmed: it's not a valid target the
+#   same way a remote server is), and none of the connect()-based menu
+#   actions (2/3/4/5/6) work there either. Skips those calls entirely
+#   instead of attempting-and-catching, and greys out the actions that
+#   can't do anything on this target.
 var state = {
     "logs_dirty": false,
-    # Separate from logs_dirty - true only right after a successful
-    # do_scrub_log() (real LogScrubber, clears IDS's in-memory record
-    # too), false after raw delete or crack/grab (neither touches IDS's
-    # memory). Both are per-session guesses, not live checks - see
-    # print_dashboard()'s own LOG FILE section in utils/dashboard.bd.
     "ids_log_cleared": false,
     "fw_active": false,
     "fw_layers": 0,
@@ -145,13 +166,6 @@ var state = {
     "banner": "",
     "os_name": "",
     "security": -1,
-    # connect()'s own trace_time - this connection's trace ceiling,
-    # fixed at connect time (not the live countdown get_trace_time()
-    # reports while connected). none until the first successful connect
-    # to this target. Shown on the dashboard so a hopeless target (<=
-    # net.bd's trace_critical(), confirmed to loop check_trace() forever
-    # if you try to work through it - see net.bd's trace_hopeless()) is
-    # visible BEFORE picking an action, not discovered via a failed one.
     "trace_ceiling": none,
     "users": none,
     "next_vuln": none,
@@ -161,13 +175,6 @@ var state = {
     "daemons_here": none,
     "nmap_data": none,
     "sqli_status": none,
-    # Set once per target (startup, "t") - probe_firewall()/whois()/
-    # connect() all raise rather than degrade gracefully on your own IP
-    # (confirmed: it's not a valid target the same way a remote server
-    # is), and none of the connect()-based menu actions (2/3/4/5/6) work
-    # there either. Skips those calls entirely instead of attempting-
-    # and-catching, and greys out the actions that can't do anything on
-    # this target.
     "target_is_own_ip": false
 }
 sleep(1)  # CONFIRMED fix - see comment above the imports
