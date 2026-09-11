@@ -1,0 +1,34 @@
+# test_cpu_scale.bd - THROWAWAY test script, not part of the real
+# refactor. Delete after use (both here and in blackdoor-dashboard).
+#
+# Purpose: find out whether a shorter throttle() pause is survivable on
+# THIS machine's real engine timing at all, in isolation from any
+# production code. Krok 0c's 3 live crashes (earlier this session)
+# never isolated whether the problem was the shorter pause itself or
+# something specific to do_sync()'s workload at the time it was tested
+# - this settles that question cheaply, without risking menu.bd.
+#
+# Simulates scale=0.5 (as if this were an Mk.II-tier machine) over 80
+# iterations of synthetic per-line work, at roughly the same line
+# density as a real busy loop (decode_tuple_list()-style: a throttle
+# call, a couple of cheap statements, one log() per iteration).
+#
+# Run with: run test_cpu_scale
+
+func test_throttle(threshold, scale):
+    sleep(1 * scale)
+    while get_cpu() > threshold:
+        sleep(1 * scale)
+
+var i = 0
+var dummy = ""
+while i < 80:
+    test_throttle(50, 0.5)
+    if i % 2 == 0:
+        dummy = dummy + "a"
+    else:
+        dummy = dummy + "b"
+    log("iteration " + str(i) + " cpu=" + str(get_cpu()))
+    i = i + 1
+
+log("Test complete at scale 0.5 (80 iterations) - no overload.", Color.green)
