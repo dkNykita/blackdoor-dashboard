@@ -129,11 +129,14 @@ log("DEBUG TIME: imports done at +" + str(get_unix_time() - startup_t0) + "s", C
 # that still doesn't parse, and this literal below uses only plain
 # string keys, never a computed one.
 #
-# CONFIRMED (parse error, live): a comment line BETWEEN properties
-# inside an object literal doesn't parse either ("Expected property
-# name in object literal") - unlike everywhere else in this codebase,
-# comments aren't allowed inside a literal's braces at all. Field notes
-# moved up here instead of staying inline next to each key:
+# CONFIRMED (parse error, live, isolated test): object literals can't
+# span multiple lines at all - "Expected property name in object
+# literal", reproduced even with a bare 2-key literal and zero
+# comments. Every other multi-line construct in this codebase (if/
+# while/for bodies, function calls split across lines) is fine; object
+# literals specifically must be written on ONE line. Field notes for
+# individual keys below (can't live inline the way a comment normally
+# would next to what it explains, for the same reason):
 # - ids_log_cleared: separate from logs_dirty - true only right after a
 #   successful do_scrub_log() (real LogScrubber, clears IDS's in-memory
 #   record too), false after raw delete or crack/grab (neither touches
@@ -154,29 +157,7 @@ log("DEBUG TIME: imports done at +" + str(get_unix_time() - startup_t0) + "s", C
 #   actions (2/3/4/5/6) work there either. Skips those calls entirely
 #   instead of attempting-and-catching, and greys out the actions that
 #   can't do anything on this target.
-var state = {
-    "logs_dirty": false,
-    "ids_log_cleared": false,
-    "fw_active": false,
-    "fw_layers": 0,
-    "fw_layers_remaining": 0,
-    "noise": 0,
-    "accounts": [],
-    "owner": "",
-    "banner": "",
-    "os_name": "",
-    "security": -1,
-    "trace_ceiling": none,
-    "users": none,
-    "next_vuln": none,
-    "open_ports": none,
-    "specs": none,
-    "jobs": none,
-    "daemons_here": none,
-    "nmap_data": none,
-    "sqli_status": none,
-    "target_is_own_ip": false
-}
+var state = {"logs_dirty": false, "ids_log_cleared": false, "fw_active": false, "fw_layers": 0, "fw_layers_remaining": 0, "noise": 0, "accounts": [], "owner": "", "banner": "", "os_name": "", "security": -1, "trace_ceiling": none, "users": none, "next_vuln": none, "open_ports": none, "specs": none, "jobs": none, "daemons_here": none, "nmap_data": none, "sqli_status": none, "target_is_own_ip": false}
 sleep(1)  # CONFIRMED fix - see comment above the imports
 log("DEBUG TIME: state declared at +" + str(get_unix_time() - startup_t0) + "s", Color.muted)
 

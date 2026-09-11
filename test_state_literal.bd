@@ -1,5 +1,0 @@
-# test_state_literal.bd - THROWAWAY test, round 3: single-line object
-# literal, to check if multi-line formatting itself is the problem.
-
-var small = {"a": 1, "b": 2}
-log("Single-line literal OK: " + str(small))

@@ -360,16 +360,21 @@ CONFIRMED THIS SESSION (live testing of the refactored Active tree):
     every time. Consistent with this codebase's existing no-confirmed-
     closures caution, but worth a cleaner isolated test before treating
     it as certain.
-  - Object literals can't contain a comment line between properties -
-    confirmed via the engine's own parse error, verbatim: "Expected
-    property name in object literal." A `#` comment on its own line
-    works everywhere else in this codebase (between statements, inside
-    function/if/loop bodies, between object literal properties is the
-    one place it's rejected) - the parser expects the next token after
-    a comma to be a property name, and a comment line isn't one. Any
-    per-field documentation for a multi-key literal (e.g. a `state`
-    dict consolidating several vars, Krok 12) has to move to a block
-    comment ABOVE the literal instead of living inline next to each key.
+  - Object literals CANNOT span multiple lines at all - confirmed via
+    the engine's own parse error ("Expected property name in object
+    literal") AND an isolated live test that bisected it down to a
+    bare 2-key literal with zero comments, formatted one key per line -
+    still failed identically. Every other multi-line construct in this
+    codebase (if/while/for bodies, function calls split across lines)
+    works fine; object literals specifically must be written on ONE
+    line, `{"key": val, "key2": val2}` style, no matter how many keys.
+    (First guessed - WRONG, corrected after the isolated test - that
+    the problem was a `#` comment line between properties; comments
+    were never the actual cause, only ever present alongside the real
+    problem, which is the line breaks themselves.) Any per-field
+    documentation for a multi-key literal (e.g. a `state` dict
+    consolidating several vars, Krok 12) has to live in a block comment
+    ABOVE the single-line literal, never inline next to a key.
 
 STILL UNRESOLVED / CONFIRMED ABSENT:
   - No real "-flag" command-line syntax exists via @param - it binds
