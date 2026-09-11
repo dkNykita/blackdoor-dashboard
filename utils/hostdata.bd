@@ -158,6 +158,19 @@ func encode_sqli(s):
 # get_*()/set_*() below, so it's the single place that actually matters
 # for staying safe. One real second per tracked host is the tradeoff.
 func read_entries(nu):
+    # CONFIRMED fix (live crash, isolated on an EMPTY host_intel.txt -
+    # ruling out data volume entirely): same missing-transition-gap
+    # pattern already fixed twice elsewhere this session
+    # (refresh_status(), print_dashboard()) - every caller path into
+    # this function (resolve_raw_target() + target_is_own_ip assignment
+    # + get_entry()/find_entry() overhead, all with zero pacing since
+    # the last sleep(1)) arrives with an unpaced stretch, and this
+    # function's own first throttle() lived INSIDE the per-line loop,
+    # not at entry - too late to help if the aggregate was already
+    # critical by the time read_local() and the loop's own first
+    # iteration ran. Moved a throttle() here, first line, matching the
+    # same fix already proven at those other two entry points.
+    nu.throttle(nu.cpu_guard_fast())
     var dbg_t0 = get_unix_time()
     var raw = ""
     try:
