@@ -28,7 +28,7 @@
 # stays off by default and every debug call site must check it first,
 # never log unconditionally.
 func debug_enabled():
-    return false
+    return true
 
 # Shared timing-checkpoint helper - one call site instead of repeating
 # `if nu.debug_enabled(): log("DEBUG TIME: " + ... )` at every checkpoint.
