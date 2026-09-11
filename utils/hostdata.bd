@@ -184,7 +184,12 @@ func read_entries(nu):
     var dbg_line_num = 0
     for line in raw.split("\n"):
         dbg_line_num = dbg_line_num + 1
-        nu.debug_time("read_entries() starting line " + str(dbg_line_num) + " (" + line + ")", dbg_t0)
+        # Guarded here (not just inside nu.debug_time()) - this label
+        # embeds the whole raw line, real string-concat cost that
+        # shouldn't run at all when debug is off, not just skip its
+        # own log() call. See net.bd's debug_enabled() comment.
+        if nu.debug_enabled():
+            nu.debug_time("read_entries() starting line " + str(dbg_line_num) + " (" + line + ")", dbg_t0)
         # Throttled every single entry, not periodically - a host can
         # carry an unbounded amount of paired data (many nmap hits, many
         # jobs, ...) so the work between two periodic checks isn't
