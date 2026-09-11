@@ -255,6 +255,27 @@ CORRECTIONS (a third-party note claimed this; testing showed otherwise):
     these prompts as "(type - for X)", not "(space + Enter for X)" or
     "(default X)".
 
+CONFIRMED THIS SESSION (live testing of the refactored Active tree):
+  - sqli(url) can RAISE a runtime error ("no routes on target") instead
+    of gracefully returning {success: false, ...} - confirmed via a real
+    crash on `sqli` choice "7" against a target with no SQLi routes
+    configured. *** ACTION NEEDED: utils/sqli.bd's try_direct() calls
+    sqli(url) with NO try/catch around it (unlike try_form(), which
+    already wraps submit_form() in try/catch) - inconsistent, and the
+    unwrapped call is what crashed the whole script. Not yet fixed -
+    deferred until current testing pass finishes. ***
+  - do_grab() (grab.bd, post Krok-3 walk_tree() rewrite) downloaded 0
+    files from a directory confirmed (via a separate manual ssh session)
+    to actually contain 3 files - no error, no crash, just silently 0.
+    grab_on_file()'s callback only log()s on download() SUCCESS, never
+    on failure, so there's currently no visibility into why each
+    download() call returned success:false. Prime suspect: the newly-
+    documented race_locked field on download()'s return shape (see
+    CONFIRMED WORKING above) - completely unhandled/unlogged anywhere in
+    our code. Not yet diagnosed further - needs a temporary debug log on
+    the failure path (mirroring how the hostdata.bd CPU-overload gap was
+    isolated earlier this session) before a real fix can be designed.
+
 STILL UNRESOLVED / CONFIRMED ABSENT:
   - No real "-flag" command-line syntax exists via @param - it binds
     purely positionally by declaration order. get_args() (above) is the
