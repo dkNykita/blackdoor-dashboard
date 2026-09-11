@@ -598,14 +598,15 @@ nmap_data = cached.nmap
 sqli_status = cached.sqli
 refresh_status(target)
 
-# nu.cpu_scale() is NOT wired into any wait right now (see net.bd's CPU
-# tier detection comment for why) - this is purely informational, and
-# deliberately placed here rather than earlier: refresh_status() above
-# has already gone through several of its own throttle() calls by this
-# point, so this one extra line lands in an already-paced spot instead
-# of stacking onto the unpaced startup stretch that crashed the script
-# live when this lived up near the imports instead.
-log("Local CPU: " + str(nu.local_tick_rate()) + " ticks/sec (scale " + str(nu.cpu_scale()) + ")", Color.muted)
+# Purely informational (see net.bd's CPU tier auto-scaling comment for
+# why nothing scales by this - tried and disproven live, tier-scaling
+# wait durations turned out slower, not faster). Deliberately placed
+# here rather than earlier: refresh_status() above has already gone
+# through several of its own throttle() calls by this point, so this
+# one extra line lands in an already-paced spot instead of stacking
+# onto the unpaced startup stretch that crashed the script live when
+# this lived up near the imports instead.
+log("Local CPU: " + str(nu.local_tick_rate()) + " ticks/sec", Color.muted)
 
 while true:
     print_dashboard(target)

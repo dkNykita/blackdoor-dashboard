@@ -74,6 +74,25 @@ CPU LOAD (confirmed by testing this session)
     is the same both times: an unconditional throttle()/sleep(1) as
     close to the entry point as possible, not just deeper inside the
     function's own body.
+  - Shortening throttle()'s sleep() to match a faster CPU tier does NOT
+    make it faster - confirmed via an isolated standalone test (halving
+    the sleep, simulating cpu_scale()=0.5 as if Mk.II tier): it didn't
+    crash, but took 267s of real wall-clock time to do work the
+    unscaled version does in ~40s - 6.7x SLOWER, not 2x faster.
+    throttle()'s `while get_cpu() > threshold: sleep(...)` loop isn't
+    waiting out a fixed amount of work per sleep - it's waiting for
+    get_cpu()'s own decaying average to drop under the threshold, which
+    depends on real elapsed TIME, not sleep-call count. A shorter sleep
+    just means more, smaller waits before that average has decayed
+    enough - more total real time, not less, and each extra check
+    itself adds ticks that can push the average back up before it's
+    had time to decay. The mechanism that DOES already benefit from a
+    faster tier: the same code costs proportionally fewer percentage-
+    points of get_cpu()'s budget per tick on a machine with more
+    ticks/sec, so the while loop above naturally needs fewer retries on
+    its own, zero code changes required. Don't scale wait DURATIONS by
+    tier - there's nothing to wire in, the adaptation already happens
+    automatically through get_cpu() itself.
   - A module imported by several other modules that are all imported by
     the same top-level script gets re-executed once per import (no
     caching observed) - a script importing N helper modules that each
