@@ -158,14 +158,19 @@ func encode_sqli(s):
 # get_*()/set_*() below, so it's the single place that actually matters
 # for staying safe. One real second per tracked host is the tradeoff.
 func read_entries(nu):
+    var dbg_t0 = get_unix_time()
     var raw = ""
     try:
         raw = read_local(host_intel_path())
     catch e:
         raw = ""
+    nu.debug_time("read_local() done", dbg_t0)
 
     var entries = []
+    var dbg_line_num = 0
     for line in raw.split("\n"):
+        dbg_line_num = dbg_line_num + 1
+        nu.debug_time("read_entries() starting line " + str(dbg_line_num) + " (" + line + ")", dbg_t0)
         # Throttled every single entry, not periodically - a host can
         # carry an unbounded amount of paired data (many nmap hits, many
         # jobs, ...) so the work between two periodic checks isn't
@@ -208,6 +213,7 @@ func read_entries(nu):
                 entry.sqli = decode_sqli(tok.substr(5, len(tok) - 5))
             i = i + 1
         entries.append(entry)
+    nu.debug_time("read_entries() all lines done", dbg_t0)
     return entries
 
 func write_entries(nu, entries):
