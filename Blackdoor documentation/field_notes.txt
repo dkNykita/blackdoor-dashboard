@@ -65,6 +65,15 @@ CPU LOAD (confirmed by testing this session)
     just around "expensive" API calls, is the safe default on base-tier
     hardware - a long chain of pure log()/if statements is just as
     capable of triggering the kill as a real API-call loop.
+  - A transition point matters as much as any individual loop: a
+    function can be internally well-paced yet still overload if nothing
+    throttles/sleeps on the way IN, especially right after a busy
+    action (confirmed twice this session - once at script startup
+    between the last import and ~200 unpaced var/func lines, once at
+    the dispatch-loop-to-print_dashboard() jump after a grab run). Fix
+    is the same both times: an unconditional throttle()/sleep(1) as
+    close to the entry point as possible, not just deeper inside the
+    function's own body.
   - A module imported by several other modules that are all imported by
     the same top-level script gets re-executed once per import (no
     caching observed) - a script importing N helper modules that each
@@ -279,15 +288,16 @@ CONFIRMED THIS SESSION (live testing of the refactored Active tree):
     permission model for these files denies the very account `ls` shows
     as both owner and world-readable. Not yet explained by anything in
     api_documentation.txt or documentation_from_editor.txt found so far.
-    Two live possibilities, untested: (a) download() enforces something
-    stricter/different than what `ls` displays (e.g. a real ownership
-    check that doesn't match `ls`'s cosmetic owner field), or (b) log
-    files specifically (/var/log/*) are deliberately undownloadable by
-    design (only scrub_log()/delete_file() can touch them - consistent
-    with this session's earlier Discord finding that quests only ever
-    recognize LogScrubber-use or full deletion, never partial edits) -
-    untested whether the same account grabbing a NON-log directory (e.g.
-    /home/anon42) succeeds. *** FIXED (independent of root cause): the
+    RESOLVED: same account (anon42), same target, grabbing /home/anon42
+    instead of /var/log succeeded completely - all 6 files (incl. a
+    subdirectory, pub/) downloaded with no errors, no crash. Confirms
+    hypothesis (b) over (a): download()'s permission denial is specific
+    to /var/log (log files), not a general owner/permission-bit mismatch
+    - consistent with this session's earlier Discord finding that quests
+    only ever recognize LogScrubber-use or full deletion of logs, never
+    partial edits or (per this) even a plain download. Likely intentional
+    design, not a bug - log files are meant to be scrub_log()'d or
+    delete_file()'d in place, not copied out. *** FIXED (independent of root cause): the
     player pointed out the real bug isn't the permission denial itself
     (which may be legitimate game behavior) but that do_grab() gave zero
     indication why - grab_on_file() now log()s the error reason on every
