@@ -17,35 +17,44 @@
 # here as a named function, instead of a bare number at each call site.
 # Retune game-wide by editing a single return value below.
 
-# --- CPU tier detection (prep only - see cpu_scale()'s own comment) ---
-
+# --- CPU tier detection (display only - see this comment for the full
+# history of why it is NOT wired into throttle()/log_pace()/etc.) ---
+#
 # Player's own script-execution speed (shop_hw.txt: base tier 10
 # ticks/sec, Mk.II 20, Mk.III 40, Mk.IV 80). No API reports this
 # directly - server_specs(conn) is remote-only, for whatever you're
 # connected to, not your own machine. The one known way (hexhaven
-# Discord) is reading ~/.config/blackdoor.conf's "tick_speed=N" line
-# directly. Falls back to base tier (10) if the file/line can't be
-# read - never guess a FASTER tier than confirmed, since that would
-# understate real per-iteration tick cost rather than overstate it.
+# Discord) is reading ~/.config/blackdoor.conf's "tick_speed=N" line via
+# read_local() - a real, presumably non-free operation, unlike the
+# documented no-CPU-cost calls (connect/scan/download/upload/sleep).
 #
-# CONFIRMED fix (live crash, twice): cpu_scale() feeds log_pace()/
-# retry_delay()/trace_poll_interval(), which throttle() calls on EVERY
-# invocation - hundreds of times in a normal session, including tight
-# per-token loops (hostdata.bd's read_entries()). Re-reading+parsing
-# blackdoor.conf on every one of those calls multiplied real tick cost
-# exactly where the rest of this codebase works to minimize it, and
-# crashed the script before "Checking status..." even printed. A lazy
-# cache (write the result into a module var the first time a function
-# runs, read it on later calls) did NOT fix this - crashed again,
-# even earlier - meaning a write from inside a function body doesn't
-# reliably persist back to module-level state here, the same kind of
-# gap this codebase already assumes for closures (see walk_tree()'s own
-# comment on why it uses a context parameter instead of one). Reading
-# the config file is instead done directly in a module-level statement
-# below (not inside any func) - this file's own header confirms menu.bd
-# imports it exactly once, so a plain module-level line runs exactly
-# once per script run, no function-write-back required at all.
-func _read_tick_rate_from_config():
+# CONFIRMED live history, this session: wiring cpu_scale() into
+# log_pace()/retry_delay()/trace_poll_interval() crashed the script
+# (throttle() calls those on EVERY invocation - hundreds of times per
+# session - so a real read_local()+parse on each one multiplied real
+# tick cost right where this codebase works hardest to minimize it).
+# Tried caching to fix that: (1) a lazy cache - write into a module var
+# the first time a function runs, read it on later calls - crashed
+# again, even earlier, so a function-body write likely doesn't persist
+# back to module state here (consistent with this codebase's existing
+# no-confirmed-closures caution). (2) an eager module-level init (`var
+# x = some_func()` at module top level) - rejected outright at parse
+# time: "Module ... has a statement at its top level that isn't a
+# function definition, a constant `var` with a call-free value, or an
+# import" - modules apparently cannot run a function call to compute a
+# module-level var's initial value at all, only literal constants.
+#
+# Given both caching strategies failed (one silently, one at parse
+# time), local_tick_rate() below is called ONLY from menu.bd's one-time
+# startup display line - nowhere near a hot path - so it just reads the
+# file plainly, no caching attempted. cpu_scale() is available but
+# NOTHING multiplies by it - log_pace()/retry_delay()/trace_poll_interval()
+# are back to their original hardcoded values. Wiring this in for real
+# needs either a genuinely free way to read tier once (not found this
+# session) or a broader signature change threading a precomputed scale
+# down from menu.bd's top level (where computing it once IS safe) into
+# every throttle()-adjacent call site - out of scope for now.
+func local_tick_rate():
     var content = ""
     try:
         content = read_local("~/.config/blackdoor.conf")
@@ -60,37 +69,6 @@ func _read_tick_rate_from_config():
                 return 10
     return 10
 
-var _tick_rate_cache = _read_tick_rate_from_config()
-
-func local_tick_rate():
-    return _tick_rate_cache
-
-# Ratio of base-tier ticks to this machine's actual ticks - 1.0 at base
-# tier, 0.5 at Mk.II, 0.25 at Mk.III, 0.125 at Mk.IV. Detection only,
-# by design: throttle()/log_pace()/etc. below do NOT multiply by this
-# yet. Krok 0c (this session) tried exactly this kind of scaling -
-# using a correctly-read tick_speed to shorten throttle()'s pause below
-# log_pace()=1s - and killed the script 3 separate times, live, all at
-# BASE tier where this ratio is 1.0 (so the math wasn't the problem -
-# going below 1s at all was, for reasons never pinned down without a
-# real profiler). This machine is still base tier as of this function's
-# introduction, so cpu_scale() itself is a safe no-op right now (always
-# 1.0) - wired into the three actual wait-DURATION functions below
-# (retry_delay/log_pace/trace_poll_interval), not into the CPU-percent
-# thresholds (cpu_guard_*) or trace-time thresholds (trace_critical/
-# trace_warn/...) - those aren't about execution speed, scaling them by
-# tickrate wouldn't mean anything. At base tier this multiplies
-# everything by exactly 1.0 - byte-identical to the values before this
-# was wired in. Krok 0c (this session) tried shortening these same
-# waits below their current values and killed the script 3x live, at
-# BASE tier, where this ratio is also 1.0 - so the failure wasn't about
-# incorrect tick math, it was about going shorter at all, for reasons
-# never pinned down without a real profiler. The FIRST time this
-# machine's tier actually changes (cpu_scale() reads something other
-# than 1.0 for the first time), that is a live-test event, not a
-# free upgrade - watch the very next `menu` startup and dashboard
-# refresh closely, the same way 0c's attempts were watched, before
-# trusting it through a longer session.
 func cpu_scale():
     return 10 / local_tick_rate()
 
@@ -105,19 +83,25 @@ func cpu_guard_fast():
     return 80
 
 func retry_delay():
-    # Pause between poll attempts in a crack/bypass retry loop.
-    return 0.5 * cpu_scale()
+    # Pause between poll attempts in a crack/bypass retry loop. NOT
+    # cpu_scale()-adjusted - see this file's CPU tier detection comment
+    # above for why wiring that in crashed the script live.
+    return 0.5
 
 func log_pace():
     # Pause between dashboard/log blocks and before prompt()s - resets
     # the sustained-100%-load clock instead of just throttle()'s CPU
-    # check (see menu.bd's header comment for why that matters).
-    return 1 * cpu_scale()
+    # check (see menu.bd's header comment for why that matters). NOT
+    # cpu_scale()-adjusted - see this file's CPU tier detection comment
+    # above for why wiring that in crashed the script live.
+    return 1
 
 func trace_poll_interval():
     # How often wait_for_trace_recovery() re-checks traces() while
-    # waiting for a hot trace to fully cool down.
-    return 5 * cpu_scale()
+    # waiting for a hot trace to fully cool down. NOT cpu_scale()-
+    # adjusted - see this file's CPU tier detection comment above for
+    # why wiring that in crashed the script live.
+    return 5
 
 func trace_critical():
     # check_trace()'s hard threshold, absolute seconds - below this,

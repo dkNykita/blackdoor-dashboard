@@ -559,13 +559,6 @@ func print_dashboard(target):
 
 sleep(1)  # CONFIRMED fix - see comment above the imports
 
-# log_pace()/retry_delay()/trace_poll_interval() (net.bd) now scale by
-# this - shown here so a tier change is visible immediately, not
-# discovered later from a shorter/longer wait "feeling different".
-# scale != 1.0 is this session's first live test of that scaling - see
-# net.bd's cpu_scale() comment.
-log("Local CPU: " + str(nu.local_tick_rate()) + " ticks/sec (scale " + str(nu.cpu_scale()) + ")", Color.muted)
-
 # Local file maintenance (host_intel.txt entries, Network tab, wordlist) -
 # see utils/sync for why this replaced a standalone sync_hosts script.
 # NOT run automatically here anymore - do_sync()'s per-line throttled
@@ -604,6 +597,15 @@ jobs = cached.jobs
 nmap_data = cached.nmap
 sqli_status = cached.sqli
 refresh_status(target)
+
+# nu.cpu_scale() is NOT wired into any wait right now (see net.bd's CPU
+# tier detection comment for why) - this is purely informational, and
+# deliberately placed here rather than earlier: refresh_status() above
+# has already gone through several of its own throttle() calls by this
+# point, so this one extra line lands in an already-paced spot instead
+# of stacking onto the unpaced startup stretch that crashed the script
+# live when this lived up near the imports instead.
+log("Local CPU: " + str(nu.local_tick_rate()) + " ticks/sec (scale " + str(nu.cpu_scale()) + ")", Color.muted)
 
 while true:
     print_dashboard(target)
