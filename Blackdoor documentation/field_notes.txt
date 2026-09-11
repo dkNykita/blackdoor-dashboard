@@ -175,6 +175,60 @@ CPU LOAD (confirmed by testing this session)
     the top - a CPU fix and a trace fix aren't interchangeable, and
     solving one silently reopened the other.
 
+STARTUP CPU OVERLOAD - ONGOING INVESTIGATION (Krok 12+, not yet solved)
+  menu.bd's "Checking status..." phase (refresh_status(), inside
+  get_entry()/read_entries()) has crashed with CPU overload repeatedly
+  this session, with WILDLY inconsistent timing across otherwise
+  identical runs (same host_intel.txt, same code, `ps`/`jobs` confirmed
+  no other process ever running):
+    - Run A: get_entry() took ~197s, then continued another ~130s
+      into refresh_status() before crashing after 1st check_trace().
+    - Run B: get_entry() took ~197s again (same!), but crashed almost
+      immediately after in get_noise() - much earlier than run A.
+    - Run C (with debug logging added inside throttle()'s retry loop):
+      crashed FAST, within seconds, with ZERO retries ever logged - the
+      script's own get_cpu() checks never saw an elevated reading, yet
+      it still overloaded. Later concluded this run was likely
+      contaminated by the debug logging's own added tick cost (every
+      throttle() call got 1-2 extra unconditional lines) - a valid
+      lesson but not a clean data point.
+    - Run D (per-line checkpoints added inside read_entries(), debug
+      logging's throttle()-internal cost removed): crashed during the
+      very FIRST line of host_intel.txt (a simple 2-field entry, ~8
+      throttle() calls total for that one line) - far too little
+      per-line work to explain a "5 sustained seconds at 100%" kill on
+      its own, unless the aggregate was already critical from the
+      ~16s of cumulative import+state-declaration cost immediately
+      before it.
+  Two real, confirmed-safe fixes came out of this investigation
+  regardless of the open question: cracked_accounts_for()/is_cracked()
+  double-throttling an already-built in-memory list (fixed, batched to
+  8), and decode_tuple_list()/encode_tuple_list() batched to 8 (currently
+  a no-op on this session's small data, but correct for a future host
+  with a larger list).
+  Live-suspected but NOT yet confirmed either way: Krok 12 (moving
+  refresh_status()/print_dashboard()/mark_cracked()/print_separator()
+  from menu.bd into a new utils/dashboard.bd module, ~330+ lines) added
+  an 11th import - and this file's own earlier finding ("importing
+  costs ticks proportional to the imported file's line count, function
+  bodies included") means that 11th import could cost roughly as much
+  as the "declare in script" cost it was meant to remove, netting out
+  to no real improvement or even a regression. No clean before/after
+  measurement exists (the timing instrumentation was added around the
+  same time as Krok 12) - an isolated test (test_import_cost.bd,
+  11 imports vs. 10, comparing "all done" elapsed time) was in progress
+  to settle this when this note was written.
+  Also confirmed as a side lesson: debug/diagnostic logging is not
+  free even when "toggled off" - if a log call's MESSAGE argument is
+  built via string concatenation, that concatenation runs before the
+  function call regardless of what the function does with it
+  internally (BDScript evaluates arguments eagerly), so a gate like
+  `if debug_enabled(): log(...)` only skips the log() itself, not any
+  concatenation done inline in the same statement. A shared helper
+  (`debug_time(label, t0)`) moves the gate inside the function, but a
+  caller building `label` via concatenation before passing it in still
+  pays that cost unconditionally.
+
 LOGS
   Servers write your activity to /var/log/auth.log. When you disconnect,
   IDS-enabled servers scan that log and add noise for every entry with
