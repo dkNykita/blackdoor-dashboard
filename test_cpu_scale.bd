@@ -20,6 +20,16 @@ func test_throttle(threshold, scale):
     while get_cpu() > threshold:
         sleep(1 * scale)
 
+# get_unix_time() - real wall-clock seconds since epoch, documented as
+# the intended way to benchmark a script's own real elapsed time
+# (distinct from get_trace_time(), the trace countdown). Bookends the
+# loop below so the result isn't just "did it crash" but also "did the
+# real elapsed time roughly match what scale=0.5 should cost" (80 *
+# 0.5s = 40s expected, if sleep() is behaving as assumed) - a
+# mismatch would mean something other than the pause itself is eating
+# the time, worth knowing before trusting this test's conclusion either way.
+var start_time = get_unix_time()
+
 var i = 0
 var dummy = ""
 while i < 80:
@@ -31,4 +41,5 @@ while i < 80:
     log("iteration " + str(i) + " cpu=" + str(get_cpu()))
     i = i + 1
 
-log("Test complete at scale 0.5 (80 iterations) - no overload.", Color.green)
+var elapsed = get_unix_time() - start_time
+log("Test complete at scale 0.5 (80 iterations) - no overload. Elapsed: " + str(elapsed) + "s (expected ~40s).", Color.green)
