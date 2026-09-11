@@ -52,37 +52,49 @@ func local_tick_rate():
 # going below 1s at all was, for reasons never pinned down without a
 # real profiler). This machine is still base tier as of this function's
 # introduction, so cpu_scale() itself is a safe no-op right now (always
-# 1.0) - but a future session should NOT wire it directly into the
-# pacing functions below just because the ratio looks favorable on
-# paper. Treat any resulting value < 1.0 as unvalidated: apply it to
-# ONE call site, on an actual higher-tier machine, and live-test that
-# specific change in isolation before trusting it anywhere else - the
-# same incremental caution 0c skipped the first time.
+# 1.0) - wired into the three actual wait-DURATION functions below
+# (retry_delay/log_pace/trace_poll_interval), not into the CPU-percent
+# thresholds (cpu_guard_*) or trace-time thresholds (trace_critical/
+# trace_warn/...) - those aren't about execution speed, scaling them by
+# tickrate wouldn't mean anything. At base tier this multiplies
+# everything by exactly 1.0 - byte-identical to the values before this
+# was wired in. Krok 0c (this session) tried shortening these same
+# waits below their current values and killed the script 3x live, at
+# BASE tier, where this ratio is also 1.0 - so the failure wasn't about
+# incorrect tick math, it was about going shorter at all, for reasons
+# never pinned down without a real profiler. The FIRST time this
+# machine's tier actually changes (cpu_scale() reads something other
+# than 1.0 for the first time), that is a live-test event, not a
+# free upgrade - watch the very next `menu` startup and dashboard
+# refresh closely, the same way 0c's attempts were watched, before
+# trusting it through a longer session.
 func cpu_scale():
     return 10 / local_tick_rate()
 
 func cpu_guard_conservative():
     # CPU guard before a light/no-connect call (whois, sqli, scan, ...).
+    # A CPU-percent threshold, not a duration - not tier-scaled.
     return 50
 
 func cpu_guard_fast():
-    # CPU guard before a costlier authenticated/looped call.
+    # CPU guard before a costlier authenticated/looped call. A CPU-
+    # percent threshold, not a duration - not tier-scaled.
     return 80
 
 func retry_delay():
     # Pause between poll attempts in a crack/bypass retry loop.
-    return 0.5
+    return 0.5 * cpu_scale()
 
 func log_pace():
     # Pause between dashboard/log blocks and before prompt()s - resets
     # the sustained-100%-load clock instead of just throttle()'s CPU
     # check (see menu.bd's header comment for why that matters).
-    return 1
+    return 1 * cpu_scale()
 
 func trace_poll_interval():
     # How often wait_for_trace_recovery() re-checks traces() while
     # waiting for a hot trace to fully cool down.
-    return 5
+    return 5 * cpu_scale()
 
 func trace_critical():
     # check_trace()'s hard threshold, absolute seconds - below this,
