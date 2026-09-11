@@ -59,24 +59,40 @@ func empty_entry(ip):
 # read_entries()/write_entries() below - a single host can have a lot of
 # open ports after a full 1-65535 scan, so this inner loop needs its own
 # pacing, not just the outer per-host one that calls it.
+# CONFIRMED fix (live measurement): with only 7 lines in host_intel.txt,
+# read_entries()'s outer per-line/per-token throttling can't explain a
+# 182s get_entry() - the real driver is per-ITEM throttling here, one
+# call per port/user/job/nmap entry, which is unbounded per the file's
+# own header comment ("a host can have a lot of open ports after a full
+# 1-65535 scan"). That's exactly this session's actual data (a full
+# scan was run during testing). Batched to every 8 items - same
+# field_notes.txt "5-8" range as creds.bd's fix, and safe to apply here
+# specifically because this loop's per-item work is uniform (always the
+# same decode shape) rather than the heterogeneous multi-field-type
+# stretch that caused read_entries()'s own per-token throttle to be
+# added in the first place - that one stays untouched, its frequency is
+# tied to a proven crash, not to this bottleneck.
 func decode_tuple_list(nu, blob, field_names, field_types):
     if blob == "":
         return []
     var items = []
+    var i = 0
     for chunk in blob.split(","):
-        nu.throttle(nu.cpu_guard_fast())
+        i = i + 1
+        if i % 8 == 0:
+            nu.throttle(nu.cpu_guard_fast())
         var kv = chunk.split(":")
         var item = {}
-        var i = 0
-        while i < len(field_names):
-            var raw = kv[i]
-            if field_types[i] == "int":
-                item[field_names[i]] = int(raw)
-            elif field_types[i] == "bool":
-                item[field_names[i]] = raw == "1"
+        var j = 0
+        while j < len(field_names):
+            var raw = kv[j]
+            if field_types[j] == "int":
+                item[field_names[j]] = int(raw)
+            elif field_types[j] == "bool":
+                item[field_names[j]] = raw == "1"
             else:
-                item[field_names[i]] = raw
-            i = i + 1
+                item[field_names[j]] = raw
+            j = j + 1
         items.append(item)
     return items
 
@@ -84,24 +100,28 @@ func decode_tuple_list(nu, blob, field_names, field_types):
 # (item[field_names[i]]) works, needed here to serialize a field back out
 # without knowing its name in advance. No list.join() used (not a
 # confirmed List method) - fields are joined manually with ":" the same
-# way the old per-field encode_*() functions did.
+# way the old per-field encode_*() functions did. Batched every 8 items,
+# same reasoning as decode_tuple_list() above.
 func encode_tuple_list(nu, items, field_names, field_types):
     var out = ""
     var first_item = true
+    var i = 0
     for item in items:
-        nu.throttle(nu.cpu_guard_fast())
+        i = i + 1
+        if i % 8 == 0:
+            nu.throttle(nu.cpu_guard_fast())
         if not first_item:
             out = out + ","
-        var i = 0
-        while i < len(field_names):
-            if i > 0:
+        var j = 0
+        while j < len(field_names):
+            if j > 0:
                 out = out + ":"
-            var val = item[field_names[i]]
-            if field_types[i] == "bool":
+            var val = item[field_names[j]]
+            if field_types[j] == "bool":
                 out = out + (val ? "1" : "0")
             else:
                 out = out + str(val)
-            i = i + 1
+            j = j + 1
         first_item = false
     return out
 

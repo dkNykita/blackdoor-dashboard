@@ -135,8 +135,13 @@ func trace_warn():
 # a way to see get_cpu() readings between calls, not just guess-and-kill.
 func throttle(threshold):
     sleep(log_pace())
-    while get_cpu() > threshold:
+    var dbg_retries = 0
+    var dbg_cpu = get_cpu()
+    while dbg_cpu > threshold:
+        log("DEBUG CPU: " + str(dbg_cpu) + " > " + str(threshold) + ", retry " + str(dbg_retries))
+        dbg_retries = dbg_retries + 1
         sleep(log_pace())
+        dbg_cpu = get_cpu()
 
 func wait_for_trace_recovery(host):
     log("Trace low - disconnecting and waiting for full recovery...")
