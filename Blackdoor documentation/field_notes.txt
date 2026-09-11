@@ -267,14 +267,33 @@ CONFIRMED THIS SESSION (live testing of the refactored Active tree):
   - do_grab() (grab.bd, post Krok-3 walk_tree() rewrite) downloaded 0
     files from a directory confirmed (via a separate manual ssh session)
     to actually contain 3 files - no error, no crash, just silently 0.
-    grab_on_file()'s callback only log()s on download() SUCCESS, never
-    on failure, so there's currently no visibility into why each
-    download() call returned success:false. Prime suspect: the newly-
-    documented race_locked field on download()'s return shape (see
-    CONFIRMED WORKING above) - completely unhandled/unlogged anywhere in
-    our code. Not yet diagnosed further - needs a temporary debug log on
-    the failure path (mirroring how the hostdata.bd CPU-overload gap was
-    isolated earlier this session) before a real fix can be designed.
+    DIAGNOSED via temporary debug log (dumped the full download() result
+    on failure): all 3 failed with error: "permission denied", size 0,
+    owner "" - race_locked never appeared in the result shape at all, so
+    that theory is ruled out. The account used was confirmed (asked the
+    player directly) to be the SAME account ("anon42") that a separate
+    manual ssh session showed as the on-disk OWNER of all 3 files, with
+    world-readable "-rw-r--r--" permission bits via `ls` - so this is NOT
+    an account-mismatch (e.g. connecting as root against anon42-owned
+    files) or a posix-permission-bits issue either. download()'s own
+    permission model for these files denies the very account `ls` shows
+    as both owner and world-readable. Not yet explained by anything in
+    api_documentation.txt or documentation_from_editor.txt found so far.
+    Two live possibilities, untested: (a) download() enforces something
+    stricter/different than what `ls` displays (e.g. a real ownership
+    check that doesn't match `ls`'s cosmetic owner field), or (b) log
+    files specifically (/var/log/*) are deliberately undownloadable by
+    design (only scrub_log()/delete_file() can touch them - consistent
+    with this session's earlier Discord finding that quests only ever
+    recognize LogScrubber-use or full deletion, never partial edits) -
+    untested whether the same account grabbing a NON-log directory (e.g.
+    /home/anon42) succeeds. *** FIXED (independent of root cause): the
+    player pointed out the real bug isn't the permission denial itself
+    (which may be legitimate game behavior) but that do_grab() gave zero
+    indication why - grab_on_file() now log()s the error reason on every
+    failed file (amber), and do_grab()'s final summary now says
+    "Downloaded X/Y files (Z failed - see above)" instead of silently
+    under-counting. ***
 
 STILL UNRESOLVED / CONFIRMED ABSENT:
   - No real "-flag" command-line syntax exists via @param - it binds
