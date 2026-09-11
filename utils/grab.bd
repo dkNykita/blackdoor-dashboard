@@ -5,17 +5,20 @@
 
 # Per-file callback for nu.walk_tree() - context unused (none).
 #
+# download() logs its own "Downloaded: <path> (<size>)" line on success
+# (confirmed live) - no success log() needed here, that would just
+# duplicate it (confirmed live too, as a second plain-white line under
+# download()'s own colored one).
+#
 # download() can fail per-file for reasons unrelated to walk_tree() itself
 # (permission denied even on an account-owned, world-readable file per
 # `ls` - confirmed live; also documented but never seen live: race_locked)
 # - used to be silently dropped (do_grab() just under-counted with no
-# indication why). Always surfaced now, success or failure, so a "Done.
-# Downloaded 0 files." never happens without an explanation right above it.
+# indication why). Failure is always surfaced now, so a "Done. Downloaded
+# 0 files." never happens without an explanation right above it.
 func grab_on_file(conn, path, f, context):
     var result = download(conn, path)
-    if result.success:
-        log("Downloaded: " + result.path)
-    else:
+    if not result.success:
         log("Skipped " + path + ": " + (result.error != "" ? result.error : "download failed") + ".", Color.amber)
     return {"conn": conn, "reconnected": false, "value": result.success ? 1 : 0}
 
