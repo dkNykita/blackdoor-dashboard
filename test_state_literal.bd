@@ -1,31 +1,9 @@
-# test_state_literal.bd - THROWAWAY test, isolates whether the
-# multi-line object literal itself is the problem, or something else
-# (e.g. "state" as a variable name colliding with something reserved).
-# Delete after use.
+# test_state_literal.bd - THROWAWAY test, round 2: minimal 2-key
+# multi-line object literal, to isolate whether multi-line literals
+# work at all or something specific to the bigger one broke it.
 
-var state = {
-    "logs_dirty": false,
-    "ids_log_cleared": false,
-    "fw_active": false,
-    "fw_layers": 0,
-    "fw_layers_remaining": 0,
-    "noise": 0,
-    "accounts": [],
-    "owner": "",
-    "banner": "",
-    "os_name": "",
-    "security": -1,
-    "trace_ceiling": none,
-    "users": none,
-    "next_vuln": none,
-    "open_ports": none,
-    "specs": none,
-    "jobs": none,
-    "daemons_here": none,
-    "nmap_data": none,
-    "sqli_status": none,
-    "target_is_own_ip": false
+var small = {
+    "a": 1,
+    "b": 2
 }
-
-log("Literal parsed and ran fine.")
-log(str(state))
+log("Small literal OK: " + str(small))
