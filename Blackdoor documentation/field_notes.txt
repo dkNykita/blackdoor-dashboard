@@ -68,12 +68,18 @@ CPU LOAD (confirmed by testing this session)
   - A transition point matters as much as any individual loop: a
     function can be internally well-paced yet still overload if nothing
     throttles/sleeps on the way IN, especially right after a busy
-    action (confirmed twice this session - once at script startup
-    between the last import and ~200 unpaced var/func lines, once at
-    the dispatch-loop-to-print_dashboard() jump after a grab run). Fix
-    is the same both times: an unconditional throttle()/sleep(1) as
-    close to the entry point as possible, not just deeper inside the
-    function's own body.
+    action. Confirmed FOUR separate times this session: script startup
+    between the last import and ~200 unpaced var/func lines; the
+    dispatch-loop-to-print_dashboard() jump after a grab run; entering
+    refresh_status() straight from resolve_raw_target()+get_entry()
+    overhead; and hostdata.bd's read_entries(), whose own first
+    throttle() lived inside its per-line loop instead of at the
+    function's entry, so a caller arriving with the CPU aggregate
+    already elevated got no chance to recover before real work began.
+    Fix is the same every time: an unconditional throttle()/sleep(1) as
+    the function's OWN first line, not just deeper inside its body -
+    check this on every new function that gets called from a busy spot,
+    not just ones with their own internal loops.
   - Shortening throttle()'s sleep() to match a faster CPU tier does NOT
     make it faster - confirmed via an isolated standalone test (halving
     the sleep, simulating cpu_scale()=0.5 as if Mk.II tier): it didn't
@@ -122,13 +128,21 @@ CPU LOAD (confirmed by testing this session)
     API call - if the list it walks can grow across sessions (anything
     read from a file that gets appended to over time), pace it.
   - Periodic pacing ("throttle every N iterations" instead of every
-    single one) is NOT reliably safe once per-iteration cost varies or
-    is itself unbounded - e.g. a loop whose body does its own nested
-    scan over another list (cost scales with THAT list's size, not the
-    outer loop's). Checked-every-5 still let bursts through that
-    checked-every-1 didn't. Reserve periodic pacing for loops where each
-    iteration is a small, genuinely bounded constant amount of work;
-    throttle every iteration otherwise even though it's slower.
+    single one) is NEVER safe here, full stop - not even for loops that
+    look small, uniform, and cheap. First seen with variable/unbounded
+    per-iteration cost (a nested scan over another list) where
+    checked-every-5 let bursts through that checked-every-1 didn't -
+    reasonable to assume that was the whole story. Then DISPROVEN more
+    strongly: batching two "obviously cheap, obviously bounded" loops
+    (hostdata.bd's decode/encode_tuple_list(), 2-4 items in this
+    session's real data; three loops in creds.bd) to every 8th iteration
+    caused real live crashes, and a maximally isolated test settled it -
+    a bare script with NO imports, no state, no file I/O, just a while
+    loop calling log() 20 times with zero pacing, crashed after only
+    ~13 iterations. "Looks cheap" and "looks short" are not a safe basis
+    for skipping a throttle() call, ever - throttle every single
+    iteration, unconditionally, even when every prior instinct says a
+    given loop couldn't possibly be the problem.
   - Debugging tip: a script that dies with zero visible output
     overloaded before its very first log() line - the cause is early
     (import chain, or the first unpaced loop before any logging). A
@@ -175,130 +189,41 @@ CPU LOAD (confirmed by testing this session)
     the top - a CPU fix and a trace fix aren't interchangeable, and
     solving one silently reopened the other.
 
-STARTUP CPU OVERLOAD - ONGOING INVESTIGATION (Krok 12+, not yet solved)
-  menu.bd's "Checking status..." phase (refresh_status(), inside
-  get_entry()/read_entries()) has crashed with CPU overload repeatedly
-  this session, with WILDLY inconsistent timing across otherwise
-  identical runs (same host_intel.txt, same code, `ps`/`jobs` confirmed
-  no other process ever running):
-    - Run A: get_entry() took ~197s, then continued another ~130s
-      into refresh_status() before crashing after 1st check_trace().
-    - Run B: get_entry() took ~197s again (same!), but crashed almost
-      immediately after in get_noise() - much earlier than run A.
-    - Run C (with debug logging added inside throttle()'s retry loop):
-      crashed FAST, within seconds, with ZERO retries ever logged - the
-      script's own get_cpu() checks never saw an elevated reading, yet
-      it still overloaded. Later concluded this run was likely
-      contaminated by the debug logging's own added tick cost (every
-      throttle() call got 1-2 extra unconditional lines) - a valid
-      lesson but not a clean data point.
-    - Run D (per-line checkpoints added inside read_entries(), debug
-      logging's throttle()-internal cost removed): crashed during the
-      very FIRST line of host_intel.txt (a simple 2-field entry, ~8
-      throttle() calls total for that one line) - far too little
-      per-line work to explain a "5 sustained seconds at 100%" kill on
-      its own, unless the aggregate was already critical from the
-      ~16s of cumulative import+state-declaration cost immediately
-      before it.
-  Two real, confirmed-safe fixes came out of this investigation
-  regardless of the open question: cracked_accounts_for()/is_cracked()
-  double-throttling an already-built in-memory list (fixed, batched to
-  8), and decode_tuple_list()/encode_tuple_list() batched to 8 (currently
-  a no-op on this session's small data, but correct for a future host
-  with a larger list).
-  RULED OUT via direct isolated measurement (test_import_cost.bd, 11
-  imports with utils/dashboard.bd vs. 10 without): 13.61s vs 12.39s,
-  a ~1.22s difference almost entirely explained by the one extra
-  sleep(1) between imports - dashboard.bd's actual added parse cost is
-  ~0.2s, negligible. Krok 12 is NOT the cause. Also ruled out: real
-  host-machine/OS load (not applicable - stay scoped to the game's own
-  simulated environment when debugging this), and planted daemons
-  (player confirmed none active - daemons run "whether you're connected
-  or not" per daemon_listen()'s own doc and wouldn't show in `ps`/
-  `jobs`, so this was worth checking specifically and ruling out).
-  DEFINITIVE isolation test: emptied host_intel.txt entirely (backed up
-  first) and re-ran - crashed at the EXACT SAME point (right as
-  read_entries()'s per-line loop starts, processing a blank line that
-  does almost nothing) as with the full file. This rules out data
-  volume and parsing workload completely - the crash is tied to
-  CUMULATIVE ELAPSED TIME/ticks from imports+state declaration by the
-  time read_entries() starts, not to what it actually does.
-  FIX APPLIED (real improvement, confirmed to add real measured delay -
-  not yet confirmed to fully prevent the crash): read_entries() itself
-  had the exact same missing-transition-gap bug already fixed twice
-  elsewhere this session (refresh_status(), print_dashboard()) - its
-  own first throttle() lived INSIDE the per-line loop, not at the
-  function's entry, so a caller arriving with the aggregate already
-  critical (from resolve_raw_target() + target_is_own_ip + get_entry()
-  overhead, zero pacing since the last sleep(1)) had no chance to
-  recover before real work began. Added nu.throttle() as read_entries()'s
-  first line. Measured effect: this throttle call itself took 2.61s
-  (real retries, not a no-op) - proof the aggregate WAS elevated and
-  the fix is doing real work - but the crash still occurred a few
-  seconds later, just pushed back slightly. Player's own instinct
-  ("někde tam prostě musí chybět wait na cpu") led directly to finding
-  this specific gap - trust that read when the elapsed-time evidence
-  doesn't add up to the workload being measured.
-  STILL UNRESOLVED as of this note: even with the read_entries() entry
-  throttle fix AND all debug logging fully disabled (ruling out
-  logging's own tick cost as the culprit a second time), the script
-  still overloads during this same general area. The underlying
-  mechanism - why get_cpu()'s aggregate is sometimes fine and sometimes
-  critical after IDENTICAL cumulative work (same imports, same state,
-  same file) - remains unexplained. Current working theory: the total
-  cumulative cost of 11 imports + state + early get_entry() work sits
-  close enough to whatever threshold triggers the overload that
-  inherent jitter/non-determinism in get_cpu()'s own readings (matches
-  player's own observation: rapid, non-monotonic swings like
-  "80/100-20-60-100-20") decides pass/fail on a given run - not a
-  single findable bug, but an inadequate safety margin. Reducing total
-  upfront cost (e.g., lazy/deferred imports for menu-choice-specific
-  modules like grab/sqli/cleanup/firewall) was proposed but not
-  attempted - player judged it not worth pursuing since import cost
-  was already shown to be a small fraction of the total (see above).
-  Also confirmed as a side lesson (twice): debug/diagnostic logging is
-  not free even when "toggled off" - if a log call's MESSAGE argument
-  is built via string concatenation, that concatenation runs before
-  the function call regardless of what the function does with it
-  internally (BDScript evaluates arguments eagerly), so a gate like
+STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
+  menu.bd's "Checking status..." phase (refresh_status() ->
+  get_entry()/read_entries()) crashed with CPU overload repeatedly
+  during this session's testing, with timing that varied wildly across
+  otherwise-identical runs (same host_intel.txt, same code, confirmed
+  via `ps`/`jobs` that no other process was ever running). Root cause
+  and fixes are folded into the CPU LOAD section above (the strengthened
+  "transition point" and "periodic pacing is never safe" bullets came
+  directly out of this investigation) - this entry records what was
+  RULED OUT along the way, so it isn't re-suspected blindly next time:
+  - Krok 12 (moving 4 functions from menu.bd into a new utils/
+    dashboard.bd module, adding an 11th import): measured directly
+    (test_import_cost.bd) at ~0.2s of actual added cost, negligible -
+    not the cause.
+  - Real host-machine/OS load: out of scope for this investigation by
+    design - stay scoped to the game's own simulated environment.
+  - Planted daemons (they run whether connected or not, and wouldn't
+    show in `ps`/`jobs`): player confirmed none active.
+  - Data volume in host_intel.txt: emptied the file entirely (backed up
+    first) and the crash still happened at the exact same point,
+    processing a blank line that does almost nothing - proves the
+    crash was never about what read_entries() parses.
+  Also confirmed as a side lesson: debug/diagnostic logging is not free
+  even when "toggled off" - if a log call's MESSAGE argument is built
+  via string concatenation, that concatenation runs before the function
+  call regardless of what the function does with it internally
+  (BDScript evaluates arguments eagerly), so a gate like
   `if debug_enabled(): log(...)` only skips the log() itself, not any
-  concatenation done inline in the same statement. A shared helper
-  (`debug_time(label, t0)`) moves the gate inside the function, but a
-  caller building `label` via concatenation before passing it in still
-  pays that cost unconditionally - had to specifically guard a per-line
-  label that embedded a whole raw config line for exactly this reason.
-
-  RESOLVED (root cause found): per-token debug checkpoints inside
-  read_entries()'s field loop showed real multi-second gaps even
-  between trivial, non-throttled calls (e.g. decode_fw() - three
-  split(":") calls, nothing else - showed a 2.3s gap on its own),
-  pointing at something more fundamental than any single call site.
-  Settled with a maximally-isolated test (test_log_cost.bd): a bare
-  script with NO imports, no state, no file I/O - just a while loop
-  calling log() 20 times with zero pacing - overloaded and crashed
-  after only ~13 iterations. This proves, independent of any
-  accumulated load from earlier in a script, that a tight unpaced loop
-  of even fairly small size (not "unbounded lists", not "many files" -
-  just a bare counting loop with plain log() calls) is enough on its
-  own to trigger the CPU-overload kill.
-  This directly indicted a mistake made earlier in this same
-  investigation: decode_tuple_list()/encode_tuple_list() (hostdata.bd)
-  and all three loops in creds.bd had been "optimized" by batching
-  their throttle() calls to every 8th iteration instead of every one,
-  on the theory that per-item throttling was overkill for cheap,
-  uniform work. That batching REMOVED the per-iteration safety net for
-  exactly the small lists (2-4 items) and line counts this session's
-  real data actually has - opening unpaced stretches of several items'
-  worth of work, back to back, which the isolated test now shows is
-  independently enough to crash. REVERTED all of it: every loop in
-  hostdata.bd and creds.bd throttles every single iteration again, no
-  batching, no skipped "redundant" passes, no exceptions - this
-  codebase's own rule from earlier in the session, which batching had
-  quietly violated. The lesson generalizes: never skip or batch a
-  throttle() call because the per-iteration work "looks cheap enough"
-  or the list "looks short enough" - a plain counting loop with only
-  log() calls in the body is proof enough that "cheap-looking" is not
-  a safe basis for judgment here at all.
+  concatenation done inline in the same statement or passed as an
+  argument. The shared `nu.debug_time(label, t0)` helper moves the gate
+  inside the function, but a caller building `label` via concatenation
+  before passing it in still pays that cost unconditionally - guard the
+  concatenation itself at any call site that's expensive to build
+  (e.g. embedding a whole raw line of text), not just the eventual
+  log() call.
 
 LOGS
   Servers write your activity to /var/log/auth.log. When you disconnect,
