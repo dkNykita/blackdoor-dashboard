@@ -1,5 +1,7 @@
 BUG REPORT: Object literals cannot span multiple lines (parser limitation, undocumented)
 
+Tags: script
+
 Current behavior:
 Writing an object literal across multiple lines (one key per line, a common, readable style) fails to parse with "Expected property name in object literal" - even in a minimal, syntactically valid case (2 keys, no comments):
 

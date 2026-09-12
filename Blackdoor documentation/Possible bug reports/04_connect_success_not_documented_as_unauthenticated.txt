@@ -1,5 +1,7 @@
 BUG REPORT: connect().success does not mean authenticated - the official web API reference's own example doesn't flag this
 
+Tags: script
+
 Current behavior:
 connect(target, port) returns {success: true, user: "", ...} even for WRONG or uncracked credentials - success:true only means "the port was reachable", not "login succeeded". The only reliable way to confirm actual authentication is checking user != "".
 

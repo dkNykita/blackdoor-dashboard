@@ -1,5 +1,7 @@
 BUG REPORT: download() denies /var/log files even for the confirmed owning, world-readable account
 
+Tags: gameplay, script
+
 Current behavior:
 download(conn, path) returns {success: false, error: "permission denied", size: 0, owner: ""} for files under /var/log/*, even when the script is connected as the SAME account that `ls` shows as the file's owner, with world-readable permissions (-rw-r--r--). This failed for all 3 files in the directory, with no exception raised.
 

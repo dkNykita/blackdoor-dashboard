@@ -1,5 +1,7 @@
 BUG REPORT: sqli() raises a runtime error instead of returning the documented {success, data, error} shape
 
+Tags: script
+
 Current behavior:
 sqli(url) can throw a runtime error ("no routes on target") instead of returning {success: false, data: "", error: "..."}. If the calling code doesn't wrap sqli() in try/catch, the whole script crashes with an unhandled exception.
 

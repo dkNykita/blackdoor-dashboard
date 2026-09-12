@@ -1,5 +1,7 @@
 BUG REPORT: prompt() cannot receive whitespace-only input (breaks the common "space + Enter for default" convention)
 
+Tags: ui, script
+
 Current behavior:
 prompt() never returns if the player types only a space (or spaces) and hits Enter - the terminal's input widget discards whitespace-only input before it ever reaches the script. The effect is identical to a bare Enter (prompt() just keeps waiting on the same line). Repeating it changes nothing.
 

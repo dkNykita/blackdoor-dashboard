@@ -1,5 +1,7 @@
 BUG REPORT: A module's top-level statement restriction is undocumented and inconsistent with top-level scripts
 
+Tags: script
+
 Current behavior:
 A module (a file imported via `import "path" as alias`) may only have the following at its top level: function definitions, imports, or a `var` assigned a call-free (purely literal) value. Writing something like `var x = some_function()` at a module's top level is rejected with a PARSE error ("Module '...' has a statement at its top level that isn't a function definition, a constant `var` with a call-free value, or an import") - before the script even runs, not as a runtime error.
 
