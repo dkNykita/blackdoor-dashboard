@@ -1,4 +1,4 @@
-Report link: 
+Report link: https://discordapp.com/channels/1490681520174661755/1548138571041611866
 BUG REPORT: download() denies /var/log files even for the confirmed owning, world-readable account
 
 Tags: gameplay, script

@@ -1,4 +1,4 @@
-Report link: 
+Report link: https://discordapp.com/channels/1490681520174661755/1548139135066443928
 BUG REPORT: A module's top-level statement restriction is undocumented and inconsistent with top-level scripts
 
 Tags: script

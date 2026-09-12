@@ -1,4 +1,4 @@
-Report link: 
+Report link: https://discordapp.com/channels/1490681520174661755/1548138788994162798
 BUG REPORT: connect().success does not mean authenticated - the official web API reference's own example doesn't flag this
 
 Tags: script

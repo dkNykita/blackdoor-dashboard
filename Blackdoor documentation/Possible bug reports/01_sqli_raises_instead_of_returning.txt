@@ -1,3 +1,4 @@
+Report link: https://discordapp.com/channels/1490681520174661755/1548137528115077212
 BUG REPORT: sqli() raises a runtime error instead of returning the documented {success, data, error} shape
 
 Tags: script
@@ -18,4 +19,4 @@ Steps to reproduce:
 
 Sources:
 - Documented return shape: https://blackdoor.tools/api/ - sqli(url) entry: "{success: true, data: '...', error: ''}", Cost: 2 ticks, Noise: 0.03. No mention there of a possible raise/exception on failure.
-- The actual raise behavior itself is not documented anywhere official - confirmed only via live testing this session (real crash on choice "7" against a target with no configured SQLi routes).
+- The actual raise behavior itself is not documented anywhere official - confirmed only via live testing this session.

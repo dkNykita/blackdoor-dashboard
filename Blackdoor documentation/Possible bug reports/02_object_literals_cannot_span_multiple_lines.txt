@@ -1,3 +1,4 @@
+Report link: https://discordapp.com/channels/1490681520174661755/1548137908710547607
 BUG REPORT: Object literals cannot span multiple lines (parser limitation, undocumented)
 
 Tags: script
