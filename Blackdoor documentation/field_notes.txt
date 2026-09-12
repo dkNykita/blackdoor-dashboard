@@ -206,28 +206,67 @@ STARTUP CPU OVERLOAD - ONGOING INVESTIGATION (Krok 12+, not yet solved)
   8), and decode_tuple_list()/encode_tuple_list() batched to 8 (currently
   a no-op on this session's small data, but correct for a future host
   with a larger list).
-  Live-suspected but NOT yet confirmed either way: Krok 12 (moving
-  refresh_status()/print_dashboard()/mark_cracked()/print_separator()
-  from menu.bd into a new utils/dashboard.bd module, ~330+ lines) added
-  an 11th import - and this file's own earlier finding ("importing
-  costs ticks proportional to the imported file's line count, function
-  bodies included") means that 11th import could cost roughly as much
-  as the "declare in script" cost it was meant to remove, netting out
-  to no real improvement or even a regression. No clean before/after
-  measurement exists (the timing instrumentation was added around the
-  same time as Krok 12) - an isolated test (test_import_cost.bd,
-  11 imports vs. 10, comparing "all done" elapsed time) was in progress
-  to settle this when this note was written.
-  Also confirmed as a side lesson: debug/diagnostic logging is not
-  free even when "toggled off" - if a log call's MESSAGE argument is
-  built via string concatenation, that concatenation runs before the
-  function call regardless of what the function does with it
+  RULED OUT via direct isolated measurement (test_import_cost.bd, 11
+  imports with utils/dashboard.bd vs. 10 without): 13.61s vs 12.39s,
+  a ~1.22s difference almost entirely explained by the one extra
+  sleep(1) between imports - dashboard.bd's actual added parse cost is
+  ~0.2s, negligible. Krok 12 is NOT the cause. Also ruled out: real
+  host-machine/OS load (not applicable - stay scoped to the game's own
+  simulated environment when debugging this), and planted daemons
+  (player confirmed none active - daemons run "whether you're connected
+  or not" per daemon_listen()'s own doc and wouldn't show in `ps`/
+  `jobs`, so this was worth checking specifically and ruling out).
+  DEFINITIVE isolation test: emptied host_intel.txt entirely (backed up
+  first) and re-ran - crashed at the EXACT SAME point (right as
+  read_entries()'s per-line loop starts, processing a blank line that
+  does almost nothing) as with the full file. This rules out data
+  volume and parsing workload completely - the crash is tied to
+  CUMULATIVE ELAPSED TIME/ticks from imports+state declaration by the
+  time read_entries() starts, not to what it actually does.
+  FIX APPLIED (real improvement, confirmed to add real measured delay -
+  not yet confirmed to fully prevent the crash): read_entries() itself
+  had the exact same missing-transition-gap bug already fixed twice
+  elsewhere this session (refresh_status(), print_dashboard()) - its
+  own first throttle() lived INSIDE the per-line loop, not at the
+  function's entry, so a caller arriving with the aggregate already
+  critical (from resolve_raw_target() + target_is_own_ip + get_entry()
+  overhead, zero pacing since the last sleep(1)) had no chance to
+  recover before real work began. Added nu.throttle() as read_entries()'s
+  first line. Measured effect: this throttle call itself took 2.61s
+  (real retries, not a no-op) - proof the aggregate WAS elevated and
+  the fix is doing real work - but the crash still occurred a few
+  seconds later, just pushed back slightly. Player's own instinct
+  ("někde tam prostě musí chybět wait na cpu") led directly to finding
+  this specific gap - trust that read when the elapsed-time evidence
+  doesn't add up to the workload being measured.
+  STILL UNRESOLVED as of this note: even with the read_entries() entry
+  throttle fix AND all debug logging fully disabled (ruling out
+  logging's own tick cost as the culprit a second time), the script
+  still overloads during this same general area. The underlying
+  mechanism - why get_cpu()'s aggregate is sometimes fine and sometimes
+  critical after IDENTICAL cumulative work (same imports, same state,
+  same file) - remains unexplained. Current working theory: the total
+  cumulative cost of 11 imports + state + early get_entry() work sits
+  close enough to whatever threshold triggers the overload that
+  inherent jitter/non-determinism in get_cpu()'s own readings (matches
+  player's own observation: rapid, non-monotonic swings like
+  "80/100-20-60-100-20") decides pass/fail on a given run - not a
+  single findable bug, but an inadequate safety margin. Reducing total
+  upfront cost (e.g., lazy/deferred imports for menu-choice-specific
+  modules like grab/sqli/cleanup/firewall) was proposed but not
+  attempted - player judged it not worth pursuing since import cost
+  was already shown to be a small fraction of the total (see above).
+  Also confirmed as a side lesson (twice): debug/diagnostic logging is
+  not free even when "toggled off" - if a log call's MESSAGE argument
+  is built via string concatenation, that concatenation runs before
+  the function call regardless of what the function does with it
   internally (BDScript evaluates arguments eagerly), so a gate like
   `if debug_enabled(): log(...)` only skips the log() itself, not any
   concatenation done inline in the same statement. A shared helper
   (`debug_time(label, t0)`) moves the gate inside the function, but a
   caller building `label` via concatenation before passing it in still
-  pays that cost unconditionally.
+  pays that cost unconditionally - had to specifically guard a per-line
+  label that embedded a whole raw config line for exactly this reason.
 
 LOGS
   Servers write your activity to /var/log/auth.log. When you disconnect,
