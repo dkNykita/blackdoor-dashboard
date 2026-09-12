@@ -1,0 +1,15 @@
+BUG REPORT: sqli() raises a runtime error instead of returning the documented {success, data, error} shape
+
+Aktuální stav/chování:
+sqli(url) může vyhodit runtime chybu ("no routes on target") místo toho, aby vrátila {success: false, data: "", error: "..."}. Pokud volající kód sqli() neobalí do try/catch, celý skript spadne s neošetřenou výjimkou.
+
+Očekávaný stav:
+api_documentation.txt dokumentuje sqli() jako funkci vracející {success, data, error} - implikuje to, že selhání (žádné dostupné routy, chybný cíl apod.) se projeví jako success:false + vyplněné error pole, ne jako výjimka. Volající kód, který se spoléhá jen na kontrolu .success (podle dokumentovaného tvaru), skript nečekaně spadne.
+
+Popis procesu:
+V naší codebase (utils/sqli.bd) měla funkce try_direct() volání sqli(url) bez try/catch (na rozdíl od try_form(), která submit_form() už obaluje). Živě jsme narazili na pád přímo na tomhle řádku. Opravili jsme to na naší straně (try/catch kolem sqli()), ale sama funkce by podle vlastní dokumentované návratové hodnoty neměla nikdy raisovat - to je nekonzistence mezi dokumentovaným chováním (graceful return) a skutečným (throw).
+
+Způsob replikace:
+1. Najdi/vytvoř cíl bez nakonfigurovaných SQLi routes (žádná skutečná zranitelná cesta na webu).
+2. Zavolej sqli(host + "/nejaka/neexistujici/routa") přímo (bez try/catch).
+3. Skript spadne s "Line X: sqli: no routes on target" místo aby vrátil {success:false, ...}.

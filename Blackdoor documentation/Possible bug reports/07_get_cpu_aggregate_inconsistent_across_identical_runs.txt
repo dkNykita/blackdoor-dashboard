@@ -1,0 +1,19 @@
+BUG REPORT: get_cpu()'s aggregate load behaves wildly inconsistently across identical script runs, causing unpredictable CPU-overload kills
+
+Aktuální stav/chování:
+Spuštění IDENTICKÉHO skriptu, se stejnými daty (stejný host_intel.txt), stejným kódem, potvrzeno žádný jiný proces neběží (`ps`/`jobs` prázdné, žádné naplánované daemony) - produkuje DRAMATICKY odlišné chování mezi jednotlivými spuštěními:
+  - Jednou stejná operace (parsování malého lokálního souboru) trvala ~197 sekund reálného času, bez pádu.
+  - Jindy stejná operace spadla s "CPU overloaded" po jen několika sekundách.
+  - Hráčovo vlastní pozorování: get_cpu() hodnoty skáčou nepředvídatelně (např. 80/100-20-60-100-20 v rychlém sledu), ne plynule stoupají/klesají.
+  - Izolovaný test (bare skript, ŽÁDNÉ importy, žádný state, jen while smyčka s 20× log()) spadl po ~13 iteracích - dokazuje, že i triviální, izolovaná zátěž může způsobit pád bez závislosti na čemkoliv předchozím.
+
+Očekávaný stav:
+Buď by CPU/tick model měl být deterministický (stejný kód + stejná data = stejné chování), nebo by mělo existovat zdokumentované vysvětlení, co všechno ovlivňuje get_cpu()'s hodnotu (agregát "napříč všemi tvými procesy" - ale jaké procesy přesně, v jakém časovém okně, s jakou frekvencí vzorkování/decay).
+
+Popis procesu:
+Tohle byla nejrozsáhlejší investigace celé session - vyloučili jsme postupně: objem dat v souboru (test s prázdným souborem spadl na stejném místě), počet/velikost importovaných modulů (přímo změřeno, zanedbatelný rozdíl), externí zátěž reálného stroje (mimo scope), naplánované daemony (potvrzeno žádné aktivní). Opravili jsme reálné mezery v našem vlastním throttlingu (chybějící throttle() na začátku funkcí, omylem zavedené dávkování throttle volání) - každá oprava posunula bod pádu o kus dál, ale nikdy ho úplně neodstranila. Finální, ještě neúplně ověřený krok byl plošné rozšíření bezpečnostních marží (nižší CPU prahy, delší pauzy).
+
+Způsob replikace:
+1. Vytvoř script, co importuje několik modulů (10+), pak čte a parsuje malý lokální soubor (7-8 řádků, pár desítek "tokenů" k rozparsování).
+2. Spusť ho opakovaně, se STEJNÝMI daty, bez jakékoliv jiné aktivity mezi pokusy.
+3. Pozoruj: doba běhu a výsledek (úspěch/pád) se výrazně liší mezi jednotlivými spuštěními, i když kód a data jsou identické.

@@ -1,0 +1,16 @@
+BUG REPORT: prompt() cannot receive whitespace-only input (breaks the common "space + Enter for default" convention)
+
+Aktuální stav/chování:
+prompt() se vůbec nevrátí, pokud hráč zadá jen mezeru (nebo více mezer) a stiskne Enter - terminálový vstupní widget zahodí čistě-whitespace vstup ještě PŘED tím, než se dostane do skriptu. Efekt je identický s holým Enterem (prompt() dál čeká na stejném řádku). Opakování nic nemění.
+
+Očekávaný stav:
+Komunitní konvence (a intuitivní očekávání) je, že "napiš mezeru a Enter pro výchozí hodnotu" by mělo fungovat - odešle se řetězec " ", který po `.trim()` dá "". Ve skutečnosti se tahle cesta nedá spustit vůbec, protože vstup se ztratí ještě před doručením do skriptu.
+
+Popis procesu:
+Naše vlastní field_notes.txt dřív (mylně) tvrdila, že tahle cesta funguje ("CONFIRMED WORKING") - až opakovaný přímý test ve hře ukázal, že ne. Přepsali jsme celé UX v našich scriptech na explicitní non-whitespace sentinel ("-" místo mezery), protože jinak nešlo default/skip větev vůbec nikdy spustit.
+
+Způsob replikace:
+1. Spusť libovolný script s `var x = prompt("Test: "); log("got: [" + x.trim() + "]")`.
+2. Do promptu napiš JEN mezeru a stiskni Enter.
+3. Výsledek: prompt() se nevrátí, terminál dál čeká na vstup na stejném řádku - stejně jako u holého Enteru.
+4. Zkus to samé s libovolným NE-whitespace znakem (např. "-") - funguje normálně.

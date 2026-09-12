@@ -1,0 +1,21 @@
+BUG REPORT: Module top-level statement restrictions are undocumented and inconsistent with top-level scripts
+
+Aktuální stav/chování:
+Modul (soubor importovaný přes `import "cesta" as alias`) smí mít na top-level POUZE: definice funkcí, importy, nebo `var` s call-free (čistě literální) hodnotou. Zápis jako `var x = nejaka_funkce()` na top-level modulu je odmítnut PARSE chybou ("Module '...' has a statement at its top level that isn't a function definition, a constant `var` with a call-free value, or an import") - tedy ještě před spuštěním skriptu, ne jako runtime chyba.
+
+Tohle omezení NEPLATÍ pro top-level SCRIPT (hlavní spouštěný soubor) - ten běžně provádí volání funkcí ve svých top-level příkazech (accesses API funkce, volá pomocné funkce atd.) bez problémů.
+
+Očekávaný stav:
+Buď by modul měl podporovat stejnou expresivitu jako script (konzistence), nebo by tohle omezení mělo být jasně zdokumentované u `import` v api_documentation.txt - aktuálně tam o tom není ani zmínka, a chybová hláška je jediný způsob, jak se to člověk dozví (a to až po pokusu, ne dopředu).
+
+Popis procesu:
+Narazili jsme na tohle při pokusu o "eager" inicializaci cachované hodnoty na module-level (`var _tick_rate_cache = _read_tick_rate_from_config()`), motivované snahou přečíst konfigurační hodnotu jen jednou za běh skriptu místo opakovaně. Očekávali jsme, že to bude fungovat stejně jako v top-level scriptu. Skript se vůbec nespustil - rovnou parse chyba.
+
+Způsob replikace:
+1. Vytvoř modul (soubor importovaný přes `import`) obsahující:
+   func get_value():
+       return 5
+   var cached = get_value()
+2. Naimportuj tenhle modul z libovolného scriptu.
+3. Výsledek: parse chyba "Module '...' has a statement at its top level that isn't a function definition, a constant `var` with a call-free value, or an import" - script se vůbec nespustí.
+4. Stejný vzor (`var x = nejaka_funkce()`) přímo v TOP-LEVEL SCRIPTU (ne v modulu) funguje bez problémů.

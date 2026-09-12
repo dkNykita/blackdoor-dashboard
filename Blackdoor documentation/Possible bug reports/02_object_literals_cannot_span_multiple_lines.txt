@@ -1,0 +1,28 @@
+BUG REPORT: Object literals cannot span multiple lines (parser limitation, undocumented)
+
+Aktuální stav/chování:
+Zápis object literálu přes více řádků (jeden klíč na řádek, běžný, čitelný styl) selže s parse chybou "Expected property name in object literal" - a to i v naprosto minimálním, syntakticky validním případě (2 klíče, žádné komentáře):
+
+    var small = {
+        "a": 1,
+        "b": 2
+    }
+
+Stejný obsah zapsaný na jednom řádku funguje bez problémů:
+
+    var small = {"a": 1, "b": 2}
+
+Očekávaný stav:
+Každá jiná víceřádková konstrukce v jazyce (if/while/for tělo, volání funkce rozdělené přes víc řádků) funguje bez problémů. Object literál by se měl chovat konzistentně - buď podporovat víceřádkový zápis jako všechno ostatní, nebo by tohle omezení mělo být jasně zdokumentované (aktuálně není nikde zmíněné v api_documentation.txt ani jinde).
+
+Popis procesu:
+Zjištěno při refaktoringu, kdy jsme chtěli sloučit ~20 proměnných do jednoho přehledného, víceřádkového dict literálu (kvůli čitelnosti a údržbě). První pokus s inline komentáři u jednotlivých klíčů selhal - mysleli jsme si, že problém jsou komentáře. Izolovaný test ale ukázal, že i holý 2-klíčový literál bez jakýchkoliv komentářů, jen rozdělený na víc řádků, selhává úplně stejně. Jediná oprava byla přepsat celý literál na jeden (velmi dlouhý) řádek.
+
+Způsob replikace:
+1. Spusť libovolný skript obsahující:
+   var x = {
+       "a": 1,
+       "b": 2
+   }
+2. Výsledek: "Line N: Expected property name in object literal."
+3. Stejný obsah na jednom řádku (var x = {"a": 1, "b": 2}) projde bez problémů.
