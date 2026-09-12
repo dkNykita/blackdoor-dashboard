@@ -190,6 +190,7 @@ func read_entries(nu):
         # Slower per host, but this is the loop that kept overloading
         # with lighter pacing - reliability over speed here.
         nu.throttle(nu.cpu_guard_fast())
+        nu.debug_time("line " + str(dbg_line_num) + " per-line throttle done", dbg_t0)
         var trimmed = line.trim()
         if trimmed == "":
             continue
