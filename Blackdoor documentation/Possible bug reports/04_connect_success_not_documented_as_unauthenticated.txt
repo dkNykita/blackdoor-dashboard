@@ -1,17 +1,17 @@
-BUG REPORT: connect().success does not mean authenticated - undocumented in api_documentation.txt (inconsistency between doc sources)
+BUG REPORT: connect().success does not mean authenticated - the official web API reference's own example doesn't flag this
 
 Current behavior:
 connect(target, port) returns {success: true, user: "", ...} even for WRONG or uncracked credentials - success:true only means "the port was reachable", not "login succeeded". The only reliable way to confirm actual authentication is checking user != "".
 
-This behavior IS documented in documentation_from_editor.txt (the in-editor reference), but is NOT mentioned in api_documentation.txt (the main/official reference), where connect() reads as if success:true were sufficient confirmation of a successful connection.
+UPDATE after cross-checking the genuine official docs (Blackdoor documentation/Official documentation/): this behavior IS correctly documented in editor_documentation.txt (the in-editor `help api` full reference, confirmed genuinely official - it's byte-identical to what this session had previously filed as a secondary source). It is NOT flagged in web_api.txt's (https://blackdoor.tools/api/, also genuinely official) own connect() entry, whose example shows only the successful-auth case with no warning about the success:true/user:"" trap. (Earlier drafts of this report blamed api_documentation.txt for the gap - that file turned out to not be official at all, see the separate CPU-tick-cost finding in field_notes.txt, so it's removed from this comparison.)
 
 Expected behavior:
-api_documentation.txt should carry the same warning as documentation_from_editor.txt - otherwise it's a trap for anyone relying only on the "official" reference: they'll write `if conn.success: ...` and assume authentication, while actually they've only reached a reachable port without any password verification.
+web_api.txt's connect() entry should carry the same warning editor_documentation.txt already has - a player who only reads the web reference (the more prominent, comprehensive-looking one) will write `if conn.success: ...` and assume authentication, when they've only confirmed the port is reachable.
 
 Process description:
-We found this gap unchecked everywhere in our own codebase - net.bd's connect_or_raise() and every caller (do_grab/do_scrub_log/do_raw_cleanup/do_escalate, menu.bd's refresh_status()) only checked .success. Discovered while reading documentation_from_editor.txt, not api_documentation.txt - had we relied only on the "official" reference, we would never have caught this gap ourselves, only via a live test with a wrong password.
+We found this gap unchecked everywhere in our own codebase - net.bd's connect_or_raise() and every caller (do_grab/do_scrub_log/do_raw_cleanup/do_escalate, menu.bd's refresh_status()) only checked .success. Discovered while reading editor_documentation.txt, not web_api.txt - had we relied only on the web reference, we would never have caught this gap ourselves, only via a live test with a wrong password.
 
 Steps to reproduce:
 1. Call connect("wrong_account@target", 22) with a wrong/uncracked password.
 2. Result: {success: true, user: "", ...} - looks like success, but user is empty.
-3. Compare with api_documentation.txt's description of connect() - there's no mention anywhere of needing to check user != "".
+3. Compare with web_api.txt's connect() example - it shows only a successful, already-authenticated call, with no mention of checking user != "".
