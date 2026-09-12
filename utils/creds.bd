@@ -8,26 +8,20 @@
 # Takes a utils/net module instance (nu) as a parameter instead of
 # importing it itself - see utils/net.bd for why.
 
-# field_notes.txt (CPU LOAD): "sleep(1) between every handful of lines
-# (roughly every 5-8), not just around expensive API calls, is the safe
-# default" - and separately, a hand-written loop over an accumulated
-# file "that had grown to several dozen+ lines... overloaded on a call
-# that 'should' have been instant" even with only free-looking built-ins
-# in the body, no per-iteration pacing at all. Both apply directly here:
-# credentials.txt has grown large after a full testing session, and a
-# fully-unthrottled pass over it (tried first, measured unsafe by that
-# same logic before it ever shipped) risks exactly that crash. Batched
-# every 8 lines/items instead - within the documented safe range, and
-# still a real win over throttling literally every single one.
+# REVERTED (live-confirmed regression): batching every 8 lines/items
+# was wrong. An isolated test (test_log_cost.bd) proved a completely
+# bare, fresh script with NO imports/state/accumulated load crashes
+# from CPU overload after only ~13 plain log() calls in a tight loop
+# with zero pacing - confirming this codebase's own rule applies with
+# no exceptions: every single iteration needs its own throttle() call,
+# never skipped or batched, regardless of how cheap each individual
+# operation looks.
 func read_credentials(nu):
     nu.throttle(nu.cpu_guard_conservative())
     var raw = read_local("/home/" + whoami() + "/.ssh/credentials")
     var creds = []
-    var i = 0
     for line in raw.split("\n"):
-        i = i + 1
-        if i % 8 == 0:
-            nu.throttle(nu.cpu_guard_conservative())
+        nu.throttle(nu.cpu_guard_conservative())
         var trimmed = line.trim()
         if trimmed == "" or trimmed.starts_with("#"):
             continue
@@ -40,34 +34,21 @@ func read_credentials(nu):
         creds.append({"account": at[0], "host": at[1], "password": parts[1]})
     return creds
 
-# CONFIRMED fix (live measurement): both loops below used to re-throttle
-# on EVERY iteration of an ALREADY-fully-built in-memory list -
-# read_credentials(nu) just paced through the exact same real work
-# (reading+parsing the file line by line) to build it, so a second full
-# per-item pass added real wall-clock cost (measured: cracked_accounts_for()
-# alone cost ~107s) without guarding against anything new (no file I/O,
-# no API call in this loop, just a plain in-memory comparison per
-# entry). Batched to every 8 (not removed outright - field_notes.txt's
-# own "accumulated file, no per-iteration pacing, overloaded on a call
-# that should have been instant" finding applies to a large in-memory
-# list too, not just file lines).
+# REVERTED batching here too - throttle every iteration, no exceptions,
+# even over an already-built in-memory list (see read_credentials()'s
+# comment above for why: an isolated test proved ~13 unpaced iterations
+# of even trivial work is enough to crash on its own).
 func is_cracked(nu, account, host):
-    var i = 0
     for c in read_credentials(nu):
-        i = i + 1
-        if i % 8 == 0:
-            nu.throttle(nu.cpu_guard_conservative())
+        nu.throttle(nu.cpu_guard_conservative())
         if c.account == account and c.host == host:
             return true
     return false
 
 func cracked_accounts_for(nu, host):
     var accounts = []
-    var i = 0
     for c in read_credentials(nu):
-        i = i + 1
-        if i % 8 == 0:
-            nu.throttle(nu.cpu_guard_conservative())
+        nu.throttle(nu.cpu_guard_conservative())
         if c.host == host:
             accounts.append(c.account)
     return accounts

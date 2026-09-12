@@ -59,28 +59,24 @@ func empty_entry(ip):
 # read_entries()/write_entries() below - a single host can have a lot of
 # open ports after a full 1-65535 scan, so this inner loop needs its own
 # pacing, not just the outer per-host one that calls it.
-# CONFIRMED fix (live measurement): with only 7 lines in host_intel.txt,
-# read_entries()'s outer per-line/per-token throttling can't explain a
-# 182s get_entry() - the real driver is per-ITEM throttling here, one
-# call per port/user/job/nmap entry, which is unbounded per the file's
-# own header comment ("a host can have a lot of open ports after a full
-# 1-65535 scan"). That's exactly this session's actual data (a full
-# scan was run during testing). Batched to every 8 items - same
-# field_notes.txt "5-8" range as creds.bd's fix, and safe to apply here
-# specifically because this loop's per-item work is uniform (always the
-# same decode shape) rather than the heterogeneous multi-field-type
-# stretch that caused read_entries()'s own per-token throttle to be
-# added in the first place - that one stays untouched, its frequency is
-# tied to a proven crash, not to this bottleneck.
+# REVERTED (live-confirmed regression): batching this to every 8 items
+# was wrong - an isolated test (test_log_cost.bd) proved a completely
+# bare, fresh script with NO imports/state/accumulated load crashes
+# from CPU overload after only ~13 plain log() calls in a tight loop,
+# zero pacing. Batching removed the per-item throttle for exactly the
+# small lists (2-4 items) this session's real host_intel.txt actually
+# has, opening an unpaced stretch (several items' worth of split()+
+# dict-write work, back to back) big enough to contribute to a crash
+# on its own - the "unbounded ports list" concern that motivated
+# batching never materialized in the real data. Back to throttling
+# every single item, no batching, no exceptions - matches this
+# codebase's own hard-won rule everywhere else.
 func decode_tuple_list(nu, blob, field_names, field_types):
     if blob == "":
         return []
     var items = []
-    var i = 0
     for chunk in blob.split(","):
-        i = i + 1
-        if i % 8 == 0:
-            nu.throttle(nu.cpu_guard_fast())
+        nu.throttle(nu.cpu_guard_fast())
         var kv = chunk.split(":")
         var item = {}
         var j = 0
@@ -100,16 +96,13 @@ func decode_tuple_list(nu, blob, field_names, field_types):
 # (item[field_names[i]]) works, needed here to serialize a field back out
 # without knowing its name in advance. No list.join() used (not a
 # confirmed List method) - fields are joined manually with ":" the same
-# way the old per-field encode_*() functions did. Batched every 8 items,
-# same reasoning as decode_tuple_list() above.
+# way the old per-field encode_*() functions did. REVERTED batching -
+# same reasoning as decode_tuple_list() above, throttle every item.
 func encode_tuple_list(nu, items, field_names, field_types):
     var out = ""
     var first_item = true
-    var i = 0
     for item in items:
-        i = i + 1
-        if i % 8 == 0:
-            nu.throttle(nu.cpu_guard_fast())
+        nu.throttle(nu.cpu_guard_fast())
         if not first_item:
             out = out + ","
         var j = 0
