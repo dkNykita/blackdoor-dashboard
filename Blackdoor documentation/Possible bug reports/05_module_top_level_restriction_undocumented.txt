@@ -1,29 +1,30 @@
+Report link: 
 BUG REPORT: A module's top-level statement restriction is undocumented and inconsistent with top-level scripts
 
 Tags: script
 
 Current behavior:
-A module (a file imported via `import "path" as alias`) may only have the following at its top level: function definitions, imports, or a `var` assigned a call-free (purely literal) value. Writing something like `var x = some_function()` at a module's top level is rejected with a PARSE error ("Module '...' has a statement at its top level that isn't a function definition, a constant `var` with a call-free value, or an import") - before the script even runs, not as a runtime error.
+A module (imported via `import "path" as alias`) may only have function defs, imports, or a `var` assigned a call-free (literal) value at its top level. `var x = some_function()` at a module's top level is rejected with a PARSE error before the script even runs.
 
-This restriction does NOT apply to a top-level SCRIPT (the main entry file) - a script routinely executes function calls in its own top-level statements without issue.
+This does NOT apply to a top-level SCRIPT (main entry file) - a script freely calls functions in its own top-level statements.
 
-`import` itself IS documented (basic syntax: `import "utils"` and `import "utils" as u`), but nothing describes this asymmetry between a module's top level and a script's top level, or the call-free-value restriction on module-level vars.
+`import` itself IS documented (`import "utils"`, `import "utils" as u`), but nothing describes this module/script asymmetry or the call-free-value restriction.
 
 Expected behavior:
-Either a module should support the same expressiveness as a script (for consistency), or - at minimum - this restriction and the module/script distinction should be documented alongside the existing `import` syntax entry.
+Either a module should support the same expressiveness as a script, or this restriction should be documented alongside the existing `import` entry.
 
 Process description:
-We ran into this while attempting an "eager" initialization of a cached value at module level (`var _tick_rate_cache = _read_tick_rate_from_config()`), motivated by wanting to read a config value only once per script run instead of repeatedly. We expected it to work the same as in a top-level script, since nothing in the `import` documentation suggested otherwise. The script didn't run at all - straight to a parse error.
+Ran into this attempting an "eager" cache init at module level (`var _tick_rate_cache = _read_tick_rate_from_config()`), to read a config value once per run. Expected it to work like a top-level script - nothing in the `import` docs suggested otherwise. The script didn't run at all.
 
 Steps to reproduce:
-1. Create a module (a file imported via `import`) containing:
+1. Create a module containing:
    func get_value():
        return 5
    var cached = get_value()
-2. Import this module from any script.
-3. Result: parse error "Module '...' has a statement at its top level that isn't a function definition, a constant `var` with a call-free value, or an import" - the script doesn't run at all.
-4. The same pattern (`var x = some_function()`) directly in a TOP-LEVEL SCRIPT (not a module) works fine.
+2. Import it from any script.
+3. Result: parse error, script doesn't run at all.
+4. The same pattern directly in a TOP-LEVEL SCRIPT (not a module) works fine.
 
 Sources:
-- `import` syntax documented in the in-editor scripting reference (FUNCTIONS section): `import "utils"` (load functions from another .bd file), `import "utils" as u` (shorter alias). No mention there, or anywhere else checked, of the top-level restriction or the module/script asymmetry.
-- The top-level restriction itself: confirmed only via the engine's own live parse error this session, not from any documentation.
+- `import` documented in the in-editor scripting reference (FUNCTIONS section): `import "utils"`, `import "utils" as u`. No mention of the top-level restriction or module/script asymmetry there or anywhere else checked.
+- The restriction itself: confirmed only via the engine's own live parse error this session.
