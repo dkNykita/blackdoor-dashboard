@@ -1,21 +1,21 @@
 BUG REPORT: Module top-level statement restrictions are undocumented and inconsistent with top-level scripts
 
-Aktuální stav/chování:
-Modul (soubor importovaný přes `import "cesta" as alias`) smí mít na top-level POUZE: definice funkcí, importy, nebo `var` s call-free (čistě literální) hodnotou. Zápis jako `var x = nejaka_funkce()` na top-level modulu je odmítnut PARSE chybou ("Module '...' has a statement at its top level that isn't a function definition, a constant `var` with a call-free value, or an import") - tedy ještě před spuštěním skriptu, ne jako runtime chyba.
+Current behavior:
+A module (a file imported via `import "path" as alias`) may only have the following at its top level: function definitions, imports, or a `var` assigned a call-free (purely literal) value. Writing something like `var x = some_function()` at a module's top level is rejected with a PARSE error ("Module '...' has a statement at its top level that isn't a function definition, a constant `var` with a call-free value, or an import") - before the script even runs, not as a runtime error.
 
-Tohle omezení NEPLATÍ pro top-level SCRIPT (hlavní spouštěný soubor) - ten běžně provádí volání funkcí ve svých top-level příkazech (accesses API funkce, volá pomocné funkce atd.) bez problémů.
+This restriction does NOT apply to a top-level SCRIPT (the main entry file) - a script routinely executes function calls in its own top-level statements (calling API functions, helper functions, etc.) without issue.
 
-Očekávaný stav:
-Buď by modul měl podporovat stejnou expresivitu jako script (konzistence), nebo by tohle omezení mělo být jasně zdokumentované u `import` v api_documentation.txt - aktuálně tam o tom není ani zmínka, a chybová hláška je jediný způsob, jak se to člověk dozví (a to až po pokusu, ne dopředu).
+Expected behavior:
+Either a module should support the same expressiveness as a script (for consistency), or this restriction should be clearly documented next to `import` in api_documentation.txt - currently there's no mention of it anywhere, and the error message is the only way to discover it (and only after attempting it, not in advance).
 
-Popis procesu:
-Narazili jsme na tohle při pokusu o "eager" inicializaci cachované hodnoty na module-level (`var _tick_rate_cache = _read_tick_rate_from_config()`), motivované snahou přečíst konfigurační hodnotu jen jednou za běh skriptu místo opakovaně. Očekávali jsme, že to bude fungovat stejně jako v top-level scriptu. Skript se vůbec nespustil - rovnou parse chyba.
+Process description:
+We ran into this while attempting an "eager" initialization of a cached value at module level (`var _tick_rate_cache = _read_tick_rate_from_config()`), motivated by wanting to read a config value only once per script run instead of repeatedly. We expected it to work the same as in a top-level script. The script didn't run at all - straight to a parse error.
 
-Způsob replikace:
-1. Vytvoř modul (soubor importovaný přes `import`) obsahující:
+Steps to reproduce:
+1. Create a module (a file imported via `import`) containing:
    func get_value():
        return 5
    var cached = get_value()
-2. Naimportuj tenhle modul z libovolného scriptu.
-3. Výsledek: parse chyba "Module '...' has a statement at its top level that isn't a function definition, a constant `var` with a call-free value, or an import" - script se vůbec nespustí.
-4. Stejný vzor (`var x = nejaka_funkce()`) přímo v TOP-LEVEL SCRIPTU (ne v modulu) funguje bez problémů.
+2. Import this module from any script.
+3. Result: parse error "Module '...' has a statement at its top level that isn't a function definition, a constant `var` with a call-free value, or an import" - the script doesn't run at all.
+4. The same pattern (`var x = some_function()`) directly in a TOP-LEVEL SCRIPT (not a module) works fine.

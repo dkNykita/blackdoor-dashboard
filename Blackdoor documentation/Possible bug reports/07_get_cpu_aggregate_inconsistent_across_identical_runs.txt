@@ -1,19 +1,19 @@
 BUG REPORT: get_cpu()'s aggregate load behaves wildly inconsistently across identical script runs, causing unpredictable CPU-overload kills
 
-Aktuální stav/chování:
-Spuštění IDENTICKÉHO skriptu, se stejnými daty (stejný host_intel.txt), stejným kódem, potvrzeno žádný jiný proces neběží (`ps`/`jobs` prázdné, žádné naplánované daemony) - produkuje DRAMATICKY odlišné chování mezi jednotlivými spuštěními:
-  - Jednou stejná operace (parsování malého lokálního souboru) trvala ~197 sekund reálného času, bez pádu.
-  - Jindy stejná operace spadla s "CPU overloaded" po jen několika sekundách.
-  - Hráčovo vlastní pozorování: get_cpu() hodnoty skáčou nepředvídatelně (např. 80/100-20-60-100-20 v rychlém sledu), ne plynule stoupají/klesají.
-  - Izolovaný test (bare skript, ŽÁDNÉ importy, žádný state, jen while smyčka s 20× log()) spadl po ~13 iteracích - dokazuje, že i triviální, izolovaná zátěž může způsobit pád bez závislosti na čemkoliv předchozím.
+Current behavior:
+Running an IDENTICAL script, with identical data (same host_intel.txt), identical code, confirmed no other process running (`ps`/`jobs` empty, no scheduled daemons) - produces DRAMATICALLY different behavior between runs:
+  - One run: the same operation (parsing a small local file) took ~197 real seconds, no crash.
+  - Another run: the same operation crashed with "CPU overloaded" after only a few seconds.
+  - Player's own observation: get_cpu() values jump unpredictably (e.g. 80/100-20-60-100-20 in quick succession), not smoothly rising/falling.
+  - An isolated test (a bare script, NO imports, no state, just a while loop with 20x log()) crashed after ~13 iterations - proving even trivial, isolated load can trigger a crash independent of anything preceding it.
 
-Očekávaný stav:
-Buď by CPU/tick model měl být deterministický (stejný kód + stejná data = stejné chování), nebo by mělo existovat zdokumentované vysvětlení, co všechno ovlivňuje get_cpu()'s hodnotu (agregát "napříč všemi tvými procesy" - ale jaké procesy přesně, v jakém časovém okně, s jakou frekvencí vzorkování/decay).
+Expected behavior:
+Either the CPU/tick model should be deterministic (same code + same data = same behavior), or there should be documentation explaining what actually influences get_cpu()'s reading (the aggregate "across all your processes" - but which processes exactly, over what time window, with what sampling/decay rate).
 
-Popis procesu:
-Tohle byla nejrozsáhlejší investigace celé session - vyloučili jsme postupně: objem dat v souboru (test s prázdným souborem spadl na stejném místě), počet/velikost importovaných modulů (přímo změřeno, zanedbatelný rozdíl), externí zátěž reálného stroje (mimo scope), naplánované daemony (potvrzeno žádné aktivní). Opravili jsme reálné mezery v našem vlastním throttlingu (chybějící throttle() na začátku funkcí, omylem zavedené dávkování throttle volání) - každá oprava posunula bod pádu o kus dál, ale nikdy ho úplně neodstranila. Finální, ještě neúplně ověřený krok byl plošné rozšíření bezpečnostních marží (nižší CPU prahy, delší pauzy).
+Process description:
+This was the most extensive investigation of the whole session. We progressively ruled out: data volume in the file (a test with an empty file crashed at the same point), the number/size of imported modules (directly measured, negligible difference), external load on the real machine (out of scope), scheduled daemons (confirmed none active). We fixed real gaps in our own throttling (missing throttle() at function entry points, an accidentally-introduced throttle-call batching regression) - each fix pushed the crash point further out, but never eliminated it entirely. The final, not-yet-fully-verified step was broadly widening safety margins (lower CPU thresholds, longer pauses).
 
-Způsob replikace:
-1. Vytvoř script, co importuje několik modulů (10+), pak čte a parsuje malý lokální soubor (7-8 řádků, pár desítek "tokenů" k rozparsování).
-2. Spusť ho opakovaně, se STEJNÝMI daty, bez jakékoliv jiné aktivity mezi pokusy.
-3. Pozoruj: doba běhu a výsledek (úspěch/pád) se výrazně liší mezi jednotlivými spuštěními, i když kód a data jsou identické.
+Steps to reproduce:
+1. Create a script that imports several modules (10+), then reads and parses a small local file (7-8 lines, a few dozen "tokens" to parse).
+2. Run it repeatedly, with IDENTICAL data, with no other activity between attempts.
+3. Observe: run time and outcome (success/crash) vary significantly between runs, even though the code and data are identical.

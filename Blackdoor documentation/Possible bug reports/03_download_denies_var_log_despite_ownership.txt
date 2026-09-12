@@ -1,16 +1,16 @@
 BUG REPORT: download() denies /var/log files even for the confirmed owning, world-readable account
 
-Aktuální stav/chování:
-download(conn, path) vrátí {success: false, error: "permission denied", size: 0, owner: ""} pro soubory pod /var/log/*, i když je skript připojený jako STEJNÝ účet, který `ls` ukazuje jako vlastníka souboru, s world-readable oprávněními (-rw-r--r--). Selhání nastalo pro všechny 3 soubory ve složce, žádná výjimka.
+Current behavior:
+download(conn, path) returns {success: false, error: "permission denied", size: 0, owner: ""} for files under /var/log/*, even when the script is connected as the SAME account that `ls` shows as the file's owner, with world-readable permissions (-rw-r--r--). This failed for all 3 files in the directory, with no exception raised.
 
-Očekávaný stav:
-Buď by download() měl respektovat stejná oprávnění, jaká zobrazuje `ls` (v takovém případě by měl uspět), nebo - pokud je to záměrné herní omezení (log soubory jde jen scrubnout/smazat, ne stáhnout) - mělo by to být jasně zdokumentované v api_documentation.txt u download()/read_file(). Aktuálně nic takového zmíněné není.
+Expected behavior:
+Either download() should respect the same permissions `ls` displays (in which case it should succeed), or - if this is an intentional game restriction (log files can only be scrubbed/deleted, not downloaded) - it should be clearly documented in api_documentation.txt for download()/read_file(). Currently nothing like this is mentioned.
 
-Popis procesu:
-Živě testováno: připojení jako "anon42" na cíl s otevřeným /var/log obsahujícím auth.log, jobs.log, syslog (potvrzeno manuální `ls` session, všechny world-readable, vlastník anon42). do_grab() (naše volání download()) nahlásilo "Downloaded 0 files" bez chyby - až po přidání debug logu jsme zjistili skutečný důvod (permission denied na všech 3 souborech). Následný test STEJNÉHO účtu proti JINÉ složce (/home/anon42, žádné /var/log soubory) uspěl bez problémů - stáhlo všech 6 souborů včetně podadresáře. To potvrzuje, že omezení je specifické pro /var/log, ne obecný problém s oprávněními účtu.
+Process description:
+Tested live: connected as "anon42" against a target with an open /var/log containing auth.log, jobs.log, syslog (confirmed via a manual `ls` session - all world-readable, owned by anon42). do_grab() (our wrapper around download()) reported "Downloaded 0 files" with no error - only after adding debug logging did we find the real reason (permission denied on all 3 files). A follow-up test with the SAME account against a DIFFERENT directory (/home/anon42, no /var/log files) succeeded without issue - downloaded all 6 files including a subdirectory. This confirms the restriction is specific to /var/log, not a general account-permission issue.
 
-Způsob replikace:
-1. Crackni/přihlas se na cíl, kde máš potvrzené vlastnictví a world-readable oprávnění (přes `ls`) k souborům v /var/log.
-2. Zavolej download(conn, "/var/log/nejaky_soubor.log").
-3. Výsledek: {success: false, error: "permission denied"} - i když `ls` ukazuje, že by čtení mělo být povolené.
-4. Pro srovnání zkus download() na souboru MIMO /var/log se stejným účtem - uspěje.
+Steps to reproduce:
+1. Crack/log in to a target where you have confirmed ownership and world-readable permissions (via `ls`) on files in /var/log.
+2. Call download(conn, "/var/log/some_file.log").
+3. Result: {success: false, error: "permission denied"} - even though `ls` shows read access should be allowed.
+4. For comparison, try download() on a file OUTSIDE /var/log with the same account - it succeeds.

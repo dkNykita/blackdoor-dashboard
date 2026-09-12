@@ -1,17 +1,17 @@
-BUG REPORT: connect().success does not mean authenticated - undocumented in api_documentation.txt (documentation inconsistency mezi zdroji)
+BUG REPORT: connect().success does not mean authenticated - undocumented in api_documentation.txt (inconsistency between doc sources)
 
-Aktuální stav/chování:
-connect(target, port) vrátí {success: true, user: "", ...} i pro ŠPATNÉ nebo necracknuté přihlašovací údaje - success:true znamená jen "port byl dosažitelný", ne "přihlášení uspělo". Jediný spolehlivý způsob, jak zjistit skutečné přihlášení, je kontrola user != "".
+Current behavior:
+connect(target, port) returns {success: true, user: "", ...} even for WRONG or uncracked credentials - success:true only means "the port was reachable", not "login succeeded". The only reliable way to confirm actual authentication is checking user != "".
 
-Toto chování JE zdokumentované v documentation_from_editor.txt (in-editor referenční dokumentace), ale NENÍ zmíněné v api_documentation.txt (hlavní/oficiální reference), kde connect() vypadá jako by success:true bylo dostatečným potvrzením úspěšného připojení.
+This behavior IS documented in documentation_from_editor.txt (the in-editor reference), but is NOT mentioned in api_documentation.txt (the main/official reference), where connect() reads as if success:true were sufficient confirmation of a successful connection.
 
-Očekávaný stav:
-api_documentation.txt by měl obsahovat stejné upozornění jako documentation_from_editor.txt - jinak je to past pro každého, kdo se spoléhá jen na "oficiální" referenci: napíše `if conn.success: ...` a předpokládá autentizaci, zatímco ve skutečnosti se jen přihlásil na dosažitelný port bez ověření hesla.
+Expected behavior:
+api_documentation.txt should carry the same warning as documentation_from_editor.txt - otherwise it's a trap for anyone relying only on the "official" reference: they'll write `if conn.success: ...` and assume authentication, while actually they've only reached a reachable port without any password verification.
 
-Popis procesu:
-V naší codebase jsme tuhle mezeru našli nikde nekontrolovanou - net.bd's connect_or_raise() a všechna volající místa (do_grab/do_scrub_log/do_raw_cleanup/do_escalate, menu.bd's refresh_status()) kontrolovaly jen .success. Objeveno při čtení documentation_from_editor.txt, ne api_documentation.txt - kdybychom se drželi jen "oficiální" reference, nikdy bychom na tuhle mezeru nenarazili sami, jen živým testem se špatným heslem.
+Process description:
+We found this gap unchecked everywhere in our own codebase - net.bd's connect_or_raise() and every caller (do_grab/do_scrub_log/do_raw_cleanup/do_escalate, menu.bd's refresh_status()) only checked .success. Discovered while reading documentation_from_editor.txt, not api_documentation.txt - had we relied only on the "official" reference, we would never have caught this gap ourselves, only via a live test with a wrong password.
 
-Způsob replikace:
-1. Zavolej connect("spatny_ucet@cil", 22) se špatným/necracknutým heslem.
-2. Výsledek: {success: true, user: "", ...} - vypadá jako úspěch, ale user je prázdný.
-3. Porovnej s api_documentation.txt's popisem connect() - nikde není zmínka o nutnosti kontrolovat user != "".
+Steps to reproduce:
+1. Call connect("wrong_account@target", 22) with a wrong/uncracked password.
+2. Result: {success: true, user: "", ...} - looks like success, but user is empty.
+3. Compare with api_documentation.txt's description of connect() - there's no mention anywhere of needing to check user != "".
