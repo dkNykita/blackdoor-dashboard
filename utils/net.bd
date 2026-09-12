@@ -97,36 +97,31 @@ func local_tick_rate():
                 return 10
     return 10
 
-# TEMP WIDENED (live test): lowered from 50/80 to give a bigger safety
-# margin, on the theory that the startup-area CPU overload (see field_notes.txt's
-# STARTUP CPU OVERLOAD summary) needs more headroom than a per-call
-# threshold tweak alone, not just correctly-placed/never-batched
-# throttle() calls (already fixed separately). Revert to 50/80 if this
-# doesn't measurably help, since a lower threshold means MORE retries
-# per throttle() call (slower overall), not obviously a fix on its own.
+# REVERTED (live test, no measurable effect): lowering these to 35/60
+# and doubling log_pace() below did NOT move the crash point at all -
+# same run reached the exact same logical spot (start of host_intel.txt
+# line 2) both before and after, just took longer (58s vs 48s) to get
+# there. That's a clean negative result: this isn't a real-time/percent-
+# threshold problem that wider margins can buy headroom against - see
+# field_notes.txt's STARTUP CPU OVERLOAD summary for the working theory
+# this points to instead (tied to work done, not time elapsed).
 func cpu_guard_conservative():
     # CPU guard before a light/no-connect call (whois, sqli, scan, ...).
-    return 35
+    return 50
 
 func cpu_guard_fast():
     # CPU guard before a costlier authenticated/looped call.
-    return 60
+    return 80
 
 func retry_delay():
     # Pause between poll attempts in a crack/bypass retry loop.
     return 0.5
 
-# TEMP WIDENED (live test, alongside the lowered cpu_guard_* thresholds
-# above) - doubled from 1 to give get_cpu()'s aggregate more real time
-# to decay per check, on top of checking for a lower target. Revert if
-# this doesn't measurably help - NOT the same experiment as the
-# earlier, already-disproven "shorten this" attempt (Krok 0c/cpu_scale()
-# tier-scaling) - this goes the opposite direction.
 func log_pace():
     # Pause between dashboard/log blocks and before prompt()s - resets
     # the sustained-100%-load clock instead of just throttle()'s CPU
     # check (see menu.bd's header comment for why that matters).
-    return 2
+    return 1
 
 func trace_poll_interval():
     # How often wait_for_trace_recovery() re-checks traces() while
