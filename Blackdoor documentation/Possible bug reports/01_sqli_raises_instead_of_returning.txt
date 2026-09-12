@@ -4,7 +4,7 @@ Current behavior:
 sqli(url) can throw a runtime error ("no routes on target") instead of returning {success: false, data: "", error: "..."}. If the calling code doesn't wrap sqli() in try/catch, the whole script crashes with an unhandled exception.
 
 Expected behavior:
-api_documentation.txt documents sqli() as returning {success, data, error} - implying that failure (no available routes, wrong target, etc.) should surface as success:false with the error field populated, not as an exception. Code that relies only on checking .success (per the documented shape) will crash unexpectedly.
+The documented return shape implies that failure (no available routes, wrong target, etc.) should surface as success:false with the error field populated, not as an exception. Code that relies only on checking .success (per the documented shape) will crash unexpectedly.
 
 Process description:
 In our codebase (utils/sqli.bd), try_direct() called sqli(url) without a try/catch (unlike try_form(), which already wraps submit_form() in try/catch). We hit a live crash directly on this line. We fixed it on our end (wrapped sqli() in try/catch), but the function itself shouldn't ever raise given its own documented return shape - this is an inconsistency between documented behavior (graceful return) and actual behavior (throw).
@@ -13,3 +13,7 @@ Steps to reproduce:
 1. Find/set up a target with no configured SQLi routes (no real vulnerable web path).
 2. Call sqli(host + "/some/nonexistent/route") directly (no try/catch).
 3. The script crashes with "Line X: sqli: no routes on target" instead of returning {success:false, ...}.
+
+Sources:
+- Documented return shape: https://blackdoor.tools/api/ - sqli(url) entry: "{success: true, data: '...', error: ''}", Cost: 2 ticks, Noise: 0.03. No mention there of a possible raise/exception on failure.
+- The actual raise behavior itself is not documented anywhere official - confirmed only via live testing this session (real crash on choice "7" against a target with no configured SQLi routes).

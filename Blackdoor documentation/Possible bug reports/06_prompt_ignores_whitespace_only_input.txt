@@ -7,10 +7,14 @@ Expected behavior:
 The community convention (and intuitive expectation) is that "type a space and Enter for the default" should work - submitting the string " ", which becomes "" after .trim(). In practice this path can never be triggered at all, because the input is lost before it ever reaches the script.
 
 Process description:
-Our own field_notes.txt previously (incorrectly) claimed this path works ("CONFIRMED WORKING") - only a repeated, direct live test showed it doesn't. We rewrote all UX in our scripts to use an explicit non-whitespace sentinel ("-" instead of a space), since otherwise the default/skip branch could never be triggered at all.
+Our own earlier notes (based on a third-party community source) previously claimed this path works - only a repeated, direct live test showed it doesn't. We rewrote all UX in our scripts to use an explicit non-whitespace sentinel ("-" instead of a space), since otherwise the default/skip branch could never be triggered at all.
 
 Steps to reproduce:
 1. Run any script with `var x = prompt("Test: "); log("got: [" + x.trim() + "]")`.
 2. Type ONLY a space in the prompt and hit Enter.
 3. Result: prompt() doesn't return, the terminal keeps waiting for input on the same line - same as a bare Enter.
 4. Try the same with any NON-whitespace character (e.g. "-") - it works normally.
+
+Sources:
+- Documented behavior: https://blackdoor.tools/api/ - prompt(message) entry: "Pause a foreground script and read a real line of typed input." No mention of whitespace-only input handling either way.
+- The actual discard behavior is not documented anywhere official - confirmed only via repeated live testing this session.

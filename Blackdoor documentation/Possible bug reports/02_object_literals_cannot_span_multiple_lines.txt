@@ -13,7 +13,7 @@ The exact same content written on a single line works fine:
     var small = {"a": 1, "b": 2}
 
 Expected behavior:
-Every other multi-line construct in the language (if/while/for bodies, function calls split across lines) works fine. Object literals should behave consistently - either support multi-line syntax like everything else, or this restriction should be clearly documented (it's currently not mentioned anywhere in api_documentation.txt or elsewhere).
+Every other multi-line construct in the language (if/while/for bodies, function calls split across lines) works fine. Object literals should behave consistently - either support multi-line syntax like everything else, or this restriction should be clearly documented (it's currently not mentioned anywhere in the official docs).
 
 Process description:
 Found while refactoring, when we wanted to consolidate ~20 variables into one readable, multi-line dict literal (for clarity and maintainability). The first attempt had inline comments next to individual keys and failed - we assumed comments were the problem. An isolated test showed that even a bare 2-key literal with zero comments, just split across lines, fails identically. The only fix was to rewrite the whole literal as one (very long) line.
@@ -26,3 +26,8 @@ Steps to reproduce:
    }
 2. Result: "Line N: Expected property name in object literal."
 3. The same content on one line (var x = {"a": 1, "b": 2}) works fine.
+
+Sources:
+- Only place object literal syntax appears in any official doc: https://blackdoor.tools/api/ - "var o = {"a": 1}       # object", a single-line example only, doesn't demonstrate or forbid a multi-line form either way.
+- The multi-line restriction itself is not documented anywhere official (checked the web API reference, the in-game api quickref, and the in-editor `help api` reference - no mention in any). Confirmed only via the engine's own live parse error and an isolated test script this session.
+

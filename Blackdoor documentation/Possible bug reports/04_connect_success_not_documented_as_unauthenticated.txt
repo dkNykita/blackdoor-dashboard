@@ -3,15 +3,19 @@ BUG REPORT: connect().success does not mean authenticated - the official web API
 Current behavior:
 connect(target, port) returns {success: true, user: "", ...} even for WRONG or uncracked credentials - success:true only means "the port was reachable", not "login succeeded". The only reliable way to confirm actual authentication is checking user != "".
 
-UPDATE after cross-checking the genuine official docs (Blackdoor documentation/Official documentation/): this behavior IS correctly documented in editor_documentation.txt (the in-editor `help api` full reference, confirmed genuinely official - it's byte-identical to what this session had previously filed as a secondary source). It is NOT flagged in web_api.txt's (https://blackdoor.tools/api/, also genuinely official) own connect() entry, whose example shows only the successful-auth case with no warning about the success:true/user:"" trap. (Earlier drafts of this report blamed api_documentation.txt for the gap - that file turned out to not be official at all, see the separate CPU-tick-cost finding in field_notes.txt, so it's removed from this comparison.)
+This behavior IS correctly documented in the in-editor `help api` full reference. It is NOT flagged in the web API site's (https://blackdoor.tools/api/) own connect() entry, whose example shows only the successful-auth case with no warning about the success:true/user:"" trap.
 
 Expected behavior:
-web_api.txt's connect() entry should carry the same warning editor_documentation.txt already has - a player who only reads the web reference (the more prominent, comprehensive-looking one) will write `if conn.success: ...` and assume authentication, when they've only confirmed the port is reachable.
+The web API reference's connect() entry should carry the same warning the in-editor reference already has - a player who only reads the web reference (the more prominent, comprehensive-looking one) will write `if conn.success: ...` and assume authentication, when they've only confirmed the port is reachable.
 
 Process description:
-We found this gap unchecked everywhere in our own codebase - net.bd's connect_or_raise() and every caller (do_grab/do_scrub_log/do_raw_cleanup/do_escalate, menu.bd's refresh_status()) only checked .success. Discovered while reading editor_documentation.txt, not web_api.txt - had we relied only on the web reference, we would never have caught this gap ourselves, only via a live test with a wrong password.
+We found this gap unchecked everywhere in our own codebase - net.bd's connect_or_raise() and every caller (do_grab/do_scrub_log/do_raw_cleanup/do_escalate, menu.bd's refresh_status()) only checked .success. Discovered while reading the in-editor reference, not the web one - had we relied only on the web reference, we would never have caught this gap ourselves, only via a live test with a wrong password.
 
 Steps to reproduce:
 1. Call connect("wrong_account@target", 22) with a wrong/uncracked password.
 2. Result: {success: true, user: "", ...} - looks like success, but user is empty.
-3. Compare with web_api.txt's connect() example - it shows only a successful, already-authenticated call, with no mention of checking user != "".
+3. Compare with the web API reference's connect() example - it shows only a successful, already-authenticated call, with no mention of checking user != "".
+
+Sources:
+- Gap correctly documented: in-editor `help api` reference - connect(target, port) entry: "`success` only means the network connection opened (port reachable) - wrong credentials still return success:true with `user` empty and no crack recorded, so check `user != ""` to confirm login actually worked."
+- Gap NOT flagged: https://blackdoor.tools/api/ - connect(target, port) entry, example shows only {id, success: true, user: "root", ...} with no warning.

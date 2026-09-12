@@ -5,7 +5,7 @@ A module (a file imported via `import "path" as alias`) may only have the follow
 
 This restriction does NOT apply to a top-level SCRIPT (the main entry file) - a script routinely executes function calls in its own top-level statements without issue.
 
-UPDATE after cross-checking the genuine official docs (Blackdoor documentation/Official documentation/, including the full web API reference web_api.txt at https://blackdoor.tools/api/): the `import` keyword and the entire module/multi-file-script system are not mentioned ANYWHERE in the official documentation set - not in web_api.txt (897 lines, the most comprehensive official source), not in api_quickref.txt, not in editor_documentation.txt. This is a bigger gap than originally filed: it's not just this one restriction that's undocumented, the whole import/module feature appears to be entirely unofficial/undocumented, something players apparently have to discover through experimentation or community knowledge alone.
+The `import` keyword and the entire module/multi-file-script system are not mentioned ANYWHERE in the official documentation - not in the web API reference (the most comprehensive official source), not in the in-game api quickref, not in the in-editor `help api` reference. This is a bigger gap than it first looks: it's not just this one restriction that's undocumented, the whole import/module feature appears to be entirely undocumented, something players apparently have to discover through experimentation or community knowledge alone.
 
 Expected behavior:
 Either a module should support the same expressiveness as a script (for consistency), or - at minimum - the `import` keyword and module system should be documented somewhere official, including this top-level restriction and how modules differ from scripts.
@@ -21,4 +21,8 @@ Steps to reproduce:
 2. Import this module from any script.
 3. Result: parse error "Module '...' has a statement at its top level that isn't a function definition, a constant `var` with a call-free value, or an import" - the script doesn't run at all.
 4. The same pattern (`var x = some_function()`) directly in a TOP-LEVEL SCRIPT (not a module) works fine.
-5. Search web_api.txt / api_quickref.txt / editor_documentation.txt for "import" - no matches in any of them.
+5. Search the web API reference, the in-game api quickref, and the in-editor `help api` reference for "import" - no matches in any of them.
+
+Sources:
+- Checked and confirmed absent from: https://blackdoor.tools/api/ (web API reference), the in-game `~/docs/api_quickref.txt`, and the in-editor `help api` reference - none mention `import` at all.
+- The top-level restriction itself: confirmed only via the engine's own live parse error this session, not from any documentation.

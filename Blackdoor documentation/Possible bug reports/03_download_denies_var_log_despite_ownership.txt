@@ -4,7 +4,7 @@ Current behavior:
 download(conn, path) returns {success: false, error: "permission denied", size: 0, owner: ""} for files under /var/log/*, even when the script is connected as the SAME account that `ls` shows as the file's owner, with world-readable permissions (-rw-r--r--). This failed for all 3 files in the directory, with no exception raised.
 
 Expected behavior:
-Either download() should respect the same permissions `ls` displays (in which case it should succeed), or - if this is an intentional game restriction (log files can only be scrubbed/deleted, not downloaded) - it should be clearly documented in api_documentation.txt for download()/read_file(). Currently nothing like this is mentioned.
+Either download() should respect the same permissions `ls` displays (in which case it should succeed), or - if this is an intentional game restriction (log files can only be scrubbed/deleted, not downloaded) - it should be clearly documented for download()/read_file(). Currently nothing like this is mentioned anywhere official.
 
 Process description:
 Tested live: connected as "anon42" against a target with an open /var/log containing auth.log, jobs.log, syslog (confirmed via a manual `ls` session - all world-readable, owned by anon42). do_grab() (our wrapper around download()) reported "Downloaded 0 files" with no error - only after adding debug logging did we find the real reason (permission denied on all 3 files). A follow-up test with the SAME account against a DIFFERENT directory (/home/anon42, no /var/log files) succeeded without issue - downloaded all 6 files including a subdirectory. This confirms the restriction is specific to /var/log, not a general account-permission issue.
@@ -14,3 +14,7 @@ Steps to reproduce:
 2. Call download(conn, "/var/log/some_file.log").
 3. Result: {success: false, error: "permission denied"} - even though `ls` shows read access should be allowed.
 4. For comparison, try download() on a file OUTSIDE /var/log with the same account - it succeeds.
+
+Sources:
+- Documented behavior: https://blackdoor.tools/api/ - download(conn, path) entry: "Download a file to your machine. Returns transfer info." with a success example, no permission model or /var/log restriction mentioned.
+- The actual denial and its /var/log-specificity are not documented anywhere official - confirmed only via live testing this session.
