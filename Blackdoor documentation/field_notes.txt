@@ -42,8 +42,42 @@ CPU LOAD (confirmed by testing this session)
   speed (10/sec at the base tier - see shop_hw.txt for upgrades). Plain
   statements - assignments, if/loop bodies, log() calls - all count.
   So do crack(), decrypt(), bypass_firewall() - real computation, not
-  network I/O. True network-style calls (connect(), scan(), download(),
-  upload(), sleep()) do NOT cost CPU load - separate meter entirely.
+  network I/O.
+
+  CORRECTED (this document was WRONG about this all session): "network-
+  style calls (connect(), scan(), download(), upload()) do NOT cost CPU
+  load" is FALSE. Confirmed via Official documentation/web_api.txt
+  (https://blackdoor.tools/api/, the genuine first-party API reference -
+  api_documentation.txt, the 910-line file this codebase treated as
+  primary all session, is NOT in the Official documentation set and
+  contains this same wrong claim, i.e. it's a third-party compilation,
+  not official). Real per-call tick costs, straight from web_api.txt:
+    connect()        5 ticks
+    scan()            2 ticks
+    disconnect()      1 tick
+    whois()           1 tick
+    store()           1 tick
+    scan_network()    1 tick
+    read_file()       1 tick
+    download()        10-50 ticks (scales with file size)
+    upload()          10-50 ticks (scales with file size)
+    wget()            10-50 ticks (scales with page/file size)
+  Confirmed genuinely 0 ticks (these were right): sleep(), get_unix_time(),
+  read_local(), whoami(), get_target(), traces(), get_cpu(), cd().
+  Every check_trace()+throttle() pairing around a connect()/download()/
+  scan_network() call in this codebase was written assuming that call
+  contributed NOTHING to the tick tally - each one actually adds 1-50
+  real ticks on top of whatever else ran in that stretch. This doesn't
+  explain hostdata.bd's read_entries() overload (it never calls any of
+  these - pure local line-by-line parsing, real cost is just executed-
+  line count) but likely explains a meaningful share of the *other*
+  unaccounted-for cost in refresh_status() (connect() + scan_network()
+  alone is already 6 ticks per refresh, on top of every line around
+  them) and do_grab()/do_scrub_log() (a download() per file at up to 50
+  ticks each, walk_tree()'s per-file throttle() was paced assuming that
+  call was free). Worth re-auditing pacing around these calls now that
+  the real cost is known, rather than treating api_documentation.txt's
+  numbers (or lack thereof) as ground truth again.
 
   Staying at 100% CPU for 5 STRAIGHT seconds kills every running
   script. This is a SUSTAINED-duration trigger, not an instant one -
