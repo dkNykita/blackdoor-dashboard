@@ -1,0 +1,21 @@
+# test_log_cost.bd - THROWAWAY test. Checks whether log() and/or
+# get_unix_time() themselves carry real wall-clock latency beyond their
+# documented tick cost (log() isn't in the confirmed 0-tick list;
+# get_unix_time() is). If 20 plain log() calls back to back take
+# noticeably more than a fraction of a second, that's the answer.
+# Delete after use.
+
+var t0 = get_unix_time()
+var i = 0
+while i < 20:
+    log("plain log call " + str(i))
+    i = i + 1
+var t1 = get_unix_time()
+log("20 log() calls took " + str(t1 - t0) + "s")
+
+var j = 0
+while j < 20:
+    var x = get_unix_time()
+    j = j + 1
+var t2 = get_unix_time()
+log("20 get_unix_time() calls (no log) took " + str(t2 - t1) + "s")
