@@ -1,0 +1,34 @@
+Source: /home/[USER]/docs/known_vulns.txt
+
+KNOWN VULNERABILITIES
+======================
+Community-maintained. Use at your own risk - not everything here is verified.
+
+OpenSSH 5.3
+  Ancient. If a box is still running this, nobody's touched it in years.
+  Security's usually as stale as the software - don't expect a hardened
+  password either.
+
+OpenSSH 6.7
+  Old enough to worry about, not old enough to be funny. This era shipped
+  with defaults a lot of admins never bothered to change. Try the obvious
+  stuff first.
+
+IIS 6.0
+  Windows Server 2003 era. If you're staring at this, you found either a
+  museum piece or someone's forgotten internal tool. Both are usually
+  soft targets.
+
+Apache 2.2
+  Ubiquitous, ancient, still everywhere. On its own this tells you nothing
+  - half the small business internet never got the memo to upgrade. Check
+  what's actually running behind it before betting on anything.
+
+A NOTE ON BANNERS
+  A version string is a lead, not a guarantee. Boxes get patched without
+  updating what they report, or get set up wrong on purpose (see:
+  honeypots). Cross-check with probe_vuln() before betting a whole
+  approach on a number alone.
+
+This list gets added to. If you find something that should be here,
+nobody's stopping you from editing your own copy.

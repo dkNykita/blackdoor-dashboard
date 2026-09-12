@@ -1,0 +1,86 @@
+Source: /home/[USER]/docs/getting_started.txt
+
+GETTING STARTED
+===============
+
+Welcome to Blackdoor OS. Here's what you need to know.
+
+MOVING AROUND
+  ls             List files in the current directory
+  cd <dir>       Change directory (cd .. to go up)
+  cd ~           Go to your home directory
+  pwd            Show where you are
+
+READING FILES
+  read <file>    Show the contents of a file
+  cat <file>     Same as read (Linux shorthand)
+
+EDITING FILES
+  edit <file>    Open the code editor (Ctrl+S to save, Esc to exit)
+                 Ctrl+Enter saves and runs the open script without leaving
+                 Ctrl+/ toggles a line comment
+  new <file>     Create an empty file
+
+FILE MANAGEMENT
+  rm <file>      Delete a file
+  mv <a> <b>     Move or rename a file
+  cp <a> <b>     Copy a file
+  mkdir <dir>    Create a directory
+
+RUNNING SCRIPTS
+  run <script>   Run a script (or just type its name)
+                 e.g. probe 142.93.44.12
+  <script> &     Start it backgrounded right away (run not required)
+  Ctrl+C         Stop a running script
+  Ctrl+Z         Background the running script (same as bg)
+  bg / fg        Background / foreground the current script
+  ps / jobs      Show running scripts
+  kill <pid>     Stop a script by its process ID
+
+HACKING
+  ssh user@ip    Connect to a remote server (alias: connect)
+  su <user>      Switch user on the connected server
+  disconnect     Disconnect from the current server (alias: dc)
+  download <f>   Download a file from a remote server
+  upload <f>     Upload a file to a remote server
+  scp <src> <dst>  Copy files without an active session
+  wget <url>     Download a file over HTTP (alias: curl)
+  browse <ip>    Open a website in the terminal browser
+  mail <ip>      Open a server's webmail
+  forkbomb       Reset a remote server you've broken beyond use (last resort)
+  network list   List every server you've cracked
+  store <ip>     Add a server to the network graph (forget <ip> to remove)
+  creds          Show cracked credentials, grouped by server
+  services       List services running on the connected server
+  netstat        Show outbound connections logged on the connected server
+  traces         List active/recovering traces across every server
+
+OTHER
+  help           Show all commands and topics
+  help api       Show the scripting API reference
+  history        Show your command history
+  save           Save your game
+  Tab            Autocomplete commands and paths
+  Ctrl+1-5       Switch between panes
+  Ctrl+N         Open/close notes
+  Ctrl+L         Clear terminal
+
+YOUR SCRIPTS
+  Your default scripts are in ~/scripts/.
+  They work, but they're slow. Read them, understand
+  them, then write better ones.
+
+THE SHOP
+  Type 'shop' or 'browse shop.blackdoor.tools' to
+  open the tool shop. Buy hardware upgrades (faster
+  CPU, more RAM) and software tools that unlock new
+  scripting APIs. You'll need better tools as the
+  jobs get harder.
+
+NEXT STEPS
+  Check the missions panel for available work.
+  Read ~/docs/security_guide.txt to understand traces.
+  Read ~/docs/api_quickref.txt for scripting functions.
+  Read ~/docs/known_vulns.txt - old version banners aren't just flavor text.
+  Visit the shop when you've earned some credits.
+

@@ -2,8 +2,8 @@ FIELD NOTES
 ===========
 Consolidated from a third-party scripting guide (hexhaven.net) plus our
 own empirical testing this session. Where the two disagreed, testing
-won - see VERIFIED VS DOCS below. Everything already covered in
-api_documentation.txt / terminal_documentation.txt isn't repeated here.
+won - see VERIFIED VS DOCS below. Everything already covered in the
+official docs (Official documentation/) isn't repeated here.
 
 SECURITY GUIDE
 ==============
@@ -44,14 +44,22 @@ CPU LOAD (confirmed by testing this session)
   So do crack(), decrypt(), bypass_firewall() - real computation, not
   network I/O.
 
-  CORRECTED (this document was WRONG about this all session): "network-
-  style calls (connect(), scan(), download(), upload()) do NOT cost CPU
-  load" is FALSE. Confirmed via Official documentation/web_api.txt
-  (https://blackdoor.tools/api/, the genuine first-party API reference -
-  api_documentation.txt, the 910-line file this codebase treated as
-  primary all session, is NOT in the Official documentation set and
-  contains this same wrong claim, i.e. it's a third-party compilation,
-  not official). Real per-call tick costs, straight from web_api.txt:
+  CORRECTED (this document - field_notes.txt itself - was WRONG about
+  this all session, NOT the game's own API reference): "network-style
+  calls (connect(), scan(), download(), upload()) do NOT cost CPU load"
+  is FALSE. Confirmed via the official web API reference
+  (https://blackdoor.tools/api/). CORRECTION to an earlier note here:
+  this file previously blamed api_documentation.txt for the wrong claim
+  and called it a third-party compilation - that was wrong on both
+  counts. Diffing it against the official reference afterward showed
+  it's a ~95% match to the same source (https://blackdoor.tools/api/,
+  same URL cited at its own top), including the correct connect() = 5
+  ticks entry - api_documentation.txt never had this wrong claim, and
+  has since been deleted as a near-duplicate of that same official
+  file (a handful of extra session-confirmed annotations it had beyond
+  the official text - log(msg, color), get_args(), get_users()'s real
+  shape - were already captured elsewhere in this file, so nothing was
+  lost). Real per-call tick costs, straight from the official reference:
     connect()        5 ticks
     scan()            2 ticks
     disconnect()      1 tick
@@ -76,8 +84,9 @@ CPU LOAD (confirmed by testing this session)
   them) and do_grab()/do_scrub_log() (a download() per file at up to 50
   ticks each, walk_tree()'s per-file throttle() was paced assuming that
   call was free). Worth re-auditing pacing around these calls now that
-  the real cost is known, rather than treating api_documentation.txt's
-  numbers (or lack thereof) as ground truth again.
+  the real cost is known, rather than assuming "network calls are free"
+  from an old, incorrect note in this same file (see the correction
+  above) or any other third-party recollection again.
 
   Staying at 100% CPU for 5 STRAIGHT seconds kills every running
   script. This is a SUSTAINED-duration trigger, not an instant one -
@@ -327,7 +336,7 @@ VERIFIED VS DOCS (this session's empirical testing)
 Things confirmed working but absent from the official reference, and
 corrections to claims that turned out wrong when actually tested.
 
-CONFIRMED WORKING (undocumented in api_documentation.txt):
+CONFIRMED WORKING (undocumented in the official docs):
   - import "path" as alias - module system, including subfolder paths
     (e.g. import "utils/net" as nu). NOT cached: importing the same
     module from multiple places re-executes its whole file each time -
@@ -356,9 +365,8 @@ CONFIRMED WORKING (undocumented in api_documentation.txt):
     CORRECTIONS below - an earlier version of this note claimed a
     whitespace workaround exists; retesting showed it doesn't.
 
-CONFIRMED WORKING (from documentation_from_editor.txt, the in-editor/
-built-in reference - not in api_documentation.txt or previously noted
-here):
+CONFIRMED WORKING (from the in-editor `help api` reference - not
+previously noted here):
   - connect(target, port).success only means the port was reachable -
     it does NOT mean authentication succeeded. Wrong/uncracked
     credentials still return success:true with user empty and no crack
@@ -378,8 +386,8 @@ here):
     exact trigger not yet explored.
   - scan(target, port) returns a reachable field (false if the host
     itself couldn't be reached at all, distinct from the port simply
-    being closed/filtered) - not in api_documentation.txt's shape for
-    this call, and probe.bd doesn't read it.
+    being closed/filtered) - not in the official web reference's shape
+    for this call, and probe.bd doesn't read it.
   - read_file(conn, path) and download(conn, path) both return a
     race_locked field - present but unexplored, no doc explains what
     triggers it or what a script should do differently if it's true.
@@ -434,7 +442,7 @@ CONFIRMED THIS SESSION (live testing of the refactored Active tree):
     files) or a posix-permission-bits issue either. download()'s own
     permission model for these files denies the very account `ls` shows
     as both owner and world-readable. Not yet explained by anything in
-    api_documentation.txt or documentation_from_editor.txt found so far.
+    the official docs found so far.
     RESOLVED: same account (anon42), same target, grabbing /home/anon42
     instead of /var/log succeeded completely - all 6 files (incl. a
     subdirectory, pub/) downloaded with no errors, no crash. Confirms

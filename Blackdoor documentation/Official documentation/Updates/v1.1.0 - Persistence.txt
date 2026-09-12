@@ -70,4 +70,3 @@ Various mission adjustments.
 Thanks for playing, and for every bug report, feature idea, and "wait, that's not how it's supposed to work" message that came in along the way - a fair amount of what's in this update exists because someone bothered to say something. If Blackdoor's been worth your time, a review genuinely helps more than almost anything I can do myself from here - it's how people who'd actually like this find it.
 
 - Static
-MORE WAYS TO CONNECT:

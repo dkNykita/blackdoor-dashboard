@@ -1,0 +1,88 @@
+Source: /home/[USER]/docs/security_guide.txt
+
+SECURITY GUIDE
+==============
+
+When you connect to a remote server, a TRACE begins.
+
+TRACE TIMER
+  The bar in your status shows time until you're traced.
+  When it hits zero, you're caught. Connection terminated.
+  Disconnect before it runs out.
+
+NOISE / DETECTION
+  Every action generates noise. Scanning ports, cracking
+  passwords, downloading files - it all adds up.
+
+  The more noise you make, the faster the trace runs:
+    NONE     - Normal trace speed
+    CAUTION  - 1.2x speed (you're on their radar)
+    ALERT    - 1.5x speed (they're actively looking)
+    CRITICAL - 2x speed, ports start closing
+
+  Noise decays slowly when you disconnect.
+
+TIPS
+  - sleep() between actions reduces noise
+  - Crack weak users first, escalate from inside (quieter). root isn't the
+    only target - cracker takes user@ip too (cracker root@1.2.3.4 is the
+    default; cracker tim@1.2.3.4 targets tim specifically). If a mission
+    points you at a named account instead of root, that's how you go
+    after it. Same idea in a script: crack(conn, "tim"), then
+    connect("tim@1.2.3.4", 22) or ssh tim@1.2.3.4 once you have the password.
+  - probe_vuln() checks a vulnerability for free (just noise) - exploit_vuln() chips at it over several calls to actually lower security
+  - Fewer API calls = less noise. Write efficient scripts.
+  - Download only what you need
+  - Always disconnect before the trace completes
+
+CPU LOAD
+  Every line your script runs costs 1 tick, and ticks run at
+  your CPU's speed (see 'shop' for upgrades). Plain statements -
+  assignments, if/loop bodies, log() - all count as CPU load.
+  So do crack(), decrypt(), and bypass_firewall() - that's real
+  computation, not network I/O. True network calls (connect(),
+  scan(), download(), upload(), sleep()) don't - they're a
+  separate meter.
+
+  Stay at 100% CPU for 5 straight seconds and every running
+  script gets killed. A tight while-loop cracking or bypassing
+  with no sleep() will hit that fast - and debug log() calls
+  inside a loop add up just like any other line. Add a short
+  sleep() between crack()/decrypt()/bypass_firewall() calls to
+  relieve the pressure while you're debugging it.
+
+YOUR SCRIPTS
+  Your tools are in ~/scripts/. They work, barely.
+  Read them. Understand them. Rewrite them.
+  Better scripts = faster jobs = less noise = fewer traces.
+
+  Run a script:  probe 142.93.44.12
+  Edit a script: edit ~/scripts/probe.bd
+  Create new:    new ~/scripts/my_tool.bd
+
+  Note: cracker.bd calls connect() internally, which starts the trace
+  timer. You don't need to SSH in manually before running it - but the
+  clock starts the moment cracker connects.
+
+COMMANDS
+  Type 'help' for a full command list.
+  Type 'help scripting' for language basics (lists, loops, variables).
+  Type 'help api' for the full API reference.
+
+LOGS
+  Servers write your activity to /var/log/auth.log.
+  When you disconnect, IDS (Intrusion Detection System)-enabled servers scan that log
+  and add noise for every entry with your IP.
+
+  /var/log/syslog records file operations (writes, deletes).
+  It is NOT checked by IDS - it's evidence, not a score.
+
+  Trying to clear auth.log with write_file() won't help.
+  IDS keeps its own copy in memory. Only scrub_log() removes
+  both - that's a LogScrubber function.
+
+  In the meantime: make fewer writes, disconnect cleanly,
+  and stay under the IDS threshold.
+
+This guide was included with your Blackdoor OS install.
+

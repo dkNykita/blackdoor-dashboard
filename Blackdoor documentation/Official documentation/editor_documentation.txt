@@ -1,3 +1,5 @@
+Source: vim testfile
+
 GETTING STARTED
 Scripts must be .bd files in ~/scripts/ to run as commands. Type the name without the extension.
 

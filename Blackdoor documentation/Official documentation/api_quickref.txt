@@ -1,0 +1,241 @@
+Source: /home/[USER]/docs/api_quickref.txt
+
+API QUICK REFERENCE
+===================
+
+LANGUAGE
+  var x = 10
+  var ports = [22, 80, 443]     list literal
+  ports[0]                      index access
+  len(ports)                    list length
+  for x in ports: ...           loop over list
+  for i in range(1, 100): ...   numeric range
+  if x > 5: ... else: ...       conditionals
+  and / or / not                boolean logic (if not x: ...)
+  x += 1  x -= 1                 shorthand for x = x + 1 / x = x - 1
+  x ? y : z                      ternary - y if x is truthy, else z
+  "text %s" % val                string formatting - %s/%d/%f, %% for a
+                                 literal percent. One value, or a list
+                                 for multiple placeholders
+  str(x)  int(x)  type(x)      type conversion
+  round(x)  floor(x)  ceil(x)  rounding
+  to_char(code)  to_code(char)  ASCII code <-> single character
+  set_char(str, pos, char)      Replace one character, returns new string
+  log("msg")                    print to terminal
+  log("msg", Color.red)          print in color - Color.red/green/amber/
+                                 cyan/purple/white/muted
+  return                         exit early - works at the top level
+                                 too, not just inside func. Guard
+                                 clause: if not x: return
+  break / continue               exit / skip a loop iteration early
+  pass                            do nothing - a placeholder where a
+                                 statement is required
+  exit()                         halt the WHOLE script immediately, even
+                                 from inside a function (return only goes
+                                 back to whatever called that function)
+  raise("message")               abort with an error, same as exit() but
+                                 flags it as a failure, not a clean stop
+                                 (alias: error())
+  try: ... catch e: ...          catch a runtime error instead of halting -
+                                 e.message / e.line. Catches raise() too,
+                                 not just internal errors
+  get_param(name)                read a value passed to this script
+                                 (see # @param comments)
+  get_args()                     ALL args this script was called with,
+                                 even ones with no matching @param
+
+NETWORK
+  get_target()               Current mission target {ip, hostname}, or none
+  resolve_hostname(host)     Resolve a hostname to an IP via /etc/hosts
+  store(target)              Add a server to the Network tab
+  unstore(target)            Remove a server from the Network tab
+  scan(target, port)        Check if a port is open
+  connect(target, port)                     Open connection
+  connect("user@host", port)                Connect + auth if cracked
+  connect("user@host", port, "password")   Connect with password
+  disconnect(conn)          Close connection
+  traces()                  List every trace worth tracking - the active
+                             one plus any server still cooling down
+
+SECURITY
+  get_security(conn)        Server security level (0.0-1.0)
+  probe_vuln(conn)          Check next vulnerability (no side effects)
+  exploit_vuln(conn)        Chip at it (progressive), lower security
+  probe_firewall(target)    Check firewall status
+  bypass_firewall(target)   Chip through firewall (progressive)
+
+AUTH
+  crack(conn, user)         Crack a password (progressive)
+  brute_web(conn, user)     Crack a web login (progressive)
+  local_crack(user)         Crack from inside (quieter)
+  reset_crack(conn, user)   Testing tool - clears a user's permanent
+                            cracked record, so crack() redoes the work
+  su(user, password)        Switch user
+  get_users(conn)           List user accounts
+
+WEB ATTACKS
+  sqli(url)                  Test a login/search form for SQL injection -
+                              url is the exact route (e.g. "1.2.3.4/login"),
+                              not a filesystem path
+  cmd_inject(url)             Test a form for command injection - same
+                              exact-route rule as sqli()
+  smtp_connect(target)        Open a connection to a mail server (port 25)
+  smtp_login(conn, user, password)  Authenticate to a mailbox
+  smtp_read(conn, user)       Read a mailbox (needs smtp_login() first)
+  smtp_send(conn, from, to, subject, body)  Send an email - from isn't
+                              checked, that's how spoofing works
+
+BROWSER
+  browse(url)                 Navigate the browser pane to a page
+  find_links(html)            Parse <a href> links out of an HTML string
+  find_forms(html)            Parse <form> elements out of an HTML string
+  click(text)                 Click a link on the current page by its
+                              visible text
+  fill_form(field, value)     Fill a form field on the current page
+  submit_form()                Submit the current page's form
+
+FILES
+  list_files(conn, path)    List directory contents -> [{name, path, type, size}]
+  read_file(conn, path)     Read a file
+  write_file(conn, path, content)  Write to a remote file
+  download(conn, path)      Download to ~/downloads/
+  upload(conn, file, path)  Upload a file to target
+  delete_file(conn, path)   Delete a file
+  rm_dir(conn, path)          Recursively delete a directory and everything
+                              inside it
+  touch(conn, path)            Create an empty remote file if it doesn't
+                              already exist - never overwrites
+  file_size(conn, path)     Get file size
+  cd(conn, path)               Change the working directory other path-taking
+                              functions resolve relative paths against
+  get_cwd(conn)                 Current directory set by cd() - "/" by default
+  wget(url)                     Fetch a web page directly, no connect() needed
+  wget(url, username, password)  Same, with credentials for a protected page
+
+SYSTEM
+  get_trace_time()          Seconds until trace completes
+  get_noise()               Current noise level (0-100)
+  get_cpu()                 CPU load across your processes (0-100)
+  get_unix_time()              Real wall-clock time (seconds since epoch) -
+                              not related to get_time(), for benchmarking
+                              your own script's real elapsed time
+  get_my_ip()               Your current exit IP
+  whoami()                  Your username, or local account if not connected
+  whoami(conn)              Same, explicit connection form
+  get_hostname()            Hostname of connected server
+  sleep(seconds)            Wait, reduces noise
+  clear()                   Clear the terminal screen
+  ids_status(conn)         IDS watch level: "quiet"/"flagged"/"active"
+  server_specs(conn)        CPU/RAM tier + daemon capacity -> {cpu_tier,
+                            cpu_ticks, ram_tier, max_daemons, daemons_used,
+                            ram_slots, ram_used}
+
+  Aliases: get_time() = get_trace_time()
+           get_detection() = get_noise()
+
+EVENTS
+  list_jobs(conn)           List the server's background jobs
+                            -> [{name, listens_for, status}]
+  emit_event(conn, name)    Manually push a named event right now -
+  emit_event(conn, name, payload)   any job listening for it reacts the
+                            same as if it fired naturally. Returns
+                            {fired, jobs_run, capped}
+  Debugging tip: every server with jobs keeps a raw trace at
+  /var/log/jobs.log - what fired, whether it was natural or forced,
+  and which jobs actually ran. read_file(conn, "/var/log/jobs.log")
+  is the fastest way to see if an emit_event() call actually did
+  anything, or why it didn't.
+
+DAEMONS
+  daemon_listen(event, arg, callback)  Register callback (a function in
+                            this script) as a persistent watcher, then let
+                            the script end - costs nothing while idle. Runs
+                            fresh whenever event fires again on this server
+  daemon_stop()             Remove this script's daemon from the connected
+                            server, if it has one
+  get_event_payload()       Inside a dispatched daemon run, the payload
+                            that triggered it ({} otherwise)
+  daemons()                 List every daemon you've planted, any server
+                            -> [{ip, event, arg, script_path}]
+  daemon_output(ip)         Last output from your daemon's most recent run
+                            on the server at ip
+  list_daemons(conn)        List every daemon on this server, yours or not
+                            -> [{event, arg, script_path, installed_by}]
+
+FTP & DATABASE
+  ftp_connect(target, port)   Connect to an FTP server (anon login
+                              happens automatically if the server allows it)
+  ftp_anon(target)             Check anonymous FTP access, no connection
+                              needed
+  ftp_list(conn, path)         List a directory over FTP
+  ftp_get(conn, path)           Download a file's contents over FTP
+  ftp_put(conn, local, remote)  Upload a local file over FTP
+  db_connect(target, port, user, pass)  Connect to a database
+  db_tables(conn)               List tables the connected user can read
+  db_query(conn, sql)           SELECT/UPDATE against an authored table -
+                              not a real SQL engine, supports basic WHERE
+
+CHALLENGE PORTS
+  netcat(target, port)         Connect to a challenge port - returns a
+                              task to solve and a real countdown window
+  netcat_send(conn, response)   Answer the live challenge - correct opens
+                              every currently-filtered port on the server
+
+LOCAL FILES
+  my_files(path?)           List local files/dirs at path (default /home)
+                            -> [{name, path, type, size}], same shape as
+                            list_files(). One level at a time - call it
+                            again on a dir entry to go deeper
+  read_local(path)          Read local file (a my_files() entry works too)
+  save(name, data)          Save to local file
+  write_local(path, content) Alias for save() - same thing
+  touch_local(path)         Create an empty file if it doesn't exist yet
+                            (unlike save/write_local, never overwrites)
+  local_mkdir(path)         Make a local directory
+  local_cp(src, dst)        Copy a local file
+  local_mv(src, dst)        Move a local file
+  local_rm(path)            Delete a local file
+
+SHOP TOOLS (require purchase)
+  pivot(conn)               Route through proxy (+15s trace, capped at 5 hops)
+  pivot_clear()             Clear the entire proxy chain
+  file_type(conn, path)     Check file type before download
+  scrub_log(conn, path, ip) Remove your IP from log files
+  is_honeypot(target, port) Detect honeypot servers
+  fast_bypass(target)       Enhanced firewall bypass
+  probe_layer(target)       Low-level firewall probe, includes layer progress
+  chip_layer(target)        One tick of firewall bypass, no auto output
+  detect_encryption(conn, path)  Check encryption type
+  decrypt(conn, path)       Decrypt a file (progressive)
+  extract_ips(text)         Pull every IPv4 address out of a string
+  extract_emails(text)      Pull every email address out of a string
+  extract_urls(text)        Pull every http/https URL out of a string
+  extract_credentials(text) Pull password/key/token patterns out of a string
+  grab_hash(conn, user)     Retrieve a user's salted password hash
+  hash_string(str, salt)    Hash a string with a given salt
+  hash_distance(h1, h2)     Distance between two hashes - 0 means identical
+  random_char(str, pos)     Swap the character at pos for a random one
+
+crack() returns an object:
+  result.success    - true/false
+  result.progress   - 0.0 to 1.0
+  result.hint       - partial password reveal
+  result.password   - the password (on success)
+
+Example:
+  var r = crack(conn, "admin")
+  while not r.success:
+      log("Cracking... " + r.hint)
+      r = crack(conn, "admin")
+  log("Password: " + r.password)
+
+NOTES
+  connect() accepts user@host format:
+    connect("root@1.2.3.4", 22)          - auth if already cracked
+    connect("root@1.2.3.4", 22, "pass") - auth with password
+
+  whoami() returns the authenticated user after connect() or crack().
+  get_users(conn) requires a live connection.
+
+Type 'help api' in the terminal for the full reference.
+

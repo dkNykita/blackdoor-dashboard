@@ -1,4 +1,4 @@
-https://blackdoor.tools/api/
+Source: https://blackdoor.tools/api/
 
 Language Basics
 BDScript is small and dynamically typed. If you know Python or GDScript you already know most of this.
@@ -17,11 +17,6 @@ var x = 10
 x += 1                 # += and -= both exist
 var msg = "ip: " + get_my_ip()   # + concatenates strings too
 Arithmetic: + - * / %. Comparison: == != < <= > >=. Logical: and or not. Bitwise: & | ^ ~ << >>.
-
-var y = x > 3 ? "big" : "small"   # ternary - y if x is truthy, else z
-"Port %s open" % port              # string formatting - %s/%d/%f, %% for
-                                    # a literal percent. One value, or a
-                                    # list for multiple placeholders
 
 Control flow
 if x > 5:
@@ -63,7 +58,6 @@ Built-in functions
 Not part of the API registry (no connection, no ticks, no noise) - always available.
 
 log(msg)	Print a line to the terminal (or the background process log, if running detached).
-log(msg, color)	Same, printed in color. color is one of Color.red/green/amber/cyan/purple/white/muted. Not in the official reference but confirmed working.
 range(start, end, step=1)	A list of numbers - range(5), range(1, 5), or range(0, 10, 2).
 len(x)	Length of a list or string.
 str(x)	Convert to string.
@@ -73,7 +67,6 @@ round(n) / floor(n) / ceil(n)	Standard rounding.
 exit()	Halt the whole script cleanly right now, from any nesting depth.
 raise(message)	Halt with an actual error - catchable by try/catch, same as any other runtime error.
 prompt(message)	Pause a foreground script and read a real line of typed input. Only valid as its own statement, not inside a larger expression.
-get_args()	ALL arguments this script was called with, as a raw list of strings, in order - even ones with no matching @param. @param binds purely positionally by declaration order and breaks if a flag-like token ("-full") lands ahead of a positional value; reading get_args() directly and filtering out recognized "-flag" tokens yourself avoids that.
 List methods
 var l = [10, 20, 30]
 l.append(40)            # [10, 20, 30, 40]
@@ -343,12 +336,6 @@ Cost: 1 tick
 
 get_users(conn) -> array
 List user accounts. Must be authenticated.
-
-var users = get_users(conn)
-# [{name: "root", home: "/root", shell: "/bin/bash"}, ...]
-Confirmed shape by testing - no per-user security field, despite what
-some third-party notes claim. There's no way to pick a "weakest
-account" from this call alone.
 
 Cost: 2 ticks
 
