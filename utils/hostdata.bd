@@ -216,6 +216,8 @@ func read_entries(nu):
             # single-literal construction) was enough to tip it over.
             nu.throttle(nu.cpu_guard_fast())
             var tok = parts[i]
+            if nu.debug_enabled():
+                nu.debug_time("token " + str(i) + " (" + tok + ") throttle done", dbg_t0)
             if tok.starts_with("ports="):
                 entry.ports = decode_tuple_list(nu, tok.substr(6, len(tok) - 6), ["port", "service"], ["int", "str"])
             elif tok.starts_with("fw="):
@@ -230,6 +232,8 @@ func read_entries(nu):
                 entry.nmap = decode_tuple_list(nu, tok.substr(5, len(tok) - 5), ["ip", "hostname", "source"], ["str", "str", "str"])
             elif tok.starts_with("sqli="):
                 entry.sqli = decode_sqli(tok.substr(5, len(tok) - 5))
+            if nu.debug_enabled():
+                nu.debug_time("token " + str(i) + " (" + tok + ") decode done", dbg_t0)
             i = i + 1
         entries.append(entry)
     nu.debug_time("read_entries() all lines done", dbg_t0)
