@@ -19,19 +19,22 @@ report, or to use as a basis for discussion with other players/devs.
   world-readable account - works normally outside /var/log.
 
 04_connect_success_not_documented_as_unauthenticated.txt
-  connect().success doesn't mean successful login - documented only
-  in documentation_from_editor.txt, missing from api_documentation.txt.
+  connect().success doesn't mean successful login - documented in the
+  in-editor `help api` reference, but not flagged in the web API
+  reference's own connect() example.
 
 05_module_top_level_restriction_undocumented.txt
   Unlike a top-level script, a module can't have a top-level `var`
-  initialized by a function call - undocumented anywhere, only
-  surfaces as a parse error.
+  initialized by a function call - undocumented, only surfaces as a
+  parse error (import itself IS documented, just not this asymmetry).
 
 06_prompt_ignores_whitespace_only_input.txt
   A space + Enter never reaches prompt() (the terminal discards it) -
   breaks the common "space for default" convention.
 
-07_get_cpu_aggregate_inconsistent_across_identical_runs.txt
-  get_cpu()'s aggregate behaves inconsistently across identical script
-  runs - the largest and least closed item, still a partially open
-  question even after extensive elimination testing.
+WITHDRAWN FOR NOW:
+  get_cpu() aggregate inconsistency across identical runs - pulled
+  pending retesting under the corrected tick-cost model (network calls
+  like connect()/download() turned out to cost real ticks, not 0 -
+  see field_notes.txt). Prior testing for this report was done under
+  the wrong cost assumption, so its conclusions aren't reliable yet.
