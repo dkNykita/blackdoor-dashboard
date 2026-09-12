@@ -259,6 +259,50 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   (e.g. embedding a whole raw line of text), not just the eventual
   log() call.
 
+  STATUS AS OF THIS WRITE-UP: STILL UNRESOLVED - `menu` still does not
+  reach a working dashboard. Real fixes ARE in place and confirmed to
+  help (read_entries()'s missing entry-throttle fix genuinely delays
+  the crash - its own wait now measurably costs 2-3s of real retry
+  time, not a no-op), and the throttle-batching regression is fully
+  reverted (every loop throttles every iteration again, no exceptions).
+  Latest confirmed checkpoint trace (debug_enabled() on, cpu_guard_*/
+  log_pace() back at their ORIGINAL 50/80/1 values - widening them
+  earlier was tested and proven to not move the crash point at all,
+  only delay reaching it):
+    imports done            +13.9s
+    state declared          +16.0s
+    before get_entry()      +18.8s
+    entry throttle done     +2.6s  (measured from get_entry()'s own start)
+    read_local() done       +4.3s
+    line 1 starts            +6.0s
+    line 1 per-line throttle +9.1s
+    token 1 (fw=) done       +15.5s
+    token 2 (users=) done    +29.5s  (2-item decode_tuple_list() call)
+    token 3 (specs=) done    +35.6s
+    token 4 (jobs=, empty)   +41.4s
+    token 5 (nmap=, empty)   +47.2s
+    line 2 starts (bare IP)  +49.2s
+    -> CPU overloaded shortly after, on host_intel.txt's second line,
+       which has NO fields at all (just an IP) - i.e. still crashing on
+       trivially cheap work, ~49s of real time and ~30-40 throttle()
+       calls into the run, a later point than earlier attempts but the
+       same qualitative story: something keeps accumulating that
+       per-call throttling alone doesn't fully relieve.
+  Genuinely ruled out at this point: data volume, Krok 12's import,
+  real OS load, daemons, throttle-batching (reverted), widened margins
+  (tested, no effect on crash POINT - see above). The separately-
+  confirmed correction that connect()/scan()/download() cost real
+  ticks (not 0) does NOT apply here - read_entries() makes no network
+  calls at all, pure local parsing. NEXT IDEAS NOT YET TRIED: (1) a
+  drastic, temporary simplification of menu.bd (strip most imports/
+  code) as a direct test of whether total code SIZE correlates with
+  how far it gets before crashing; (2) checking whether anything in
+  host_intel.txt/the environment changed between test runs that could
+  explain run-to-run variance; (3) revisit whether get_cpu()'s reading
+  might reflect something other than a simple "recent tick average"
+  the docs don't spell out. Session paused here by the player's own
+  choice to continue another time, not because avenues ran out.
+
 LOGS
   Servers write your activity to /var/log/auth.log. When you disconnect,
   IDS-enabled servers scan that log and add noise for every entry with
