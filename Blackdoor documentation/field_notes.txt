@@ -268,6 +268,38 @@ STARTUP CPU OVERLOAD - ONGOING INVESTIGATION (Krok 12+, not yet solved)
   pays that cost unconditionally - had to specifically guard a per-line
   label that embedded a whole raw config line for exactly this reason.
 
+  RESOLVED (root cause found): per-token debug checkpoints inside
+  read_entries()'s field loop showed real multi-second gaps even
+  between trivial, non-throttled calls (e.g. decode_fw() - three
+  split(":") calls, nothing else - showed a 2.3s gap on its own),
+  pointing at something more fundamental than any single call site.
+  Settled with a maximally-isolated test (test_log_cost.bd): a bare
+  script with NO imports, no state, no file I/O - just a while loop
+  calling log() 20 times with zero pacing - overloaded and crashed
+  after only ~13 iterations. This proves, independent of any
+  accumulated load from earlier in a script, that a tight unpaced loop
+  of even fairly small size (not "unbounded lists", not "many files" -
+  just a bare counting loop with plain log() calls) is enough on its
+  own to trigger the CPU-overload kill.
+  This directly indicted a mistake made earlier in this same
+  investigation: decode_tuple_list()/encode_tuple_list() (hostdata.bd)
+  and all three loops in creds.bd had been "optimized" by batching
+  their throttle() calls to every 8th iteration instead of every one,
+  on the theory that per-item throttling was overkill for cheap,
+  uniform work. That batching REMOVED the per-iteration safety net for
+  exactly the small lists (2-4 items) and line counts this session's
+  real data actually has - opening unpaced stretches of several items'
+  worth of work, back to back, which the isolated test now shows is
+  independently enough to crash. REVERTED all of it: every loop in
+  hostdata.bd and creds.bd throttles every single iteration again, no
+  batching, no skipped "redundant" passes, no exceptions - this
+  codebase's own rule from earlier in the session, which batching had
+  quietly violated. The lesson generalizes: never skip or batch a
+  throttle() call because the per-iteration work "looks cheap enough"
+  or the list "looks short enough" - a plain counting loop with only
+  log() calls in the body is proof enough that "cheap-looking" is not
+  a safe basis for judgment here at all.
+
 LOGS
   Servers write your activity to /var/log/auth.log. When you disconnect,
   IDS-enabled servers scan that log and add noise for every entry with
