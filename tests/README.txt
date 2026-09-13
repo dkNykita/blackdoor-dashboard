@@ -111,3 +111,42 @@ directly to utils/hostdata.bd)
   controlling the crash - see field_notes.txt's NEXT IDEAS for where this
   points next (reducing total work per run, not re-tuning pacing around
   the same amount of work).
+
+find_entry_by_host() - targeted get_entry() lookup (applied directly to
+utils/hostdata.bd, real fix not a tests/ script)
+  Goal: does skipping decode_*() work for every non-matching host in
+  host_intel.txt (cheap per-line string match first, decode only the
+  matching line) reduce or prevent the real crash?
+  Progress: applied, live-tested twice (missing target 45.155.67.201,
+  existing target 94.140.22.83), same session.
+  Result: worked exactly as designed - missing-target run did ZERO
+  decode work at all (get_entry() done at +50.2s, pure scan cost);
+  existing-target run skipped lines 1-3 entirely and decoded only line
+  4's real data. BUT the script still crashed both times - just later,
+  and in a different place (utils/dashboard.bd's refresh_status(),
+  around cracked_accounts_for()) - which led directly to the
+  cracked_accounts_for() fix below. On a SECOND live retest (after the
+  creds.bd fix), the existing-target run crashed much earlier than its
+  own established baseline (+40.3s vs +109.5s/+122.5s, inside get_entry()
+  itself) even though hostdata.bd was untouched between runs - player
+  confirmed no session-carryover effect, so this is the ORIGINAL "timing
+  varies wildly across otherwise-identical runs" mystery re-appearing on
+  this code path, not a regression from this fix. See field_notes.txt for
+  the full writeup - the root cause of that variance is still unknown.
+
+cracked_accounts_for()/is_cracked() double-pass fix (applied directly to
+utils/creds.bd, real fix not a tests/ script)
+  Goal: both functions called read_credentials(nu) (a full throttled
+  pass building an in-memory list) then throttled AGAIN over that list
+  to filter for one host - same redundant-work shape as get_entry() had.
+  Does reading the file once and filtering inline reduce the ~106-108s
+  cracked_accounts_for() was costing every dashboard refresh?
+  Progress: applied, live-tested once (missing-target run).
+  Result: real improvement - cracked_accounts_for() cost dropped from
+  ~106.1s to ~72.5s (~32% faster), and the overall crash moved later
+  (~180.9s -> ~148.8s absolute). Did NOT close the gap entirely - the
+  script still crashed, past check_trace() this time. A prior attempt at
+  this exact function (commit 874834f) tried batching the throttle
+  instead of removing the redundant pass; reverted (400c735) when
+  batching was found unsafe elsewhere, which brought the full cost back
+  until this fix.
