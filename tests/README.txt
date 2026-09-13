@@ -72,3 +72,25 @@ test_dispatch_after_imports.bd
   pace closely - no obvious slowdown from the import prefix either.
   Genuinely undetermined until it either crashes or survives a
   comparable round count.
+  Progress update: abandoned - a comparable-length run costs 10+ minutes
+  of real time for an inconclusive result; investigation pivoted to a
+  faster real-world test instead (see below).
+
+decode_tuple_list() mid-item throttle fix (applied directly to
+utils/hostdata.bd, not a tests/ script - real-world test instead of more
+synthetic hammering)
+  Goal: does adding a second nu.throttle() mid-item (after field-by-field
+  build, before append) delay or prevent the REAL menu.bd crash against
+  the real host_intel.txt (known baseline: crashes at +122.5s, on line 4
+  token 5)?
+  Progress: applied to utils/hostdata.bd + Active mirror, one real `menu`
+  run, then reverted immediately after the result came in.
+  Result: made it WORSE - crashed at +53s instead (on line 2's per-line
+  throttle, a bare-IP line with no tokens, previously always safe). Every
+  step after the fix was shifted later by a near-constant ~3.8s (one
+  extra throttle() call), and that constant per-item tax compounded across
+  the run to bring the crash ~70s EARLIER, not delay it. CONFIRMS: more
+  throttle() calls is not automatically safer once get_cpu() itself is
+  understood to add load (see field_notes.txt CORRECTION) - reverted back
+  to the original single-throttle-per-item shape. See field_notes.txt for
+  the full before/after per-token trace.

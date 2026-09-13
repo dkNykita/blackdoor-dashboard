@@ -487,6 +487,49 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   Krok 12's structure) before starting the token-dispatch hammering loop,
   to see whether THAT'S the missing ingredient. PART B (debug off) not yet
   run.
+  test_dispatch_after_imports.bd (the above test, actually built): PART A
+  run, manually interrupted after only round 2 (~65s into dispatch) - the
+  player judged waiting for a comparable 20-round/608s run not worth the
+  real time it costs, and noted the pattern already looked like it would
+  just repeat the same way. Data so far: raw CPU during the import phase
+  itself spikes to 100 multiple times (0-20-0-20-0-20-10-20-10-100-70-20-
+  0-60-100-40-60-100-80-10-0-100) - confirms importing alone is a real,
+  substantial cost - but by the time dispatch actually started, cpu had
+  settled back to 20, same low baseline as the non-import-prefixed test,
+  and round-to-round pacing (~31-33s) also matched closely. Inconclusive -
+  abandoned in favor of a faster real-world test below rather than
+  continuing slow synthetic isolation.
+
+  APPLIED AND REVERTED - real-world test of the decode_tuple_list() mid-
+  item throttle fix (from the REFRAMING/RESULT above): rather than keep
+  running slow synthetic hammering tests, applied the extra throttle()
+  directly to the real utils/hostdata.bd and ran a real `menu` against
+  the real host_intel.txt (known to crash at ~122.5s unmodified). RESULT:
+  made it WORSE - crashed at +53s instead, on line 2's per-line throttle
+  (a bare-IP line with NO tokens at all, previously always safe). Full
+  before/after per-token trace (line 1, identical tokens/data both runs):
+    token         throttle (before -> after)   decode (before -> after)
+    fw            13.2s -> 13.2s (same)         15.5s -> 15.5s (same)
+    users (2it)   19.2s -> 19.2s (same)          29.5s -> 33.3s (+3.8s)
+    specs         33.2s -> 37.0s (+3.8s)         35.6s -> 39.4s (+3.8s)
+    jobs= (empty) 39.3s -> 43.1s (+3.8s)         41.4s -> 45.2s (+3.8s)
+    nmap= (empty) 45.1s -> 48.9s (+3.8s)         47.2s -> 51.0s (+3.8s)
+    line 2 starts 49.2s -> 53.0s (+3.8s)         -> CPU OVERLOAD shortly
+                                                     after (was +122.5s)
+  Every step after the fix is shifted later by a near-constant ~3.8s (one
+  extra throttle() call's worth) - and that constant ~3.8s/item tax, ADDED
+  UP across the run, tipped the crash forward by ~70s instead of buying
+  any margin. CONFIRMS: get_cpu() itself adding load (correction above)
+  means MORE throttle() calls is not automatically safer - each one is
+  itself extra self-inflicted load via its own get_cpu() polling, not a
+  free wait bought with sleep(1) alone. REVERTED immediately (single
+  commit each way) - decode_tuple_list() is back to exactly one throttle()
+  per item. LESSON FOR NEXT ATTEMPT: the fix direction that's actually
+  needed is probably FEWER/cheaper get_cpu() checks overall, not more -
+  the opposite of every previous instinct in this investigation (and of
+  this codebase's own "throttle every iteration, never skip" rule, which
+  may itself need revisiting in light of get_cpu()'s real cost, though
+  that rule was hard-won from real crashes too - not simple to just undo).
 
   REFRAMING (player hypothesis, not yet directly confirmed - source of the
   underlying mechanism still unclear, worth re-asking): cost roughly follows
