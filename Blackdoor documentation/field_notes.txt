@@ -611,6 +611,34 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   the crash moves again to yet another spot (whois()/connect()/
   check_trace() are the next candidates downstream if so).
 
+  LIVE-TESTED (2 real menu runs, same session, same missing/existing
+  targets as before): creds.bd fix measurably helped but did NOT close
+  the gap - missing-target run's cracked_accounts_for() cost dropped from
+  ~106.1s to ~72.5s (get_noise()->cracked_accounts_for() done), a real
+  ~32% improvement, but the script still crashed slightly later, past
+  check_trace() (absolute crash time improved from ~180.9s to ~148.8s).
+  Existing-target run, however, crashed MUCH earlier than its own prior
+  baseline - inside get_entry() itself, at token 2 (fw) decode, +40.3s -
+  vs. +109.5s (get_entry() done) or the original +122.5s crash point
+  seen multiple times before on the exact same code path
+  (find_entry_by_host()/hostdata.bd, untouched between these two runs).
+  Player confirmed (asked directly): both runs were the same session,
+  back to back, and player states this has no effect on the game/run -
+  ruling out a cross-run/session carryover theory. So this is NOT a new
+  artifact of the get_entry()/creds.bd fixes - it's a re-manifestation of
+  the ORIGINAL, still-unexplained mystery from the very first entry in
+  this investigation: "timing that varied wildly across otherwise-
+  identical runs (same host_intel.txt, same code...)". Notable because
+  the get_entry()/find_entry_by_host() path had otherwise looked
+  unusually deterministic up to now (the two decode_tuple_list()
+  revert-verification retests both landed on exactly +122.5s) - this is
+  the first time that path itself showed the same wild variance the
+  overall investigation started with. The root cause of THAT variance
+  (not throttle count, not total work, not session carryover) remains
+  the single biggest open question - everything fixed so far reduces
+  total work or shifts the crash point, but nothing yet explains why the
+  SAME code+data crashes at wildly different points across separate runs.
+
   REFRAMING (player hypothesis, not yet directly confirmed - source of the
   underlying mechanism still unclear, worth re-asking): cost roughly follows
   "cpu cost / line of code + 10t CPU" - i.e. on top of the documented
