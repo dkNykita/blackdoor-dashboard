@@ -1,5 +1,8 @@
-# test_cpu_decay.bd - THROWAWAY test, isolates get_cpu()'s actual behavior
-# in time, independent of what any script does. No imports, no file I/O,
+# test_cpu_decay.bd - isolates get_cpu()'s actual behavior in time,
+# independent of what any script does. Kept under tests/ as a reusable
+# diagnostic, not a one-off - re-run whenever get_cpu()'s behavior needs
+# re-checking (a game update, a new hardware tier, disputing a theory).
+# No imports, no file I/O,
 # no state - just get_cpu() + sleep(1), repeated, plus one deliberate small
 # burst partway through. Aimed at field_notes.txt's open idea #3 for the
 # menu.bd startup-overload investigation: does get_cpu() really behave like
@@ -17,7 +20,6 @@
 # IMPORTANT: run this FIRST THING after a fresh game start/load (nothing
 # else run yet this session) and confirm via `ps`/`jobs` that nothing else
 # is running, so there's no possible carryover from a prior script's load.
-# Delete after use.
 
 var t0 = get_unix_time()
 log("t=+0s  cpu=" + str(get_cpu()) + "  (baseline, nothing has run yet)")
