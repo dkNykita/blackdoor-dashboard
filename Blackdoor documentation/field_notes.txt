@@ -819,6 +819,53 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   alternative) - not yet attempted, real added complexity (a second file
   to keep in sync).
 
+  5x REPEAT of the existing-target scenario (94.140.22.83), same
+  session, back to back, hostdata.bd/dashboard.bd untouched between
+  runs - looking for the "good" (~109s, get_entry() completes) branch
+  to see how much further refresh_status() gets afterward:
+    run 1: crashed +40.7s  (token 2 decode)
+    run 2: crashed +111.0s (right at "get_entry() done")
+    run 3: crashed +40.3s  (token 2 decode)
+    run 4: crashed +65.5s  (token 4 decode)
+    run 5: crashed +64.3s  (token 4 decode)
+  REVISED finding: NOT simply bimodal (+40s vs +109s) as earlier data
+  suggested - at least 3 distinct clusters (~40s x2, ~64-65s x2, ~111s
+  x1) across 5 runs of identical code+data. More importantly: EVERY
+  SINGLE ONE of these 5 runs crashed AT OR BEFORE "get_entry() done" -
+  not one has ever reached refresh_status() for this target. Even the
+  "good" run (+111.0s) crashed the instant get_entry() finished, before
+  refresh_status()'s own first throttle() could run. Across the whole
+  investigation, the existing-target scenario (94.140.22.83) has NEVER
+  once reached refresh_status() - only the missing-target scenario
+  (45.155.67.201) has, because it skips all the real per-token decode
+  work entirely. This narrows the mystery further: whatever drives this
+  run-to-run variance is entirely contained within get_entry()/
+  find_entry_by_host()'s own token-decode loop for a host with real,
+  non-empty field data - never in anything downstream of it for this
+  target.
+
+  ==========================================================
+  STATUS AS OF 2026-09-14: MENU.BD DEVELOPMENT PAUSED / FROZEN.
+  ==========================================================
+  Player decision: stop making further changes to menu.bd/utils/*.bd for
+  now. The startup CPU overload remains UNRESOLVED - real fixes were
+  found and kept (find_entry_by_host(), cracked_accounts_for() double-
+  pass removal + caching, save_entry()), each measurably reducing real
+  work, but none has resolved the crash, and 3 throttle-placement
+  experiments plus 4 isolated-hammering tests (test_decode_pacing A/B,
+  test_dispatch_after_imports, test_token_dispatch A/B) all came back
+  negative or inconclusive at reproducing it synthetically. The single
+  biggest unresolved mystery is the run-to-run variance documented
+  immediately above - never explained, never reproduced in isolation.
+  Investigation focus shifts from this specific script to the
+  underlying CPU load SYSTEM itself (get_cpu()'s real behavior,
+  independent of menu.bd) - see whatever section follows this one for
+  that work. Do not resume tuning menu.bd/utils/*.bd's pacing/structure
+  without a new theory backed by that lower-level research first -
+  every blind attempt tried here so far (add throttle, remove throttle,
+  relocate throttle, reduce total work) has either failed outright or
+  only partially helped without closing the gap.
+
 LOGS
   Servers write your activity to /var/log/auth.log. When you disconnect,
   IDS-enabled servers scan that log and add noise for every entry with
