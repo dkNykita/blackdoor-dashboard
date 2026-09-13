@@ -51,6 +51,15 @@ func mark_cracked(nu, uhd, state, target, account_name):
         updated.append({"name": account_name, "cracked": true})
     uhd.save_entry(nu, {"ip": target, "ports": current.ports, "fw": current.fw, "users": updated, "specs": current.specs, "jobs": current.jobs, "nmap": current.nmap, "sqli": current.sqli})
     state.users = updated
+    # Keeps refresh_status()'s cracked_accounts_for() cache (state.
+    # accounts) correct without a fresh full credentials-file scan - a
+    # crack is the ONLY thing that can add a new entry to it, and we
+    # already know exactly which account just got added (see Codebase
+    # Audit/Synthesis.txt P1 / field_notes.txt).
+    if state.accounts == none:
+        state.accounts = [account_name]
+    elif not state.accounts.contains(account_name):
+        state.accounts.append(account_name)
     return state
 
 func refresh_status(nu, uc, uhd, state, target):
@@ -100,13 +109,29 @@ func refresh_status(nu, uc, uhd, state, target):
     state.noise = get_noise()
     nu.debug_time("get_noise() done", dbg_t0)
 
+    # CACHED (menu.bd startup CPU overload investigation, see
+    # field_notes.txt / Codebase Audit/Synthesis.txt P1): cracked_
+    # accounts_for() was, even after its own double-pass fix, still the
+    # single most expensive remaining call in this function - ~72.5s
+    # EVERY refresh, whether or not a crack happened since the last one.
+    # Credentials only change on a fresh crack, and mark_cracked() (above)
+    # updates state.accounts directly the instant that happens - so a
+    # refresh that isn't following a crack can trust the existing value
+    # instead of re-scanning the whole credentials file again. state.
+    # accounts starts as `none` (menu.bd's state dict) and gets reset to
+    # `none` on a target switch (menu.bd choice "t"), so the first
+    # refresh for any given target still populates it normally.
     nu.throttle(nu.cpu_guard_conservative())
-    state.accounts = uc.cracked_accounts_for(nu, target)
-    nu.debug_time("cracked_accounts_for() done", dbg_t0)
+    if state.accounts == none:
+        state.accounts = uc.cracked_accounts_for(nu, target)
+        nu.debug_time("cracked_accounts_for() done", dbg_t0)
+    else:
+        nu.debug_time("cracked_accounts_for() skipped (cached)", dbg_t0)
     # The USERS name list is fetched live only once (below) and cached
     # from then on, but cracked status can change any time you crack a
     # new account - recompute it here, every refresh, straight from the
-    # free local `accounts` read above. No connection needed for this
+    # free local `accounts` read above (itself now cached/incrementally
+    # updated, not re-scanned - see above). No connection needed for this
     # part, so it stays accurate even on a refresh that can't connect.
     if state.users != none:
         var refreshed_users = []

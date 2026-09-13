@@ -149,7 +149,14 @@ var state = {
     "fw_layers": 0,
     "fw_layers_remaining": 0,
     "noise": 0,
-    "accounts": [],
+    # none = "not fetched yet for the current target" - refresh_status()
+    # only calls cracked_accounts_for() (utils/creds.bd) when this is
+    # none, caching the result across refreshes instead of re-scanning
+    # ~/.ssh/credentials every single time. mark_cracked() keeps it
+    # correct incrementally after a real crack; reset to none on target
+    # switch (choice "t" below) since a different host has a different
+    # cracked-accounts answer.
+    "accounts": none,
     "owner": "",
     "banner": "",
     "os_name": "",
@@ -310,6 +317,13 @@ while true:
             state.jobs = new_cached.jobs
             state.nmap_data = new_cached.nmap
             state.sqli_status = new_cached.sqli
+            # accounts isn't part of host_intel.txt/get_entry() (it comes
+            # from ~/.ssh/credentials instead), so it isn't covered by the
+            # re-hydration above - reset to none so refresh_status()'s
+            # cracked_accounts_for() cache actually re-fetches for the NEW
+            # target instead of reusing the old target's cracked-accounts
+            # answer.
+            state.accounts = none
             state = udb.refresh_status(nu, uc, uhd, state, target)
     elif choice == "1":
         sleep(nu.log_pace())
