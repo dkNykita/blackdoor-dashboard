@@ -536,6 +536,36 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   +122.5s again (token 5, jobs=, line 4) - matches the original baseline
   exactly. Revert confirmed clean; back to square one on an actual fix.
 
+  TRIED AND REVERTED - opposite direction: removed read_entries()'s
+  per-token throttle() entirely (line ~235, right before the starts_with()
+  elif chain), relying on the per-line throttle + decode_tuple_list()'s
+  own per-item throttle to carry pacing instead. RESULT: dramatically
+  worse - real `menu` crashed at +13.6s, on LINE 1's very FIRST token
+  (fw=0:0:0, the cheapest possible field) - far worse than even the
+  extra-throttle attempt's +53s. REVERTED immediately, confirmed the
+  per-token throttle is back in place.
+  CONCLUSION: both directions away from the current single-throttle-per-
+  token shape made the real crash happen SOONER, not later - adding one
+  (+53s) and removing one (+13.6s) are both worse than the baseline
+  (+122.5s). This is a real signal, not noise: the current pacing shape
+  is apparently close to a local optimum for this specific lever, and
+  "how many throttle() calls per token" is very likely NOT the actual
+  lever that controls when the crash happens - tuning it further (in
+  either direction) without a different underlying theory is unlikely to
+  help. The real cause is probably something more structural: a
+  cumulative real-time/tick budget across the WHOLE script run that
+  pacing quality alone can delay or hasten slightly but not fix - fits
+  the session's very first idea (an averaging window / accumulated debt
+  that doesn't fully clear) better than a simple "add/remove a check"
+  fix ever could. NEXT IDEAS (not yet tried): (1) reduce total WORK done
+  per run rather than re-tuning pacing around the same amount of work -
+  e.g. process host_intel.txt across multiple separate dispatches/session
+  boundaries instead of one continuous read_entries() call; (2) test
+  whether the crash point (in real seconds, or in token-dispatch count)
+  is truly fixed regardless of throttle tuning - i.e. does EVERY variant
+  tried so far crash at a similar TOTAL amount of underlying work, just
+  measured out differently by how fast/slow the pacing gets there.
+
   REFRAMING (player hypothesis, not yet directly confirmed - source of the
   underlying mechanism still unclear, worth re-asking): cost roughly follows
   "cpu cost / line of code + 10t CPU" - i.e. on top of the documented

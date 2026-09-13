@@ -94,3 +94,20 @@ synthetic hammering)
   understood to add load (see field_notes.txt CORRECTION) - reverted back
   to the original single-throttle-per-item shape. See field_notes.txt for
   the full before/after per-token trace.
+
+read_entries() per-token throttle removal (opposite direction, applied
+directly to utils/hostdata.bd)
+  Goal: does REMOVING read_entries()'s per-token throttle() (relying on
+  the per-line throttle + decode_tuple_list()'s own per-item throttle
+  instead) delay or prevent the real crash?
+  Progress: applied, one real `menu` run, reverted immediately.
+  Result: made it MUCH worse - crashed at +13.6s, on line 1's very first
+  token (fw=0:0:0, the cheapest possible field). Worse than even the
+  extra-throttle attempt (+53s). Reverted, confirmed back to original.
+  CONCLUSION: both tested directions (add a throttle, remove a throttle)
+  made the crash happen sooner than the +122.5s baseline - the current
+  single-throttle-per-token shape looks like a local optimum for this
+  lever. "How many throttle() calls" is very likely not the actual lever
+  controlling the crash - see field_notes.txt's NEXT IDEAS for where this
+  points next (reducing total work per run, not re-tuning pacing around
+  the same amount of work).
