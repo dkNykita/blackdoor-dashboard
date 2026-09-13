@@ -1,0 +1,26 @@
+Server: https://discord.com/channels/1490681520174661755 (exact message permalink not captured - pasted from chat log, not copied via message link)
+
+FEATURE REQUEST: Recursive flag for cp
+
+Tags: terminal
+
+Current behavior:
+The terminal's `cp` command has no recursive option - it can't be used to
+copy a whole directory tree in one call. `rm` already has a recursive
+capability (matching this codebase's own `rm_dir(conn, path)` API
+equivalent), but `cp` has no counterpart for copying.
+
+Requested feature:
+A recursive flag for `cp` (e.g. `cp -r`), mirroring what `rm` already
+supports, so a directory and its contents can be copied in one command
+instead of one file at a time.
+
+Rationale:
+Straightforward parity request - `rm` already covers the recursive case,
+so `cp` lacking the same option is an inconsistency between the two
+commands' capabilities.
+
+Source (Discord, Nykita, 15:47):
+"FR: recursive flag for CP
+
+rm has it, cp could have it too"
