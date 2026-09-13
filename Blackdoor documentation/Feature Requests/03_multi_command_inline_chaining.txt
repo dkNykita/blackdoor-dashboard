@@ -1,10 +1,10 @@
-FR: Multi-command inline sending (chaining with ; or &&)
+Report link: https://discordapp.com/channels/1490681520174661755/1491437688711282759/1548700548184936519
 
-Nykita:
-Nykita@localhost ~/scripts/Jobs > rm /home/Nykita/scripts/*;rm /home/Nykita/scripts/utils/*
-No such file: /home/Nykita/scripts/*;rm /home/Nykita/scripts/utils/*
-Nykita@localhost ~/scripts > rm /home/Nykita/scripts/* && rm /home/Nykita/scripts/utils/*
-No such file: /home/Nykita/scripts/* && rm /home/Nykita/scripts/utils/*
+FR: Multi-command inline sending (chaining with ; or && or something else)
+
+Nykita - 16:23:
+Example: rm /home/Nykita/scripts/* ; rm /home/Nykita/scripts/utils/*
+Result: No such file: /home/Nykita/scripts/* ; rm /home/Nykita/scripts/utils/*
 
 Workaround for now: neither separator is parsed at all, so there's no
 partial-chaining trick to fall back on - just issue each command on its
