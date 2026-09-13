@@ -310,13 +310,79 @@ func find_entry(nu, entries, host):
             return e
     return empty_entry(host)
 
+# Targeted single-host lookup - reads the file once, does a CHEAP
+# per-line string match (no decode_*() call at all) until the target
+# host's own line is found, THEN pays the decode cost, only for that
+# one line. Every other host in the file is skipped on a plain string
+# compare. Real fix from the menu.bd startup CPU overload investigation
+# (see field_notes.txt) - less total decode WORK per call, not another
+# throttle-count tweak (both directions of that were tried on
+# read_entries()/decode_tuple_list() above and made the crash happen
+# SOONER, not later). get_entry() used to always decode EVERY host in
+# host_intel.txt just to answer "what does this ONE host look like" -
+# wasteful even in the best case, and completely wasted work whenever
+# the target isn't in the file yet at all (falls through to
+# empty_entry() after decoding everyone else for nothing).
+# Per-line throttle kept exactly as read_entries() always had it - the
+# per-token throttle removal attempt above crashed catastrophically
+# faster (+13.6s), so pacing during the scan itself is NOT being cut.
+func find_entry_by_host(nu, host):
+    var dbg_t0 = get_unix_time()
+    nu.throttle(nu.cpu_guard_fast())
+    nu.debug_time("entry throttle done", dbg_t0)
+    var raw = ""
+    try:
+        raw = read_local(host_intel_path())
+    catch e:
+        raw = ""
+    nu.debug_time("read_local() done", dbg_t0)
+
+    var dbg_line_num = 0
+    for line in raw.split("\n"):
+        dbg_line_num = dbg_line_num + 1
+        nu.throttle(nu.cpu_guard_fast())
+        var trimmed = line.trim()
+        if trimmed == "":
+            continue
+        var parts = trimmed.split(" ")
+        if parts[0] != host:
+            continue
+        # Found it - only now does decode work happen, and only for
+        # this one host.
+        var entry = empty_entry(parts[0])
+        var i = 1
+        while i < len(parts):
+            nu.throttle(nu.cpu_guard_fast())
+            var tok = parts[i]
+            if nu.debug_enabled():
+                nu.debug_time("token " + str(i) + " (" + tok + ") throttle done", dbg_t0)
+            if tok.starts_with("ports="):
+                entry.ports = decode_tuple_list(nu, tok.substr(6, len(tok) - 6), ["port", "service"], ["int", "str"])
+            elif tok.starts_with("fw="):
+                entry.fw = decode_fw(tok.substr(3, len(tok) - 3))
+            elif tok.starts_with("users="):
+                entry.users = decode_tuple_list(nu, tok.substr(6, len(tok) - 6), ["name", "cracked"], ["str", "bool"])
+            elif tok.starts_with("specs="):
+                entry.specs = decode_specs(tok.substr(6, len(tok) - 6))
+            elif tok.starts_with("jobs="):
+                entry.jobs = decode_tuple_list(nu, tok.substr(5, len(tok) - 5), ["name", "listens_for", "status"], ["str", "str", "str"])
+            elif tok.starts_with("nmap="):
+                entry.nmap = decode_tuple_list(nu, tok.substr(5, len(tok) - 5), ["ip", "hostname", "source"], ["str", "str", "str"])
+            elif tok.starts_with("sqli="):
+                entry.sqli = decode_sqli(tok.substr(5, len(tok) - 5))
+            if nu.debug_enabled():
+                nu.debug_time("token " + str(i) + " (" + tok + ") decode done", dbg_t0)
+            i = i + 1
+        return entry
+    return empty_entry(host)
+
 # get_entry() reads+parses the file ONCE and hands back every field for
 # one host at once - use this instead of six separate get_*() calls
 # when hydrating a batch of fields together (menu.bd does exactly this
 # at startup and on target-switch); each separate get_*() below is its
-# own full read_entries() pass, which adds up fast.
+# own full lookup pass, which adds up fast.
 func get_entry(nu, host):
-    return find_entry(nu, read_entries(nu), host)
+    return find_entry_by_host(nu, host)
 
 # save_entry() writes a FULLY-FORMED entry (all 7 fields, whether
 # changed or not - build it off a prior get_entry() so untouched fields
