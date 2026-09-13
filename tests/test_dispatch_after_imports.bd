@@ -1,0 +1,89 @@
+# tests/test_dispatch_after_imports.bd - does the token-dispatch hammering
+# loop from tests/test_token_dispatch.bd crash MUCH sooner once it runs
+# behind the SAME import chain menu.bd itself goes through first, instead
+# of starting fresh with just 2 imports?
+#
+# Why: test_token_dispatch.bd (full read_entries() per-token dispatch,
+# debug logging on, exact real crash-trace tokens) survived ~608s / 20
+# rounds - about 5x longer, and ~10x more total token-dispatches, than the
+# real menu.bd crash needed (~122s, ~10 token-dispatches across
+# host_intel.txt lines 1+4). Every test so far starts almost immediately
+# (net + hostdata imports only) - none has reproduced the real run's ~19s
+# of PRIOR setup debt (menu.bd imports ELEVEN modules total, sleep(1)
+# after each, then declares its ~20-key state dict) before get_entry() is
+# ever called. This test adds that missing piece: the exact same 11
+# imports in the exact same order, same sleep(1) pacing, THEN the same
+# token-dispatch hammering as test_token_dispatch.bd - to see whether that
+# upfront debt is what tips it into actually crashing.
+#
+# HOW TO RUN: test_dispatch_after_imports A (debug on, matches production)
+# or test_dispatch_after_imports B (debug off). Compare against
+# test_token_dispatch.bd's own results (same PART meaning) - if THIS one
+# crashes noticeably sooner (fewer rounds / less total time) than that one
+# did, the import-chain setup debt is confirmed as a real contributing
+# factor, not just imagined.
+# @param part "A = debug logging on (matches production), B = debug off" default="A"
+
+import "/home/Nykita/scripts/utils/net" as nu
+sleep(1)
+import "/home/Nykita/scripts/utils/creds" as uc
+sleep(1)
+import "/home/Nykita/scripts/utils/probe" as up
+sleep(1)
+import "/home/Nykita/scripts/utils/crack" as ucr
+sleep(1)
+import "/home/Nykita/scripts/utils/grab" as ug
+sleep(1)
+import "/home/Nykita/scripts/utils/cleanup" as ucl
+sleep(1)
+import "/home/Nykita/scripts/utils/sqli" as usq
+sleep(1)
+import "/home/Nykita/scripts/utils/firewall" as ufw
+sleep(1)
+import "/home/Nykita/scripts/utils/hostdata" as uhd
+sleep(1)
+import "/home/Nykita/scripts/utils/sync" as usy
+sleep(1)
+import "/home/Nykita/scripts/utils/dashboard" as udb
+sleep(1)
+
+var PART = get_param("part")   # "A" = debug on (matches production), "B" = debug off
+
+func debug_time_maybe(nu, label, t0):
+    if PART == "A":
+        nu.debug_time(label, t0)
+    # PART B: skip entirely, isolating the elif-chain/decode cost alone.
+
+# Same 5 tokens as the real crash trace's host_intel.txt line 1.
+var tokens = ["fw=0:0:0", "users=root:1,testuser:0", "specs=medium:20:medium:0:2", "jobs=", "nmap="]
+
+var t0 = get_unix_time()
+log("=== PART " + PART + " - imports done, starting dispatch, cpu=" + str(get_cpu()) + " ===")
+
+var round = 0
+while round < 40:
+    log("round " + str(round) + "  t=+" + str(get_unix_time() - t0) + "s  cpu=" + str(get_cpu()))
+    var i = 0
+    while i < len(tokens):
+        nu.throttle(nu.cpu_guard_fast())
+        var tok = tokens[i]
+        debug_time_maybe(nu, "token " + str(i) + " (" + tok + ") throttle done", t0)
+        if tok.starts_with("ports="):
+            var ports = uhd.decode_tuple_list(nu, tok.substr(6, len(tok) - 6), ["port", "service"], ["int", "str"])
+        elif tok.starts_with("fw="):
+            var fw = uhd.decode_fw(tok.substr(3, len(tok) - 3))
+        elif tok.starts_with("users="):
+            var users = uhd.decode_tuple_list(nu, tok.substr(6, len(tok) - 6), ["name", "cracked"], ["str", "bool"])
+        elif tok.starts_with("specs="):
+            var specs = uhd.decode_specs(tok.substr(6, len(tok) - 6))
+        elif tok.starts_with("jobs="):
+            var jobs = uhd.decode_tuple_list(nu, tok.substr(5, len(tok) - 5), ["name", "listens_for", "status"], ["str", "str", "str"])
+        elif tok.starts_with("nmap="):
+            var nmap = uhd.decode_tuple_list(nu, tok.substr(5, len(tok) - 5), ["ip", "hostname", "source"], ["str", "str", "str"])
+        elif tok.starts_with("sqli="):
+            var sqli = uhd.decode_sqli(tok.substr(5, len(tok) - 5))
+        debug_time_maybe(nu, "token " + str(i) + " (" + tok + ") decode done", t0)
+        i = i + 1
+    round = round + 1
+
+log("=== PART " + PART + " survived all 40 rounds, t=+" + str(get_unix_time() - t0) + "s ===")
