@@ -17,19 +17,23 @@
 # unpaced stretch spikes get_cpu() by roughly the same amount every time,
 # takes ~3-4s to decay back under threshold" rather than anything exotic.
 #
-# HOW TO RUN: change PART below to "A" or "B", run, note whether/when it
-# CPU-overloads (and after how many rounds), then switch and re-run as a
-# SEPARATE script execution (comparing within one run would let whichever
-# runs second inherit the first's leftover load and contaminate the
-# comparison). Kept under tests/ per the updated convention - not deleted
-# after use, re-run whenever this needs re-checking.
+# HOW TO RUN: test_decode_pacing A (or just test_decode_pacing, A is the
+# default) or test_decode_pacing B - @param binds positionally, no -flag=
+# syntax (field_notes.txt STILL UNRESOLVED/CONFIRMED ABSENT). Note
+# whether/when it CPU-overloads (and after how many rounds), then run the
+# OTHER part as a SEPARATE script
+# execution (comparing within one run would let whichever runs second
+# inherit the first's leftover load and contaminate the comparison).
+# Kept under tests/ per the updated convention - not deleted after use,
+# re-run whenever this needs re-checking.
+# @param part "A = real decode_tuple_list(), B = +1 mid-item throttle" default="A"
 
 import "/home/Nykita/scripts/utils/net" as nu
 sleep(1)
 import "/home/Nykita/scripts/utils/hostdata" as uhd
 sleep(1)
 
-var PART = "A"   # "A" = real unmodified decode_tuple_list(), "B" = +1 mid-item throttle
+var PART = get_param("part")   # "A" = real unmodified decode_tuple_list(), "B" = +1 mid-item throttle
 
 # Same shape as the real crash trace's worst-case tokens (3-item ports,
 # 3-item users) - the two tokens that took 14.3s to decode each in the
