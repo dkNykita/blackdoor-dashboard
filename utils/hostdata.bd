@@ -89,6 +89,18 @@ func decode_tuple_list(nu, blob, field_names, field_types):
             else:
                 item[field_names[j]] = raw
             j = j + 1
+        # EXPERIMENTAL (menu.bd startup CPU overload investigation, see
+        # field_notes.txt): second throttle() added mid-item, after the
+        # field-by-field build, before append - halves the longest single
+        # unpaced stretch per item. tests/test_decode_pacing.bd's PART B
+        # confirmed this measurably lowers the steady-state cpu reading
+        # (100 -> 80) but did NOT, on its own, prove it prevents the real
+        # crash (isolated hammering never crashed either version). Applied
+        # here directly to get a fast real-world signal (real menu.bd run
+        # against real host_intel.txt crashes at a known ~122s) instead of
+        # more isolated synthetic testing. Revert this one line if it
+        # doesn't measurably help or makes things slower without benefit.
+        nu.throttle(nu.cpu_guard_fast())
         items.append(item)
     return items
 
