@@ -20,3 +20,7 @@ Steps to reproduce:
 Sources:
 - Documented return shape: https://blackdoor.tools/api/ - sqli(url) entry: "{success: true, data: '...', error: ''}", Cost: 2 ticks, Noise: 0.03. No mention there of a possible raise/exception on failure.
 - The actual raise behavior itself is not documented anywhere official - confirmed only via live testing this session.
+
+STATUS: RESOLVED in v1.1.1.
+Changelog (Official documentation/Updates/v1.1.1 - Bug Fixes.txt): "sqli() no longer crashes on a target with no configured routes - returns a normal result instead."
+Moved to Closed/. Note: utils/sqli.bd's try_direct() try/catch workaround is now redundant but harmless - no need to revert it.

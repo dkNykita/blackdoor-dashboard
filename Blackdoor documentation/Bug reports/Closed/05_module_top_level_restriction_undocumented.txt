@@ -28,3 +28,8 @@ Steps to reproduce:
 Sources:
 - `import` documented in the in-editor scripting reference (FUNCTIONS section): `import "utils"`, `import "utils" as u`. No mention of the top-level restriction or module/script asymmetry there or anywhere else checked.
 - The restriction itself: confirmed only via the engine's own live parse error this session.
+
+STATUS: RESOLVED in v1.1.1.
+Changelog (Official documentation/Updates/v1.1.1 - Bug Fixes.txt): "In-editor scripting reference now explains what a module's top level can hold."
+Doc gap closed - the restriction itself (no call-bearing top-level `var` in a module) is unchanged; the eager cache-init pattern still needs to move into a function, per the existing workaround.
+Moved to Closed/.

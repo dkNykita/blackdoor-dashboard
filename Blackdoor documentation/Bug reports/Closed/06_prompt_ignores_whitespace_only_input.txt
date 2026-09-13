@@ -21,3 +21,8 @@ Steps to reproduce:
 Sources:
 - Documented behavior: https://blackdoor.tools/api/ - prompt(message) entry: "Pause a foreground script and read a real line of typed input." No mention of whitespace-only input handling either way.
 - The actual discard behavior is not documented anywhere official - confirmed only via repeated live testing this session.
+
+STATUS: RESOLVED in v1.1.1.
+Changelog (Official documentation/Updates/v1.1.1 - Bug Fixes.txt): "prompt() no longer discards whitespace-only input."
+The "type - for default" sentinel wording adopted in our scripts as a workaround is no longer strictly necessary (space + Enter should now work), but is harmless to leave as-is.
+Moved to Closed/.

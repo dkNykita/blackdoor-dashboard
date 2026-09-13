@@ -34,3 +34,7 @@ Sources:
 - Only place object literal syntax appears in any official doc: https://blackdoor.tools/api/ - "var o = {"a": 1}       # object", a single-line example only, doesn't demonstrate or forbid a multi-line form either way.
 - The multi-line restriction itself is not documented anywhere official (checked the web API reference, the in-game api quickref, and the in-editor `help api` reference - no mention in any). Confirmed only via the engine's own live parse error and an isolated test script this session.
 
+STATUS: RESOLVED in v1.1.1.
+Changelog (Official documentation/Updates/v1.1.1 - Bug Fixes.txt): "Object literals, lists, and function calls can now span multiple lines."
+Moved to Closed/. The single-line workaround used during the Krok 12 refactor can be reformatted multi-line if desired, not required.
+

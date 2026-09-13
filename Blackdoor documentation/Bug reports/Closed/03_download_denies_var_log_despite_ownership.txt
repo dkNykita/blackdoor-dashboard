@@ -21,3 +21,8 @@ Steps to reproduce:
 Sources:
 - https://blackdoor.tools/api/ - download() entry has a success example, no permission model or /var/log restriction mentioned.
 - The denial and its /var/log-specificity aren't documented anywhere - confirmed via live testing only.
+
+STATUS: RESOLVED in v1.1.1 (partially reframed, not reverted).
+Changelog (Official documentation/Updates/v1.1.1 - Bug Fixes.txt): "ls now shows real permissions/ownership, matching download()/upload()."
+This confirms the session's own conclusion (field_notes.txt): download()'s /var/log denial was legitimate, intentional behavior (log files are scrub_log()/delete_file()-only) - `ls` was the one lying, showing world-readable perms that didn't match what download()/upload() actually enforced. The fix makes `ls` reflect reality instead of changing download()'s behavior, so the reported inconsistency is closed. grab_on_file()'s existing per-file error logging (added this session) remains useful/valid regardless.
+Moved to Closed/.
