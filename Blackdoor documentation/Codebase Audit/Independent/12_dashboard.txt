@@ -1,0 +1,99 @@
+CODEBASE AUDIT - INDEPENDENT PASS
+File: utils/dashboard.bd (472 lines, 4 functions)
+Read fresh, evaluated on its own merits (see Integrated/12_dashboard.txt
+for cross-references - this file is the OTHER primary site of the CPU
+investigation besides hostdata.bd).
+============================================================
+
+print_separator()
+  Location: line 22-23. Evidence: ~10 call sites (once per section of
+  print_dashboard()'s output). Nested calls: log() only.
+  Purpose: named 1-liner for a repeated visual divider - purely
+  cosmetic, no alternative worth considering.
+
+mark_cracked(nu, uhd, state, target, account_name)
+  Location: line 39-54. Evidence: ~3 call sites (menu.bd's post-crack
+  paths).
+  Nested calls: uhd.get_entry(), uhd.save_entry() (deliberately NOT
+  uhd.set_users() - see its own comment, correctly avoiding a second
+  redundant read).
+  Purpose: persists a just-cracked account immediately, separately from
+  the refresh_status() call that follows it - so a crack's result
+  survives even if refresh_status() itself fails afterward. Sound
+  design: 1 read + 1 write, correctly reasoned in its own comment about
+  why it bypasses set_users().
+  Alternatives: none - already the minimal correct shape for this
+  specific need (partial update to one field, with the rest already in
+  hand).
+
+refresh_status(nu, uc, uhd, state, target)
+  Location: line 56-298 (243 lines - by far the largest and most
+  complex function in the entire codebase).
+  Evidence: ~12 call sites (menu.bd's startup + every dispatch-loop
+  refresh).
+  Nested calls: extremely broad - nu.throttle() (>15 separate call
+  sites within this one function), nu.debug_time() (>15), nu.check_
+  trace() (5), probe_firewall(), get_noise(), uc.cracked_accounts_for(),
+  whois(), connect(), get_security(), probe_vuln(), get_users(),
+  server_specs(), list_jobs(), scan_network(), list_daemons(),
+  disconnect(), uhd.save_entry().
+  Purpose: the single "gather everything the dashboard needs to show"
+  function - deliberately monolithic rather than split into per-field
+  refresh functions, because splitting it previously caused up to 5
+  separate full file round-trips (documented in its own comment, lines
+  92-97) before that was consolidated into one save_entry() at the end.
+  This is a case where a large function is the CORRECT shape, not a
+  smell - the alternative (several smaller refresh_X() functions) was
+  tried implicitly (via set_*() wrappers) and reasoned against directly
+  in-comment.
+  Alternatives:
+    - Split into "refresh_free_fields()" (probe_firewall/get_noise/
+      cracked_accounts_for/whois - none need auth) and
+      "refresh_connected_fields()" (everything inside `if conn.success:`)
+      as two separately-callable functions instead of one giant one:
+      would improve readability/testability without reintroducing the
+      multiple-save_entry() problem (both could still share one final
+      save), but is a real, non-trivial refactor risk given how much
+      shared state (`conn`, `connect_str`, `accounts_available`) threads
+      between the two halves - not a small change.
+    - The "5 fetch-once blocks in a row on a fresh host" burst
+      (get_users/specs/jobs/nmap/daemons, each with its own check_
+      trace()+throttle() pair) is already explicitly reasoned about in
+      its own comment as a known, deliberate tradeoff (real time =
+      trace exposure, kept short on purpose) - no better alternative
+      identified, this is a genuine constraint, not an oversight.
+    - This function's total complexity (243 lines, dozens of nested
+      calls) is itself a standing invitation for exactly the kind of
+      "redundant full-pass buried in here somewhere" bug this whole
+      investigation keeps finding elsewhere - worth a dedicated,
+      slower, line-by-line pass specifically hunting for one, beyond
+      what this audit covers (see Integrated pass for what's already
+      been checked here directly).
+
+print_dashboard(nu, state, target)
+  Location: line 309-472 (163 lines, second-largest function in the
+  codebase).
+  Evidence: ~3 call sites (menu.bd's main render calls).
+  Nested calls: print_separator() (~10x), nu.throttle() (~7 distinct
+  call sites, mostly guarding per-item display loops), get_target(),
+  traces(), log() (dozens of times).
+  Purpose: pure read-only rendering of `state` into the terminal -
+  correctly takes no nu-mutating side effects, matching its role
+  (display only, refresh_status() owns all the actual fetching/
+  persisting). The per-item throttle() calls guarding for-loops over
+  state.open_ports/state.users/state.jobs/state.nmap_data/state.
+  daemons_here are all genuinely necessary given the file's own
+  documented finding that even a plain block of ~25 log()/if lines can
+  overload on its own - correctly applied uniformly, no loop skipped.
+  Alternatives:
+    - Combine the ~7 per-section throttle()+sleep(log_pace()) pairs
+      into fewer, larger sections: would reduce the NUMBER of throttle
+      calls, but this investigation's own findings (hostdata.bd) show
+      reducing throttle count isn't reliably safer - not a change to
+      make without a live test first, and this function has never been
+      directly implicated in a crash (see Integrated pass).
+    - This function's size alone (163 lines) makes it a second natural
+      candidate (after refresh_status()) for hiding an undiscovered
+      redundant-pass bug, though nothing found in this audit suggests
+      one - it only ever reads already-fetched `state` fields, never
+      re-fetches or re-decodes anything.

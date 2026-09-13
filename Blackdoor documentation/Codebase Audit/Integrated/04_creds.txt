@@ -1,0 +1,45 @@
+CODEBASE AUDIT - INTEGRATED PASS
+File: utils/creds.bd (~130 lines, 3 functions)
+============================================================
+
+read_credentials(nu)
+  No investigation history beyond being the ORIGINAL shared primitive
+  is_cracked()/cracked_accounts_for() used to call (see below) - never
+  itself modified.
+
+is_cracked(nu, account, host)
+  field_notes.txt history: was rewritten in the SAME fix as cracked_
+  accounts_for() (removed the redundant read_credentials()-then-
+  rescan double pass, now reads+filters in one inline pass) despite
+  having zero current callers - fixed for consistency/correctness
+  alongside its sibling, not because it was ever itself measured in a
+  crash trace. CONFIRMED still unused; the Independent pass's "flag for
+  removal" note stands.
+
+cracked_accounts_for(nu, host)
+  field_notes.txt/tests/README.txt history: this is a HEADLINE fix of
+  the investigation, on equal footing with get_entry()/save_entry().
+  Original bug: called read_credentials(nu) (full throttled pass
+  building a list) then throttled AGAIN over that list to filter for
+  one host - live-measured at ~106-108s per call, remarkably consistent
+  across a missing-target and existing-target run despite those two
+  scenarios differing wildly elsewhere. A PRIOR attempt at this exact
+  bug (commit 874834f, "Fix cracked_accounts_for()/is_cracked() double-
+  throttling regression") tried batching the throttle to every 8 items
+  instead of removing the redundant pass - reverted later (400c735,
+  "Revert all throttle batching") when batching was independently found
+  unsafe elsewhere, which silently brought the full ~106s cost back
+  until THIS session's real fix (single inline pass) - LIVE-TESTED,
+  confirmed ~106.1s -> ~72.5s (~32% real improvement), crash moved later
+  by a corresponding amount but did not disappear.
+  Independent pass's "cache across refreshes within one script run"
+  alternative is NEW and, notably, directly addresses what field_notes.txt
+  itself flags as still the single most expensive per-refresh call
+  remaining after all current fixes (~72.5s, every single refresh_
+  status() call, whether or not anything actually changed since the
+  last one) - this is arguably the most promising concrete next
+  optimization surfaced by this whole audit, since unlike throttle-
+  placement tuning (confirmed exhausted, 2 harmful + 1 no-effect) it's
+  a genuine total-work reduction in the same successful vein as
+  get_entry()/save_entry(), on the ONE remaining expensive call this
+  session's fixes haven't yet touched.

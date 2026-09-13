@@ -1,0 +1,123 @@
+CODEBASE AUDIT - INTEGRATED PASS
+File: utils/hostdata.bd (491 lines, 31 functions)
+Same structure as Independent/03_hostdata.txt, but explicitly
+cross-referenced against field_notes.txt's STARTUP CPU OVERLOAD
+INVESTIGATION and tests/README.txt - this file was the primary site of
+that investigation, so most functions here already have documented
+findings. Where the Independent pass's own analysis and the prior
+investigation agree, that's noted as CONFIRMED; genuinely new
+observations from the Independent pass are marked NEW.
+============================================================
+
+host_intel_path() / empty_entry(ip)
+  No investigation history - these never appeared in any crash trace or
+  fix. Independent pass's assessment stands unchanged (trivial,
+  path/shape primitives, no alternative worth pursuing).
+
+decode_tuple_list(nu, blob, field_names, field_types)
+  field_notes.txt history: this function's per-item throttle() was the
+  target of a REVERTED experiment - adding a SECOND throttle() mid-item
+  (after the field-build, before append) was live-tested and made the
+  real menu.bd crash happen ~70s EARLIER (+53s instead of +122.5s) -
+  confirmed cause: get_cpu() itself adds load, so an extra throttle()
+  call is extra self-inflicted load, not a free wait. See the
+  TRIED-AND-REVERTED comment directly in the function body (lines
+  92-105) - this is the clearest, most load-bearing prior finding in the
+  whole file. CONFIRMED by the Independent pass's alternatives analysis
+  (which independently flagged "skip the per-item throttle" as tried and
+  reverted, without originally knowing the exact numbers - now cited).
+  test_decode_pacing.bd (tests/) also hammered this function directly
+  for 800-1400+ seconds without ever crashing it in isolation - a
+  negative result establishing that decode_tuple_list() alone isn't the
+  root cause of the real crash, only a contributing cost center.
+
+read_entries(nu)
+  field_notes.txt history: this function's per-line (line 216) and
+  per-token (line 236) throttles were EACH separately tested by removal
+  - per-token removal alone crashed the real menu.bd run at +13.6s
+  (line 1, first token), the single worst result of any experiment this
+  session. The entry-level throttle() (line 191) was itself a CONFIRMED
+  fix earlier in the session (moved to the function's first line after
+  a live crash showed the old per-line-only placement arrived too late
+  if the aggregate was already critical). tests/test_token_dispatch.bd
+  and tests/test_dispatch_after_imports.bd both reproduce this
+  function's per-token dispatch block in isolation to test hypotheses
+  about it (debug logging cost, import-chain debt) - both came back
+  NEGATIVE (this function's own logic, hammered directly, survived far
+  longer than the real crash needed), which is what redirected the
+  investigation toward get_entry()'s CALLERS (i.e. that it was being
+  invoked to do full-file work when only one host was needed) rather
+  than read_entries()'s own internals. Independent pass's conclusion
+  that this function is now CORRECTLY SCOPED to do_sync()'s genuine
+  full-list need is CONFIRMED - the investigation's actual fix went
+  around this function (find_entry_by_host()), not into it, precisely
+  because auditing it directly (both live and in isolated tests) never
+  found a further win available inside it.
+
+encode_entry_line(nu, e) / write_entries(nu, entries)
+  field_notes.txt history: encode_entry_line() was extracted DURING the
+  save_entry() fix specifically so write_entries() (do_sync()'s genuine
+  full-rebuild need) and save_entry() (which no longer needs a full
+  rebuild) could share the per-entry encode logic without save_entry()
+  paying for every OTHER entry's encode work. This is a NEW
+  cross-reference the Independent pass didn't have: the 7-throttle-per-
+  entry shape inside encode_entry_line() is a straight carry-over from
+  write_entries()'s ORIGINAL body (pre-extraction) - never itself
+  throttle-tuned or live-tested in isolation, unlike decode_tuple_list().
+  Worth flagging as genuinely untested territory if this function's cost
+  ever becomes suspect in a future trace (write_entries() is called by
+  do_sync() at startup, not on the hot crash path, so it hasn't come up).
+
+find_entry(nu, entries, host)
+  No direct investigation history (do_sync()'s scan, never on the
+  get_entry()/refresh_status() crash path) - the file's own long
+  comment about this being "NOT throttled, deliberately" (bounded host
+  list, unlike per-host field data) predates this session's investigation
+  and was never revisited or challenged live. Independent pass's
+  "dict-keyed-by-IP" alternative is NEW - not previously considered
+  anywhere in field_notes.txt.
+
+find_entry_by_host(nu, host) / get_entry(nu, host)
+  field_notes.txt history: this is THE headline fix of the whole
+  investigation. get_entry() used to be `find_entry(nu,
+  read_entries(nu), host)` - full decode of every host just to answer
+  one host's question, wasted entirely when the target wasn't in the
+  file at all (the exact real scenario: mission target 45.155.67.201
+  wasn't among the 4 tracked hosts). LIVE-TESTED twice: missing-target
+  run did ZERO decode work afterward (get_entry() done at +50.2s, pure
+  scan cost); existing-target run skipped 3 non-matching lines entirely
+  and decoded only the real match. Both runs still crashed, but LATER
+  and in a DIFFERENT function (dashboard.bd's cracked_accounts_for()),
+  which is what led to that function's own fix. Existing-target runs
+  also exposed the still-unexplained BIMODAL variance (+40.3s vs
+  +109.5s on identical code+data) that remains the single biggest open
+  question in the whole investigation - CONFIRMED still open, not
+  touched by anything audited in this pass.
+  Independent pass's "factor the duplicated dispatch block between this
+  and read_entries() into one shared helper" is a NEW, valid,
+  investigation-independent maintainability suggestion - never proposed
+  during the live-debugging session (which was focused on behavior, not
+  code cleanliness) and carries no known performance risk either way.
+
+save_entry(nu, entry)
+  field_notes.txt history: the write-side twin fix, found by
+  DELIBERATELY AUDITING every part of the refresh path rather than by a
+  live crash - the crash has never actually reached this function in
+  any real test run (both post-fix live tests crashed upstream of it,
+  in refresh_status() or inside get_entry() itself). CONFIRMED still
+  UNTESTED in practice, exactly as the Independent pass would have no
+  way to know from reading the code alone - this is the most important
+  Integrated-only fact for this function: the fix is real and reduces
+  provable total work, but has zero live-run evidence behind it yet.
+
+get_ports/get_firewall/get_users/get_specs/get_jobs/get_nmap/get_sqli,
+set_ports/set_firewall/set_users/set_specs/set_jobs/set_nmap/set_sqli
+  No investigation history for any of these 14 functions specifically -
+  none ever appeared in a crash trace (mark_cracked()/refresh_status()
+  build full entries and call save_entry() directly, bypassing these
+  wrappers entirely for every real production write in this codebase).
+  The Independent pass's finding that 6 of 7 getters and most setters
+  have ZERO current callers is NEW information not previously surfaced
+  anywhere in field_notes.txt or tests/README.txt - worth raising with
+  the maintainer as its own small finding, independent of the CPU
+  investigation.

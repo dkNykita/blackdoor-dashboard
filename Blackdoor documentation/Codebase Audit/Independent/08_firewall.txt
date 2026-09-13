@@ -1,0 +1,16 @@
+CODEBASE AUDIT - INDEPENDENT PASS
+File: utils/firewall.bd (26 lines, 1 function)
+============================================================
+
+do_bypass_firewall(nu, target)
+  Evidence: 1 call site (menu.bd action dispatch).
+  Nested calls: probe_firewall(), bypass_firewall() (progressive retry
+  loop), nu.throttle(), sleep(nu.retry_delay()).
+  Purpose: the entire file is one function - chip at the firewall until
+  every layer is down, with an early "nothing to bypass" exit. Correct,
+  minimal, no connection required (matches the API's own documented
+  no-connect requirement for these two calls).
+  Alternatives: none - each bypass_firewall() call is genuinely
+  progressive, unbounded-in-advance work; nothing here reprocesses
+  already-known data. Smallest file in the codebase, appropriately so
+  given its single narrow purpose.

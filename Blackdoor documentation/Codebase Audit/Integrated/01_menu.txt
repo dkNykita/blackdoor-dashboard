@@ -1,0 +1,39 @@
+CODEBASE AUDIT - INTEGRATED PASS
+File: menu.bd (414 lines, 0 functions)
+============================================================
+
+Import chain / startup_t0 / debug instrumentation
+  field_notes.txt history: this IS the exact instrumentation that
+  produced every checkpoint trace in the whole investigation ("imports
+  done, +13.9s", "state declared, +16.0s", etc.) - every single number
+  cited throughout field_notes.txt/tests/README.txt traces back to
+  these debug_time() calls. CONFIRMED still needed (investigation
+  ongoing); Independent pass's "premature to remove" conclusion matches.
+
+state dict
+  field_notes.txt history: this is the exact literal that motivated the
+  whole "object literals can't span multiple lines" bug report (Bug
+  Reports/Closed/02_...) - now fixed and reformatted multi-line as part
+  of this session's earlier work, unrelated to the CPU investigation.
+
+Target resolution / target_is_own_ip
+  No investigation history - never appeared in a crash trace at this
+  stage (crashes have only ever happened after get_entry()/refresh_
+  status() begin).
+
+Startup hydration: ONE get_entry() call
+  field_notes.txt/tests/README.txt history: this is the EXACT call site
+  whose cost was measured in every "get_entry() done, +Xs" checkpoint
+  throughout the investigation - both the missing-target (+50.2s, pure
+  scan) and existing-target (+109.5s completing / +40.3s crashing
+  mid-way, the still-unexplained bimodal variance) numbers come from
+  this one line. The single-call design itself was never in question -
+  the investigation's fixes all targeted get_entry()'s OWN
+  implementation (find_entry_by_host()), not this call site.
+
+Dispatch loop
+  No investigation history for the loop structure itself - every crash
+  this session happened during STARTUP (before the loop's first
+  iteration), never inside the loop/dispatch logic. Choice "t"'s
+  duplicated re-hydration pattern (Independent pass's DRY finding) has
+  never been separately measured or flagged - genuinely NEW.

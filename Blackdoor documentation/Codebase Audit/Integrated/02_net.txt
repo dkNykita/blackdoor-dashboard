@@ -1,0 +1,80 @@
+CODEBASE AUDIT - INTEGRATED PASS
+File: utils/net.bd (389 lines, 21 functions)
+Cross-referenced against field_notes.txt. Note: this file already
+carries most of its OWN history inline (see Independent pass's
+file-level observation) - this pass adds the parts of the investigation
+that happened OUTSIDE this file's own comments.
+============================================================
+
+debug_enabled() / debug_time(label, t0)
+  field_notes.txt history: NEW cross-reference the file's own comments
+  don't spell out - debug logging's cost was explicitly measured and
+  confirmed non-negligible mid-investigation. test_token_dispatch.bd's
+  PART A (debug on, matching production) vs PART B (debug off) was
+  specifically designed to isolate this - PART A alone was run (~608s/
+  20 rounds, no crash) but PART B was never actually run, so the
+  "always-on debug_enabled() adds real cost" question raised by the
+  Independent pass's finding (it's hardcoded true, never toggled) is
+  STILL open empirically, not just theoretically. Worth flagging as
+  unfinished investigation work, not merely a style note.
+
+cpu_guard_conservative() / cpu_guard_fast()
+  field_notes.txt/in-file history: the file's own comment (lines
+  68-80 area, "NOTE - throttle_default() vs throttle_heavy()") already
+  documents that the light/costly-call distinction these two names
+  imply drifted into a connection/trace-risk distinction instead,
+  mid-session, and flags a rename or consolidation as a still-open
+  task - CONFIRMED still open, never revisited. Also: cpu_guard_fast()
+  specifically is the threshold behind EVERY throttle-placement
+  experiment this session (both the harmful ones in hostdata.bd and the
+  no-effect one in dashboard.bd) - all three used cpu_guard_fast()=80,
+  meaning the naming-drift issue and the "where do we call throttle()"
+  investigation share a threshold value but were never tested against
+  each other (e.g. never tried cpu_guard_conservative()=50 in the exact
+  same experimental spots, in case the THRESHOLD value itself, not just
+  placement/count, matters).
+
+throttle(threshold)
+  field_notes.txt history: this is the single most load-bearing function
+  in the ENTIRE investigation. CONFIRMED via direct player observation:
+  get_cpu() itself adds load (contradicts its documented "0 ticks" cost)
+  - meaning this function's own `while get_cpu() > threshold: sleep(...)`
+  retry loop is partly self-defeating, each poll nudging load back up.
+  This explains the field's own historical ABANDONED-shorter-interval
+  finding (lines 150-164) MORE precisely than that comment could at the
+  time it was written: a shorter retry interval doesn't just fail to
+  help because "get_cpu() needs real time to decay" (the original,
+  correct-but-incomplete explanation) - it also means MORE frequent
+  get_cpu() calls per unit time, each one itself adding load, compounding
+  the problem. Three separate live experiments this session directly
+  manipulated the NUMBER of throttle() calls around this function's own
+  cost (add one, remove one, add one elsewhere) - 2 made the real crash
+  happen sooner, 1 had zero effect - CONFIRMED "throttle-count/placement
+  tuning" is an exhausted direction for now (see field_notes.txt STATUS
+  note), NOT because throttle() itself is wrong, but because we don't yet
+  have a working theory for what a genuine FIX to this function would
+  look like beyond "call it less/differently," which has now been tried
+  three ways.
+
+check_trace(conn, connect_str, host) / check_trace_verbose(...)
+  field_notes.txt history: "1st check_trace() done" is the exact
+  checkpoint name in every real crash trace this session (both
+  refresh_status()'s connected branch and the reverted throttle
+  experiment sat right after this call). check_trace() itself was NEVER
+  directly modified or throttle-tuned in any experiment - every
+  experiment touched code AROUND it (before or after), never its own
+  body. Given how central this checkpoint is to every real trace, it may
+  be worth its own isolated audit/test in a future session, the same way
+  decode_tuple_list()/read_entries() each got one - CONFIRMED as an
+  untested gap, not something this audit itself resolves.
+
+connect_or_raise(connect_str) / walk_tree(...) / prompt_default(...) /
+resolve_raw_target(raw) / wait_for_trace_recovery(host) /
+trace_hopeless(conn) / should_disconnect_for_trace(host) /
+local_tick_rate() / retry_delay() / log_pace() / trace_poll_interval() /
+trace_critical() / trace_critical_pct() / trace_warn()
+  No investigation history for any of these beyond what's already in
+  their own file comments (which this pass already cited as the
+  Independent pass's primary source) - none of these appeared in a live
+  crash trace or were the subject of a targeted fix/experiment this
+  session. Independent pass's assessments stand unchanged.

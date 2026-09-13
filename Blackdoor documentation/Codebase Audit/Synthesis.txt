@@ -1,0 +1,106 @@
+CODEBASE AUDIT - SYNTHESIS
+Compares the Independent pass (fresh, unbiased) against the Integrated
+pass (cross-referenced against field_notes.txt/tests/README.txt) across
+all 12 modules / 84 functions, then gives a prioritized list of concrete
+next-step candidates. Full per-function detail lives in Independent/
+and Integrated/ - this file is the conclusion, not a repeat of either.
+============================================================
+
+WHERE THE TWO PASSES AGREE (mutual confirmation)
+- Both passes independently concluded that crack.bd, grab.bd,
+  cleanup.bd, firewall.bd, probe.bd, sqli.bd, and sync.bd's do_sync()
+  show NONE of the redundant-full-pass bug pattern (get_entry()/
+  cracked_accounts_for()/save_entry()'s original bug) - every loop in
+  those 7 files does genuinely necessary work matched to a real action.
+  The Independent pass reached this conclusion from reading the code
+  cold; the Integrated pass confirms it's the same conclusion
+  field_notes.txt's own "AUDIT" entry already reached live. Two
+  independent methods, same answer - this is a solid, low-risk
+  conclusion: these 7 files are not worth further CPU-investigation
+  attention.
+- Both passes agree throttle()/get_cpu() itself (utils/net.bd) is the
+  single most central, most already-investigated, and currently most
+  exhausted-feeling lever in the whole codebase - 3 separate live
+  placement/count experiments (2 harmful, 1 no-effect), no remaining
+  untried variant of "add/remove/relocate one throttle() call" left to
+  test blindly.
+- Both passes agree get_entry()/save_entry()'s fixes are real,
+  measured, and correctly scoped (do_sync()'s continued use of the
+  "full" read_entries()/write_entries()/read_credentials() functions is
+  legitimate, not a missed case).
+
+WHERE THE INDEPENDENT PASS SURFACED SOMETHING NEW
+(not previously in field_notes.txt/tests/README.txt - listed here once,
+not repeated per-module; see each Independent/*.txt for detail)
+1. cracked_accounts_for() (utils/creds.bd) is STILL the single most
+   expensive call in the fixed codebase (~72.5s, every dashboard
+   refresh, whether or not anything actually changed since the last
+   one) - and a caching alternative (invalidate only on a fresh crack,
+   stored in menu.bd's own `state` dict) was never proposed or tried
+   during the live investigation, which focused entirely on removing
+   redundant PASSES, not on avoiding repeat work across separate
+   refreshes of the SAME unchanged data.
+2. Dead code: hostdata.bd's is_cracked() (creds.bd) and 6 of 7 typed
+   get_*() getters plus most set_*() setters have ZERO current callers
+   in the Active codebase - never flagged anywhere before this audit.
+3. Two real (but performance-neutral) DRY opportunities: the per-token
+   decode dispatch block duplicated between read_entries() and
+   find_entry_by_host() (hostdata.bd), and menu.bd's choice-"t" state-
+   rehydration duplicating the startup hydration block.
+4. refresh_status()'s connected-branch tail (get_users/specs/jobs/nmap/
+   list_daemons blocks, plus the final save_entry() call) and
+   print_dashboard() entirely: NEVER exercised by any live crash trace
+   this session. Every real test run has crashed at or before the
+   connect()/check_trace() sequence - meaning roughly the back HALF of
+   refresh_status(), and all of print_dashboard(), remain completely
+   untested by this investigation's live runs. The save_entry() fix in
+   particular is unverified in practice for this reason.
+5. debug_enabled() (net.bd) is hardcoded `true`, never actually
+   toggled off and re-tested - test_token_dispatch.bd's own PART B
+   (debug off) was written specifically to measure this and never run.
+6. check_trace() (net.bd) is the exact checkpoint every single crash
+   trace stops right around ("1st check_trace() done") but has never
+   itself been the subject of a direct experiment - every attempt has
+   modified code AROUND it, never its own body.
+
+PRIORITIZED CANDIDATES FOR NEXT ACTION
+(P1 = most promising given this session's own track record; P4 =
+speculative/low-priority cleanup)
+
+P1 - cache cracked_accounts_for()'s result in state, invalidated only
+     on a fresh crack (do_crack()/do_escalate()/mark_cracked()). Same
+     "reduce total work" pattern that already worked twice
+     (get_entry(), save_entry()) - unlike throttle-placement tuning
+     (confirmed exhausted), this is untried and the single most
+     expensive remaining call in the fixed codebase.
+
+P2 - Run test_token_dispatch.bd's PART B (debug off) - was written for
+     exactly this, never executed. Would settle whether debug_enabled()
+     being hardcoded on is actually costing real time, independent of
+     anything else.
+   - Get a live run far enough to actually exercise refresh_status()'s
+     connected-branch tail + save_entry() - currently the single
+     biggest blind spot in the whole investigation's live-test coverage.
+   - A dedicated isolated test of check_trace() itself (same treatment
+     decode_tuple_list()/read_entries() already got) - the one central,
+     heavily-relied-on function that's never been directly tested.
+
+P3 - Confirm with the maintainer whether is_cracked() and the 6 unused
+     get_*() getters/setters (hostdata.bd) are intentional public API
+     surface or safe to remove.
+   - Factor the duplicated per-token dispatch block (read_entries() /
+     find_entry_by_host()) into one shared helper - zero performance
+     risk, real maintainability win.
+   - Factor menu.bd's choice-"t" re-hydration into a shared helper
+     alongside the startup hydration block.
+
+P4 - Rename/consolidate cpu_guard_conservative()/cpu_guard_fast() to
+     reflect their actual (connection/trace-risk) meaning instead of
+     their original (call-weight) one - purely a naming clarity task,
+     zero behavior change.
+   - Split refresh_status() into free-fields vs. connected-fields
+     halves for readability - no measured benefit, real refactor risk
+     given how much state threads between the two halves.
+   - Split do_sync() (utils/sync.bd) into 3 named functions; consider a
+     dict-based wordlist dedup if wordlists/common.txt ever grows large
+     enough for the current linear scan to matter - neither urgent.

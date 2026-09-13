@@ -1,0 +1,15 @@
+CODEBASE AUDIT - INTEGRATED PASS
+File: utils/sqli.bd (124 lines, 6 functions)
+============================================================
+
+All 6 functions: NO investigation history for the pacing/redundancy
+side. One unrelated prior fix on record: try_direct()'s try/catch
+around sqli() was originally added to work around a real bug (sqli()
+raising instead of returning {success:false}), documented and closed
+in Bug Reports/Closed/01_sqli_raises_instead_of_returning.txt and fixed
+upstream in v1.1.1 - the try/catch itself is explicitly left in place
+per its own in-file comment (defensive, harmless, engine-version-
+independent), which this Independent pass's own alternatives analysis
+independently arrived at too (CONFIRMED). No CPU-overload investigation
+history otherwise - this file was cleared in the same full-codebase
+audit pass as crack.bd/grab.bd/cleanup.bd/firewall.bd/probe.bd/sync.bd.

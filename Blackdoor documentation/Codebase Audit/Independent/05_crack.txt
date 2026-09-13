@@ -1,0 +1,85 @@
+CODEBASE AUDIT - INDEPENDENT PASS
+File: utils/crack.bd (142 lines, 7 functions)
+============================================================
+
+discover_network(nu, conn, host)
+  Evidence: ~2 call sites (do_crack(), do_escalate()).
+  Nested calls: nu.throttle(), scan_network(), log() per found host.
+  Purpose: shared "run nmap, log results, return the list" wrapper -
+  factored out so both crack paths persist/display network discoveries
+  the same way. Reasonable, no duplication left to remove.
+  Alternatives: none.
+
+crack_attempt(conn, account) / local_crack_attempt(conn, target_account)
+  Evidence: each has exactly 1 use site, but passed as a BARE FUNCTION
+  REFERENCE (callback), not called with parens directly - e.g.
+  `progressive_crack_loop(nu, conn, host, host, account, crack_attempt)`.
+  This is a real, deliberate use of BDScript's confirmed function-as-
+  value support (the same mechanism daemon_listen() uses officially).
+  Nested calls: crack(conn, account) / local_crack(target_account).
+  Purpose: "try once" adapters so progressive_crack_loop() (below) can
+  share ONE retry-loop implementation for both the remote crack() and
+  local local_crack() paths, which otherwise differ only in this one
+  call. local_crack_attempt() keeps an unused `conn` parameter purely to
+  match progressive_crack_loop()'s uniform `attempt_fn(conn, account)`
+  callback shape - a reasonable, explicitly-commented tradeoff (a
+  slightly awkward signature buys a fully shared loop implementation).
+  Alternatives: none better - this is the minimal-friction way to unify
+  two attempt shapes behind one loop given BDScript has no closures to
+  fall back on instead (per this codebase's own confirmed finding).
+
+progressive_crack_loop(nu, conn, connect_str, host, account, attempt_fn)
+  Evidence: ~3 call sites (do_crack() directly, local_crack_loop() which
+  wraps it once more).
+  Nested calls: nu.check_trace_verbose() (every attempt), nu.throttle(),
+  attempt_fn(conn, account) (the callback), sleep(nu.retry_delay()).
+  Purpose: the actual shared retry loop - was previously duplicated once
+  for the remote path and once for the local path, each with its own
+  copy of the same trace-safety bugs to fix twice. Now a single
+  implementation. Clean, correct use of the callback pattern.
+  Alternatives: none - this is already the DRY'd-up version of what used
+  to be two copies.
+
+local_crack_loop(nu, conn, connect_str, host, target_account)
+  Evidence: ~2 call sites (do_escalate(), do_crack()'s optional
+  escalate_to branch).
+  Nested calls: progressive_crack_loop() with local_crack_attempt() as
+  the callback.
+  Purpose: thin named wrapper so callers don't need to know/pass
+  local_crack_attempt() themselves - purely a readability convenience.
+  Alternatives: none needed.
+
+do_crack(nu, host, account, exploit, escalate_to)
+  Evidence: ~2 call sites (menu.bd action dispatch).
+  Nested calls: connect(), nu.check_trace_verbose(), probe_vuln(),
+  exploit_vuln(), get_security(), progressive_crack_loop(),
+  discover_network(), local_crack_loop() (conditionally), store(),
+  disconnect().
+  Purpose: the full "soften (optional) -> crack -> discover -> optional
+  escalate" orchestration for a fresh remote crack. Correctly skips the
+  softening phase's own throttle/pacing entirely when probe_vuln()
+  reports nothing left to exploit (an idempotent, already-known-state
+  check, not a fresh attempt) - good, deliberate short-circuit.
+  Alternatives: none identified - this function's shape (several real
+  API-call phases, each individually paced) doesn't show the "redundant
+  full-file pass" pattern this investigation keeps finding elsewhere;
+  every call here does genuinely necessary work for the crack it's
+  asked to perform.
+
+do_escalate(nu, host, as_account, target_account)
+  Evidence: ~2 call sites (menu.bd action dispatch).
+  Nested calls: nu.connect_or_raise(), local_crack_loop(), discover_
+  network(), store(), disconnect().
+  Purpose: standalone version of do_crack()'s optional escalate_to path,
+  for escalating from an already-cracked session without a fresh remote
+  crack (quieter, per its own comment). Small, focused, no duplication
+  with do_crack() beyond the two shared helpers it also calls.
+  Alternatives: none.
+
+FILE-LEVEL OBSERVATION: this file shows NONE of the redundant-full-pass
+bug pattern found in hostdata.bd/creds.bd - every loop here is bounded
+by real, necessary API interaction (retry until crack succeeds, walk
+however many vulnerabilities exist), not by re-processing already-
+available local data. Consistent with the Independent pass's earlier
+audit of grab.bd/cleanup.bd/firewall.bd/probe.bd (all real-action
+orchestrators, same conclusion).

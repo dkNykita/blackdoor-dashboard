@@ -1,0 +1,45 @@
+CODEBASE AUDIT - INDEPENDENT PASS
+File: utils/cleanup.bd (98 lines, 4 functions)
+============================================================
+
+scrub_on_file(conn, path, f, context)
+  Evidence: 1 use site, callback reference to nu.walk_tree() (context
+  carries the caller's own IP, since callbacks can't close over local
+  variables).
+  Nested calls: scrub_log() (wrapped in try/catch that raises with a
+  clear hint on failure - a real LogScrubber-ownership check isn't
+  available in the documented API, so a failed call is treated as "you
+  probably don't own it").
+  Purpose: per-file scrub callback - reasonable placeholder given the
+  documented API gap.
+  Alternatives: none available until/unless an ownership-check API
+  exists.
+
+do_scrub_log(nu, host, account)
+  Evidence: ~3 sites (menu.bd action dispatch + at least one internal
+  reference).
+  Nested calls: nu.connect_or_raise(), get_my_ip(), nu.walk_tree() in a
+  while-loop that RE-WALKS the tree if a reconnect happened mid-pass
+  (to catch fresh log entries the reconnect itself would have created).
+  Purpose: the real, IDS-memory-clearing log cleanup. The rescan-on-
+  reconnect loop is a genuinely necessary correctness feature (a
+  reconnect mid-scrub creates a fresh log line the first pass would
+  miss), not a redundant-pass bug - it only re-walks when reconnection
+  actually happened, not unconditionally.
+  Alternatives: none identified.
+
+delete_on_file(conn, path, f, context) / do_raw_cleanup(nu, host, account)
+  Evidence: 1 callback-reference use + 1 direct call site.
+  Nested calls: delete_file() / nu.connect_or_raise(), nu.walk_tree().
+  Purpose: raw delete-everything alternative to scrubbing - correctly
+  does NOT rescan on reconnect (nothing left to catch once files are
+  gone), a deliberate and correctly-reasoned asymmetry with do_scrub_
+  log() above.
+  Alternatives: none.
+
+FILE-LEVEL: no redundant-pass pattern. The file's own header comment
+documents a real historical fix (replacing a DIY read_file()->filter->
+write_file() log editor that turned out to have ZERO effect on IDS
+detection, not just a smaller effect - confirmed via community Discord
+testing) - a good example of this codebase correctly abandoning an
+approach once proven pointless, not something needing further action.

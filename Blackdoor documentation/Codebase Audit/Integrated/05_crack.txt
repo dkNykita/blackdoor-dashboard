@@ -1,0 +1,11 @@
+CODEBASE AUDIT - INTEGRATED PASS
+File: utils/crack.bd (142 lines, 7 functions)
+============================================================
+
+All 7 functions: NO investigation history. This file was already
+covered by the full-codebase audit that led directly to the save_entry()
+fix (field_notes.txt's "AUDIT" entry lists crack.bd explicitly as
+checked and cleared of the redundant-pass bug pattern) - CONFIRMED by
+this Independent pass's file-level observation arriving at the same
+conclusion independently. No live crash, experiment, or fix has ever
+touched this file. Nothing to add beyond the Independent pass.

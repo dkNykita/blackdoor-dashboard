@@ -1,0 +1,55 @@
+CODEBASE AUDIT - INDEPENDENT PASS
+File: utils/sqli.bd (124 lines, 6 functions)
+============================================================
+
+normalize_path(raw) / build_url(host, path)
+  Evidence: ~2 sites each (try_direct(), try_form()).
+  Nested calls: string replace/trim/starts_with.
+  Purpose: shared path-cleaning and URL-joining so both attempt paths
+  handle a quoted/blank/missing route the same way. Small, correct,
+  no duplication left.
+
+injection_payloads()
+  Evidence: 1 site (try_form()).
+  Purpose: named list of classic SQLi payloads instead of an inline
+  literal - fine as a named constant even with one caller, keeps
+  try_form() shorter to read.
+  Alternatives: none - a single caller doesn't make this worth inlining.
+
+try_direct(nu, host, route)
+  Evidence: 1 site (do_sqli()).
+  Nested calls: build_url(), normalize_path(), nu.throttle(), sqli()
+  (wrapped in try/catch).
+  Purpose: cheapest SQLi path - a single authored-route attempt. The
+  try/catch around sqli() is now defensive-only (see its own comment) -
+  reasonable to keep given it costs nothing and doesn't depend on
+  engine version.
+  Alternatives: the try/catch could be removed now that sqli() itself
+  no longer raises - not worth doing, since removing it buys nothing and
+  the comment already explains why it stays.
+
+try_form(nu, host, page)
+  Evidence: 1 site (do_sqli()).
+  Nested calls: normalize_path(), build_url(), injection_payloads(),
+  nu.throttle() (per payload AND per form field), browse(), find_forms(),
+  fill_form(), submit_form().
+  Purpose: the full login-page fallback - browse, find the form, try
+  each payload, resubmit. Correctly returns a graceful failure instead
+  of letting a raised error crash the whole script (documented as a
+  live-confirmed fix in its own comment).
+  Alternatives: none identified - each payload attempt is a real,
+  necessary browser interaction, not reprocessable local data.
+
+do_sqli(nu, host, route, page)
+  Evidence: ~2 sites (menu.bd's SQLi action).
+  Nested calls: try_direct(), try_form() (only if direct fails).
+  Purpose: orchestrates cheapest-first fallback, correctly short-
+  circuiting on direct success without ever browsing.
+  Alternatives: none.
+
+FILE-LEVEL OBSERVATION: no redundant-full-pass pattern here either -
+same conclusion as crack.bd/grab.bd/cleanup.bd/firewall.bd/probe.bd.
+This file's only real complexity (the payload/form retry loop in
+try_form()) is bounded by a small, fixed payload list (6 entries), not
+by anything that grows with playtime the way host_intel.txt/
+credentials.txt do - low risk by construction.

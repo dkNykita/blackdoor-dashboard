@@ -1,0 +1,295 @@
+CODEBASE AUDIT - INDEPENDENT PASS
+File: utils/hostdata.bd (491 lines, 31 functions)
+Read fresh, evaluated on its own merits - no reference to prior
+investigation findings (see Integrated/03_hostdata.txt for that).
+============================================================
+
+host_intel_path(nu-free, no args)
+  Location: line 41-42.
+  Evidence: ~5 call sites, all internal to this file (read_entries(),
+  find_entry_by_host(), save_entry(), write_entries()).
+  Nested calls: whoami() (builtin, 0 ticks).
+  Purpose: single source of truth for the storage path
+  ("/home/<user>/host_intel.txt"), so the path string itself is written
+  once. Trivial, no meaningful alternative - inlining the string
+  everywhere would just risk a typo divergence.
+
+empty_entry(ip)
+  Location: line 44-45.
+  Evidence: ~4 call sites (find_entry(), find_entry_by_host() x2 - one
+  per its two return paths).
+  Nested calls: none (pure literal construction).
+  Purpose: the canonical "nothing known about this host yet" shape - all
+  7 fields present as `none`, so every caller can assume a stable object
+  shape rather than checking for missing keys. Trivial, no alternative
+  worth considering.
+
+decode_tuple_list(nu, blob, field_names, field_types)
+  Location: line 74-107.
+  Evidence: highest-traffic decode function in the file - called from
+  both token-dispatch sites (read_entries(), find_entry_by_host()) for
+  4 of the 7 field types each (ports/users/jobs/nmap), plus from 3
+  standalone test scripts under tests/.
+  Nested calls: nu.throttle(nu.cpu_guard_fast()) once per comma-separated
+  item; blob.split(","), chunk.split(":"), int(), dict bracket-write.
+  Purpose: generic replacement for what used to be 4 near-identical
+  decode_*/write_* pairs (ports/users/jobs/nmap differ only in field
+  names/count/type) - a real DRY win, and the dynamic bracket-write
+  (`item[field_names[j]] = ...`) is what makes a single generic function
+  possible instead of a literal-per-field copy for each of the 4 shapes.
+  Alternatives:
+    - Keep 4 separate typed decoders (pre-refactor shape): more code,
+      more places to fix a bug, but each individual decode is a few
+      lines shorter and marginally easier to read in isolation. Not
+      worth it given 4x the maintenance surface for a trivial per-call
+      savings.
+    - A regex/pattern-based parse: not available - BDScript has no
+      general pattern-match builtin (see field_notes.txt's grep
+      discussion), only 4 fixed-purpose extract_*() functions that don't
+      fit this format at all. Not a real option.
+    - Skip the per-item throttle() and rely only on the outer per-token/
+      per-line throttle: tried and reverted elsewhere in this
+      investigation (see Integrated pass) - measured worse, not better.
+
+encode_tuple_list(nu, items, field_names, field_types)
+  Location: line 115-133.
+  Evidence: ~4 call sites, symmetric counterpart to decode_tuple_list(),
+  called only from encode_entry_line().
+  Nested calls: nu.throttle() per item, dict bracket-read, str().
+  Purpose: same DRY reasoning as decode_tuple_list(), for the write
+  direction. No `list.join()` used (not a confirmed built-in List
+  method) - manual `:`/`,` concatenation instead, which is really the
+  only option given that constraint.
+  Alternatives: none meaningfully different from decode_tuple_list()'s
+  analysis above - same generic-vs-4-copies tradeoff, same conclusion.
+
+decode_fw(blob) / encode_fw(fw)
+  Location: line 135-144.
+  Evidence: decode_fw ~4 sites (both dispatch functions + comments),
+  encode_fw 1 site (encode_entry_line()).
+  Nested calls: blob.split(":"), int().
+  Purpose: fw is a fixed 3-field record (active/layers/layers_remaining)
+  - too small and too differently-shaped (bool + 2 ints, not a repeated
+  tuple list) to fit decode_tuple_list()'s generic shape, so it stays as
+  its own tiny pair. Reasonable - forcing this into the generic list
+  decoder would need a fake 1-item wrapper for no real benefit.
+  Alternatives: none worth pursuing - this is already the minimal form
+  for a fixed 3-field record.
+
+decode_specs(blob) / encode_specs(specs)
+  Location: line 146-157.
+  Evidence: decode_specs ~4 sites, encode_specs 1 site.
+  Nested calls: split(":"), int().
+  Purpose/alternatives: identical reasoning to decode_fw/encode_fw - a
+  fixed 5-field record, same conclusion (no generic-list fit, no better
+  alternative).
+
+decode_sqli(blob) / encode_sqli(s)
+  Location: line 159-164.
+  Evidence: decode_sqli ~4 sites, encode_sqli 1 site.
+  Nested calls: split(":").
+  Purpose/alternatives: identical reasoning again - fixed 2-field
+  record, smallest of the three fixed-shape decoders. No changes worth
+  making.
+
+read_entries(nu)
+  Location: line 177-259 (largest function in the file, 83 lines).
+  Evidence: ~6 real call sites - save_entry() no longer calls it (see
+  Integrated pass), current legitimate callers are utils/sync.bd's
+  do_sync() (needs the FULL list to merge with known_hosts) plus a few
+  test scripts.
+  Nested calls: nu.throttle() (3 different call sites: entry, per-line,
+  per-token), nu.debug_time() (heavily, guarded by nu.debug_enabled()),
+  read_local(), decode_fw/specs/sqli/tuple_list.
+  Purpose: parses the ENTIRE host_intel.txt into a list of full entry
+  objects. Necessary as a primitive for do_sync()'s merge-preserve pass,
+  which genuinely needs every host's data at once. Not necessary for
+  anything that only needs ONE host (that's find_entry_by_host()'s job
+  now).
+  Alternatives:
+    - A streaming/generator-style read (process one line, yield,
+      continue) instead of building the whole `entries` list upfront:
+      BDScript has no generator/yield construct exposed in the docs, so
+      not available.
+    - Cache the parsed result across calls in this same script run,
+      since do_sync() is the only caller and runs once at startup: would
+      save nothing (already called once per do_sync() run) - not
+      applicable.
+  This function is inherently the expensive, full-file-decode primitive
+  - that's fine for its one legitimate remaining caller (do_sync()), the
+  problem was ever routing a single-host lookup through it (fixed
+  elsewhere, see find_entry_by_host()/save_entry()).
+
+encode_entry_line(nu, e)
+  Location: line 271-295.
+  Evidence: 2 call sites - write_entries() (per entry, for a full
+  rebuild) and save_entry() (once, for the single changed entry).
+  Nested calls: nu.throttle() (7 separate call sites - one per field
+  check, unconditionally, even when that field is `none` and the
+  encode_*() call is skipped).
+  Purpose: single-entry encoder, extracted so save_entry() doesn't need
+  to re-encode every OTHER host just to change one. Good factoring -
+  this is exactly the kind of shared-helper split that avoids
+  duplicating the field-by-field logic between write_entries() and
+  save_entry().
+  Alternatives:
+    - Only throttle before fields that are actually present (skip the
+      throttle() when e.X == none, since there's no encode_*() call to
+      protect): would reduce throttle count for entries with few fields,
+      but per this investigation's own findings, fewer throttle() calls
+      isn't reliably safer (see field_notes.txt) - not a clear win, and
+      untested.
+    - Build the line with a list + a hypothetical join() instead of
+      string concatenation: not available at all (list.join() isn't a
+      confirmed method) per this file's own header comment.
+
+write_entries(nu, entries)
+  Location: line 297-301.
+  Evidence: ~2 real call sites - utils/sync.bd's do_sync() (genuine full
+  rebuild after merging known_hosts) and internally not called by
+  save_entry() anymore.
+  Nested calls: encode_entry_line() per entry, save().
+  Purpose: full-file rewrite from a complete in-memory list - correct
+  and necessary for do_sync()'s use case (every host's line needs to be
+  regenerated from the merged data). Simple, minimal implementation
+  after the encode_entry_line() extraction.
+  Alternatives: none needed - this is already about as lean as a
+  full-rebuild function can be.
+
+find_entry(nu, entries, host)
+  Location: line 312-316.
+  Evidence: ~4 call sites - utils/sync.bd's do_sync() (once per
+  known_hosts line, looking up prior data to preserve) plus a couple of
+  callers/tests.
+  Nested calls: none (linear scan, deliberately unthrottled - see the
+  file's own comment: this only scans the host LIST, bounded by
+  realistically-tracked host count, not per-host field data).
+  Purpose: plain linear search over an ALREADY-decoded list (the result
+  of read_entries()) - correctly separated from find_entry_by_host()
+  (below), which searches the RAW file instead. Two different jobs that
+  happen to sound similar by name.
+  Alternatives:
+    - A dict/map keyed by IP instead of a list + linear scan: would be
+      O(1) instead of O(hosts), but hosts are described as "realistically
+      tens at most" - the file's own comment argues this doesn't matter
+      at this scale, and BDScript's dynamic-key-read support (confirmed
+      working) would make this straightforward if host counts ever grew
+      enough to matter. Worth revisiting only if host_intel.txt grows
+      into the hundreds of entries.
+
+find_entry_by_host(nu, host)
+  Location: line 334-382 (49 lines).
+  Evidence: 1 direct call site (get_entry()'s thin wrapper) - the sole
+  reason get_entry() exists as a two-line indirection.
+  Nested calls: nu.throttle() (entry + per-line + per-token, same 3
+  call-site shape as read_entries()), read_local(), the same
+  decode_fw/specs/sqli/tuple_list dispatch as read_entries().
+  Purpose: targeted single-host lookup - cheap string match per line,
+  decode cost paid only for the matching line. Correctly duplicates
+  read_entries()'s per-token dispatch block rather than trying to share
+  it, since the control flow genuinely differs (early return on match
+  vs. building a full list).
+  Alternatives:
+    - Factor the per-token dispatch block (lines 240-256 in
+      read_entries(), 364-380 here) into one shared helper called from
+      both functions: real, valid DRY opportunity - right now a change
+      to how one field type is decoded (e.g. adding an 8th field) has to
+      be made in TWO places. Worth doing as a follow-up refactor,
+      independent of the CPU investigation (no performance implication
+      either way, purely a maintainability win).
+    - Index host_intel.txt some other way (e.g. a separate small
+      "index" file mapping IP -> byte offset) to skip the line-by-line
+      scan entirely: would need file-seek-by-offset, not present in the
+      documented API (read_local() returns the whole file as a string,
+      no partial-read primitive) - not achievable with the current API
+      surface.
+
+get_entry(nu, host)
+  Location: line 389-390.
+  Evidence: highest-traffic function in this file by far - ~20 real call
+  sites: menu.bd (x2, dashboard startup + target-switch), utils/
+  dashboard.bd's mark_cracked()/refresh_status(), and all 7 typed
+  get_*() wrappers below (each is itself called from various places).
+  Nested calls: find_entry_by_host() only.
+  Purpose: the documented "read every field for one host at once"
+  entry point - the file's own header comment already argues this is
+  preferable to calling several separate get_*() below when you need
+  more than one field, since each get_*() below is its own full lookup
+  pass. Thin, correct, no wasted work as a wrapper.
+  Alternatives: none - this IS the recommended alternative to the
+  single-field get_*() functions, not something that itself needs
+  replacing.
+
+save_entry(nu, entry)
+  Location: line 412-434.
+  Evidence: ~11 real call sites - dashboard.bd's mark_cracked()/
+  refresh_status(), and all 7 set_*() wrappers below.
+  Nested calls: read_local(), encode_entry_line() (once, only for the
+  changed entry), nu.throttle() per scanned line, save().
+  Purpose: read-modify-write for exactly one host's line, without
+  touching any other host's data. Correctly avoids decoding OR
+  re-encoding every other host - the raw text of untouched lines passes
+  straight through.
+  Alternatives:
+    - Same shared-dispatch-helper opportunity noted under
+      find_entry_by_host() applies conceptually here too, though
+      save_entry() doesn't duplicate the decode dispatch (it works with
+      already-built entry objects) - no action needed here specifically.
+    - Batch multiple set_*() calls into one save (if a caller needs to
+      change several fields at once, e.g. mark_cracked() calling
+      save_entry() directly with a fully-built object instead of going
+      through set_users()): already done correctly where it matters -
+      mark_cracked() builds one complete entry and calls save_entry()
+      once, not through set_users().
+
+get_ports/get_firewall/get_users/get_specs/get_jobs/get_nmap/get_sqli(nu, host)
+  Location: line 442-461, 7 near-identical one-liners.
+  Evidence: get_users has ~4 call sites (menu.bd/dashboard.bd - though
+  most live users-refresh logic actually reads state.users directly
+  rather than calling this); the other 6 (get_ports/get_firewall/
+  get_specs/get_jobs/get_nmap/get_sqli) show 0 real call sites anywhere
+  in the current Active codebase - these appear to be UNUSED, kept only
+  as part of the documented "getter/setter" API surface for hostdata.bd,
+  possibly for future/external callers or symmetry with the set_*()
+  side.
+  Nested calls: get_entry() each, i.e. each one pays a full lookup pass
+  for a single field - correctly warned against in this file's own
+  comment ("prefer get_entry() above when you need more than one
+  field").
+  Purpose: convenience one-liners for the single-field case. Each is
+  trivial and matches the setter side 1:1 for API symmetry.
+  Alternatives: given 6 of 7 are currently dead code (no real callers),
+  the honest alternative is deletion - but per this codebase's own
+  stated style ("no half-finished implementations", but also not
+  proactively removing a designed API surface without being asked) this
+  is a candidate to flag rather than unilaterally cut. Worth confirming
+  with the maintainer whether these are intentionally-kept public API
+  or genuinely dead weight.
+
+set_ports/set_firewall/set_users/set_specs/set_jobs/set_nmap/set_sqli(nu, host, value)
+  Location: line 465-491, 7 near-identical 3-line functions.
+  Evidence: set_ports ~1 site, set_users 0, set_specs 0, set_jobs 0,
+  set_nmap ~2 sites, set_sqli ~1 site, set_firewall 0 - similarly
+  sparse usage to the getters; several callers (mark_cracked(),
+  refresh_status()) build a full entry and call save_entry() directly
+  instead of routing through a single-field setter.
+  Nested calls: get_entry() (full lookup) + save_entry() (full
+  read-modify-write) each - i.e. each set_*() call is 2 full passes
+  over host_intel.txt (one read via get_entry(), one read+write via
+  save_entry()) just to change ONE field.
+  Purpose: same read-current -> patch-one-field -> save-everything
+  pattern repeated 7 times. Structurally correct (no bug - both
+  get_entry() and save_entry() are now cheap targeted operations), but
+  a caller that needs to set 2+ fields at once (there don't currently
+  appear to be any) would pay 2x the lookup+save cost by calling two
+  set_*() functions back to back instead of one get_entry()+build+
+  save_entry() sequence.
+  Alternatives:
+    - Where a caller already HAS the current entry in hand (e.g.
+      mark_cracked(), refresh_status()), skip the setter's own redundant
+      get_entry() and call save_entry() directly with a patched copy -
+      already done correctly by both real production callers. The
+      set_*() wrappers exist for callers that DON'T already have the
+      current entry, which is a legitimate use case.
+    - Given several of these show zero current callers, same "confirm
+      before deleting" note as the getters above applies.
