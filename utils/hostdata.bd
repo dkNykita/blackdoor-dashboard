@@ -89,18 +89,20 @@ func decode_tuple_list(nu, blob, field_names, field_types):
             else:
                 item[field_names[j]] = raw
             j = j + 1
-        # EXPERIMENTAL (menu.bd startup CPU overload investigation, see
-        # field_notes.txt): second throttle() added mid-item, after the
-        # field-by-field build, before append - halves the longest single
-        # unpaced stretch per item. tests/test_decode_pacing.bd's PART B
-        # confirmed this measurably lowers the steady-state cpu reading
-        # (100 -> 80) but did NOT, on its own, prove it prevents the real
-        # crash (isolated hammering never crashed either version). Applied
-        # here directly to get a fast real-world signal (real menu.bd run
-        # against real host_intel.txt crashes at a known ~122s) instead of
-        # more isolated synthetic testing. Revert this one line if it
-        # doesn't measurably help or makes things slower without benefit.
-        nu.throttle(nu.cpu_guard_fast())
+        # TRIED AND REVERTED (menu.bd startup CPU overload investigation,
+        # see field_notes.txt): a second throttle() here, mid-item, made
+        # the real crash WORSE, not better - live test moved the crash
+        # from +122.5s (line 4 token 5) to +53s (line 2's per-line
+        # throttle, a bare-IP line with no tokens at all). Confirmed
+        # cause: get_cpu() itself adds load (player-observed, contradicts
+        # its documented "0 ticks" cost) - every extra throttle() call is
+        # an extra round of get_cpu() polling, which is itself extra load,
+        # not a free wait. Doubling throttle() calls per item roughly
+        # doubled that self-inflicted cost, tipping the crash EARLIER.
+        # Do not re-add a redundant throttle() here without a real fix
+        # for the root cause first - more pacing is not automatically
+        # safer in this codebase once get_cpu()'s own cost is accounted
+        # for.
         items.append(item)
     return items
 
