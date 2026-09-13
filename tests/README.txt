@@ -53,5 +53,22 @@ test_dispatch_after_imports.bd
   first (sleep(1) after each) - tests whether the real run's ~19s of
   pre-get_entry() setup debt is the missing ingredient no prior test
   reproduced.
-  Progress: NOT YET RUN.
-  Result: pending.
+  Progress: PART A started, manually interrupted early (round 2, ~65s
+  into dispatch) - too little data yet for a real comparison against
+  test_token_dispatch.bd's 20-round/608s survival. Needs a comparably
+  long run to mean anything. PART B not run.
+  Result: inconclusive so far. Raw CPU during the IMPORT phase itself
+  (player capture): 0-20-0-20-0-20-10-20-10-100-70-20-0-60-100-40-60-
+  100-80-10-0-100 - confirms imports alone visibly spike cpu to 100
+  multiple times (matches "importing costs ticks proportional to line
+  count" - already known, now directly visible). BUT by the time
+  dispatch actually started (logged "imports done" line), cpu had
+  settled back down to 20 - same low baseline as test_token_dispatch.bd
+  started from. So far this does NOT support "import debt carries over
+  into dispatch" - the import-phase spikes appear to fully decay via the
+  sleep(1) after the last import, same as everywhere else pacing has
+  been shown to work. Dispatch's own round-to-round pace (round0->1:
+  ~33s, round1->2: ~31s) also matches test_token_dispatch.bd's un-prefixed
+  pace closely - no obvious slowdown from the import prefix either.
+  Genuinely undetermined until it either crashes or survives a
+  comparable round count.
