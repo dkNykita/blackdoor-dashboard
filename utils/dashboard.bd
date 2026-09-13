@@ -188,18 +188,20 @@ func refresh_status(nu, uc, uhd, state, target):
             nu.debug_time("bailed out on hopeless trace", dbg_t0)
             return state
         nu.debug_time("1st check_trace() done", dbg_t0)
-        # EXPERIMENTAL (menu.bd startup CPU overload investigation, see
-        # field_notes.txt): the missing-target run crashed extremely
-        # reproducibly (98.60s vs 98.60s, two separate live runs) right
-        # around here - get_security()/probe_vuln() are real API calls
-        # with nothing throttling ahead of them; the next throttle() was
-        # AFTER them (line ~216 below, "pre-fetch-once throttle done"),
-        # same "pacing came after the risky work, not before it" gap
-        # already fixed elsewhere in this codebase. Added here for the
-        # same reason. Revert (delete this one line) if this makes things
-        # worse, same as the other tried-and-reverted attempts in
-        # hostdata.bd.
-        nu.throttle(nu.cpu_guard_fast())
+        # TRIED AND REVERTED (menu.bd startup CPU overload investigation,
+        # see field_notes.txt): added a throttle() here on the theory that
+        # get_security()/probe_vuln() run unpaced right after check_trace().
+        # Live result: ZERO measurable effect - the missing-target run
+        # crashed at +98.6000s, essentially identical to the +98.6020s/
+        # +98.6030s seen before this change (unlike the two other
+        # throttle-placement experiments in hostdata.bd, which each moved
+        # the crash point significantly, one way or the other). This
+        # specific crash point looks like a fairly fixed function of the
+        # TOTAL accumulated cost of a deterministic call sequence
+        # (get_noise+cracked_accounts_for+whois+connect+check_trace) for
+        # this scenario, not something a single nearby throttle() can
+        # shift. Reverted to keep the code simple since it measurably
+        # changed nothing.
         state.banner = conn.banner
         state.os_name = conn.os
         state.security = get_security(conn)
