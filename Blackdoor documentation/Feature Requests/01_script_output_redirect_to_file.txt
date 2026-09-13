@@ -1,31 +1,10 @@
 Server: https://discord.com/channels/1490681520174661755 (exact message permalink not captured - pasted from chat log, not copied via message link)
 
-FEATURE REQUEST: Redirect (+ append) a script's output to a file
+FR: Script output redirect
 
-Tags: script
-
-Current behavior:
-A script's log() output only ever goes to the terminal (or the background
-process log, if running detached via `run <script> &`). There is no way to
-send that output to a file instead of or in addition to the screen.
-
-Requested feature:
-A way to redirect a running script's output to a file, with an append mode
-as well as a plain overwrite/redirect mode - the two behaviors `>` and `>>`
-give you in a real shell.
-
-Rationale:
-Debugging a script that produces hundreds of log() lines is currently
-impractical - the terminal scrolls past everything and there's no way to
-review the full output afterward without losing track of it mid-scroll.
-Redirecting to a file would let a script's full output be reviewed
-afterward (or diffed between runs) instead of only ever being visible live.
-
-Source (Discord, Nykita, 15:38):
-"FR: Script output redirect
-
+Nykita - 15:38:
 One feature I am really missing is redirecting (+ appending) the output of
 a script to a file. It would make any kind of serious debugging so much
 easier, because if you want to see the full output of a command with
 hundreds of log() entries, you cannot do anything with the terminal, or
-you will get lost in the output."
+you will get lost in the output.
