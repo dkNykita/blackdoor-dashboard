@@ -312,6 +312,44 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   the docs don't spell out. Session paused here by the player's own
   choice to continue another time, not because avenues ran out.
 
+  CONTINUED (per-token throttle/decode timing added to the debug trace) -
+  new checkpoint, same crash, now with throttle() and decode() logged
+  SEPARATELY per token instead of one combined timestamp:
+    line 1 (fw/users/specs/jobs=/nmap=, 2-item users):
+      token1 fw       throttle 4.1s  decode 2.3s
+      token2 users    throttle 3.7s  decode 10.3s (2 items)
+      token3 specs    throttle 3.7s  decode 2.4s
+      token4 jobs=    throttle 3.7s  decode 2.1s  (EMPTY field)
+      token5 nmap=    throttle 3.7s  decode 2.1s  (EMPTY field)
+    line 2, line 3 (bare IP, no tokens): per-line throttle ~3.1s each
+    line 4 (ports/fw/users/specs/jobs, 3-item ports, 3-item users):
+      token1 ports    throttle 4.1s  decode 14.3s (3 items)
+      token2 fw       throttle 3.7s  decode 2.3s
+      token3 users    throttle 3.7s  decode 14.3s (3 items)
+      token4 specs    throttle 3.7s  decode 2.4s
+      token5 jobs     throttle 3.7s  decode 7.0s  (1 item)
+    -> CPU overloaded right after line 4 token5, ~122.5s into get_entry().
+
+  KEY FINDING: throttle() cost is essentially CONSTANT (~3.7s, one outlier
+  at 4.1s for a line's first token) across the ENTIRE 122s run, regardless
+  of what decode() work immediately preceded it - a throttle right after a
+  cheap 2.1s empty-field decode costs the same as one right after an
+  expensive 14.3s 3-item decode. If get_cpu() were a simple recent-average
+  of THIS script's own tick rate, more preceding work should mean a longer
+  next throttle(), consistently, across ~10 data points - it never does.
+  This is the strongest evidence yet for idea (3) above: get_cpu() likely
+  does NOT primarily reflect this script's own recent activity - something
+  closer to a near-constant floor (per-tier ambient cost? a much longer
+  averaging window that never lets early heavy setup fall out of view?
+  something else entirely) seems to dominate the reading instead.
+  NEXT STEP (in progress): test_cpu_decay.bd - a bare script with no
+  imports/state/file-I/O, just get_cpu()+sleep(1) polling (8 idle samples,
+  then a small 50-line unpaced arithmetic burst, then 12 more idle-poll
+  samples) - run FIRST THING after a fresh game load (confirmed via ps/jobs
+  that nothing else is running) to see whether get_cpu() actually reaches
+  near-zero at rest, or plateaus at some nonzero floor independent of
+  activity. Delete after use, same as other throwaway tests.
+
 LOGS
   Servers write your activity to /var/log/auth.log. When you disconnect,
   IDS-enabled servers scan that log and add noise for every entry with

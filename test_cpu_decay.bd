@@ -1,0 +1,45 @@
+# test_cpu_decay.bd - THROWAWAY test, isolates get_cpu()'s actual behavior
+# in time, independent of what any script does. No imports, no file I/O,
+# no state - just get_cpu() + sleep(1), repeated, plus one deliberate small
+# burst partway through. Aimed at field_notes.txt's open idea #3 for the
+# menu.bd startup-overload investigation: does get_cpu() really behave like
+# a simple "recent tick average" of THIS script's own work, or does it sit
+# near some near-constant level mostly independent of it?
+#
+# Real finding that prompted this: in the latest menu.bd crash trace,
+# EVERY throttle() call cost ~3.7s to clear, whether it followed a cheap
+# 2.1s decode (empty field) or an expensive 14.3s decode (3-item list) -
+# the throttle cost never tracked how much work just happened. If get_cpu()
+# were a simple recent-average of this script's own ticks, a throttle after
+# more work should take longer to clear than one after less work - it
+# didn't, not even once across ~10 samples.
+#
+# IMPORTANT: run this FIRST THING after a fresh game start/load (nothing
+# else run yet this session) and confirm via `ps`/`jobs` that nothing else
+# is running, so there's no possible carryover from a prior script's load.
+# Delete after use.
+
+var t0 = get_unix_time()
+log("t=+0s  cpu=" + str(get_cpu()) + "  (baseline, nothing has run yet)")
+
+var n = 0
+while n < 8:
+    sleep(1)
+    log("t=+" + str(get_unix_time() - t0) + "s  cpu=" + str(get_cpu()) + "  (idle poll " + str(n) + ")")
+    n = n + 1
+
+log("--- now a small deliberate burst (50 plain arithmetic lines, no log(), no throttle) ---")
+var i = 0
+var x = 0
+while i < 50:
+    x = i * 2
+    i = i + 1
+log("t=+" + str(get_unix_time() - t0) + "s  cpu=" + str(get_cpu()) + "  (right after the burst)")
+
+var m = 0
+while m < 12:
+    sleep(1)
+    log("t=+" + str(get_unix_time() - t0) + "s  cpu=" + str(get_cpu()) + "  (post-burst poll " + str(m) + ")")
+    m = m + 1
+
+log("done - report every [t=.../cpu=...] line back")
