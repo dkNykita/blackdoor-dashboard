@@ -342,13 +342,47 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   closer to a near-constant floor (per-tier ambient cost? a much longer
   averaging window that never lets early heavy setup fall out of view?
   something else entirely) seems to dominate the reading instead.
-  NEXT STEP (in progress): test_cpu_decay.bd - a bare script with no
-  imports/state/file-I/O, just get_cpu()+sleep(1) polling (8 idle samples,
-  then a small 50-line unpaced arithmetic burst, then 12 more idle-poll
-  samples) - run FIRST THING after a fresh game load (confirmed via ps/jobs
-  that nothing else is running) to see whether get_cpu() actually reaches
-  near-zero at rest, or plateaus at some nonzero floor independent of
-  activity. Delete after use, same as other throwaway tests.
+  RESULT (test_cpu_decay.bd, live, tests/test_cpu_decay.bd - kept as a
+  permanent reusable diagnostic, see CLAUDE.md's updated tests/ convention):
+    - Idle phase (8x sleep(1) + log(get_cpu())): cpu holds at a rock-steady
+      10.0 every single sample, t deltas a clean ~2.0s apart. Fully stable -
+      ran 16+ real seconds with zero crash risk. Player also directly
+      observed (watching the live meter, not just these polled samples)
+      that get_cpu() spikes to ~90% after EACH line and only allows the
+      next line once it decays back to the ~10% floor - i.e. even a bare
+      sleep(1)+log() pair visibly spikes-then-settles per line.
+    - Burst phase (50 plain arithmetic lines - x = i*2, i = i+1 - NO
+      function calls, no API calls, no log(), no throttle() inside the
+      loop): CPU OVERLOADED AND KILLED THE SCRIPT before it could even log
+      "right after the burst" - i.e. at most 50 (likely well under that)
+      totally bare, callless lines running back-to-back with zero pacing
+      is enough to trip the sustained-100%-for-5s kill.
+  CONCLUSION: this settles the "does the overhead need a function/API call"
+  question from the cost-per-line-plus-flat-overhead hypothesis below - NO.
+  Plain arithmetic assignment
+  alone is just as lethal as log()-heavy or decode()-heavy unpaced loops.
+  The mechanism isn't a special per-call surcharge - it's universal per-
+  line: ANY line spikes the meter substantially (matches the idle-phase
+  90%-per-line observation), and with zero real time between lines the
+  spikes stack toward the sustained-100% kill almost immediately,
+  regardless of what each line actually does. sleep(1) between lines gives
+  the meter real wall-clock time to decay back to its ~10% floor, which is
+  why paced code survives indefinitely (idle phase) while unpaced code
+  dies fast (burst phase) - no exotic ambient-load or per-tier-ceiling
+  mechanic needed to explain it beyond this.
+  REMAINING OPEN QUESTION for the actual menu.bd crash: our loops ARE
+  already throttled per outer iteration (decode_tuple_list() throttles
+  once per item) - but each item's own body is still several UNPACED lines
+  (split, dict-build, a field-by-field while loop) between one throttle()
+  call and the next. Given this session's result, that per-item internal
+  line count - not the throttle() calls themselves - is the more likely
+  remaining suspect for why decode() cost scales badly with item count
+  (2.1s empty vs 14.3s for 3 items) and why the crash still happens despite
+  every loop already following the "throttle every iteration" rule. NEXT:
+  check whether decode_tuple_list()'s per-item body (currently ~6-8 lines
+  for a 2-3 field item) needs its OWN finer-grained pacing per field, not
+  just per item, the same way the outer per-line/per-item throttling
+  already works one level up.
 
   REFRAMING (player hypothesis, not yet directly confirmed - source of the
   underlying mechanism still unclear, worth re-asking): cost roughly follows
