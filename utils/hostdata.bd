@@ -258,41 +258,46 @@ func read_entries(nu):
     nu.debug_time("read_entries() all lines done", dbg_t0)
     return entries
 
+# Encodes ONE entry back to its "ip fw=... users=..." line - pulled out
+# of write_entries() so save_entry() (below) can encode just the single
+# changed entry instead of every entry in the file. Every entry, same
+# reasoning as read_entries() above. ALSO per-FIELD (mirrors
+# read_entries()'s per-token fix) - same gap confirmed this session: an
+# entry with several non-none fields (fw/users/specs/jobs/nmap all
+# present) ran through their "if e.X != none:" checks and
+# encode_tuple_list() calls with zero pacing between fields, only within
+# one field's own per-item loop. That gap crashed the script right after
+# read_entries() finished its second pass (inside save_entry()).
+func encode_entry_line(nu, e):
+    nu.throttle(nu.cpu_guard_fast())
+    var line = e.ip
+    nu.throttle(nu.cpu_guard_fast())
+    if e.ports != none:
+        line = line + " ports=" + encode_tuple_list(nu, e.ports, ["port", "service"], ["int", "str"])
+    nu.throttle(nu.cpu_guard_fast())
+    if e.fw != none:
+        line = line + " fw=" + encode_fw(e.fw)
+    nu.throttle(nu.cpu_guard_fast())
+    if e.users != none:
+        line = line + " users=" + encode_tuple_list(nu, e.users, ["name", "cracked"], ["str", "bool"])
+    nu.throttle(nu.cpu_guard_fast())
+    if e.specs != none:
+        line = line + " specs=" + encode_specs(e.specs)
+    nu.throttle(nu.cpu_guard_fast())
+    if e.jobs != none:
+        line = line + " jobs=" + encode_tuple_list(nu, e.jobs, ["name", "listens_for", "status"], ["str", "str", "str"])
+    nu.throttle(nu.cpu_guard_fast())
+    if e.nmap != none:
+        line = line + " nmap=" + encode_tuple_list(nu, e.nmap, ["ip", "hostname", "source"], ["str", "str", "str"])
+    nu.throttle(nu.cpu_guard_fast())
+    if e.sqli != none:
+        line = line + " sqli=" + encode_sqli(e.sqli)
+    return line
+
 func write_entries(nu, entries):
     var out = ""
     for e in entries:
-        # Every entry, same reasoning as read_entries() above. ALSO
-        # per-FIELD now (mirrors read_entries()'s per-token fix) - same
-        # gap confirmed this session: an entry with several non-none
-        # fields (fw/users/specs/jobs/nmap all present) ran through their
-        # "if e.X != none:" checks and encode_tuple_list() calls with
-        # zero pacing between fields, only within one field's own
-        # per-item loop. That gap crashed the script right after
-        # read_entries() finished its second pass (inside save_entry()).
-        nu.throttle(nu.cpu_guard_fast())
-        var line = e.ip
-        nu.throttle(nu.cpu_guard_fast())
-        if e.ports != none:
-            line = line + " ports=" + encode_tuple_list(nu, e.ports, ["port", "service"], ["int", "str"])
-        nu.throttle(nu.cpu_guard_fast())
-        if e.fw != none:
-            line = line + " fw=" + encode_fw(e.fw)
-        nu.throttle(nu.cpu_guard_fast())
-        if e.users != none:
-            line = line + " users=" + encode_tuple_list(nu, e.users, ["name", "cracked"], ["str", "bool"])
-        nu.throttle(nu.cpu_guard_fast())
-        if e.specs != none:
-            line = line + " specs=" + encode_specs(e.specs)
-        nu.throttle(nu.cpu_guard_fast())
-        if e.jobs != none:
-            line = line + " jobs=" + encode_tuple_list(nu, e.jobs, ["name", "listens_for", "status"], ["str", "str", "str"])
-        nu.throttle(nu.cpu_guard_fast())
-        if e.nmap != none:
-            line = line + " nmap=" + encode_tuple_list(nu, e.nmap, ["ip", "hostname", "source"], ["str", "str", "str"])
-        nu.throttle(nu.cpu_guard_fast())
-        if e.sqli != none:
-            line = line + " sqli=" + encode_sqli(e.sqli)
-        out = out + line + "\n"
+        out = out + encode_entry_line(nu, e) + "\n"
     save(host_intel_path(), out)
 
 # NOT throttled, deliberately - this only ever scans the host LIST
@@ -386,25 +391,47 @@ func get_entry(nu, host):
 
 # save_entry() writes a FULLY-FORMED entry (all 7 fields, whether
 # changed or not - build it off a prior get_entry() so untouched fields
-# carry over) in one read + one write. Every set_*() below is a thin
-# wrapper around this instead of duplicating the read-modify-write dance
-# itself - one throttled implementation instead of seven near-identical
-# unpaced copies of it.
+# carry over). Every set_*() below is a thin wrapper around this instead
+# of duplicating the read-modify-write dance itself.
+#
+# FIXED (menu.bd startup CPU overload investigation, see field_notes.txt):
+# this used to be read_entries(nu) (full decode of EVERY host) + rebuild
+# the list + write_entries(nu, new_entries) (full RE-ENCODE of EVERY
+# host, 7 throttle() calls per entry) just to change ONE host's data -
+# the write-side twin of the exact bug find_entry_by_host() fixed on the
+# read side. Called on every single refresh_status() and every
+# mark_cracked() (utils/dashboard.bd), so this ran on every dashboard
+# refresh and every crack, regardless of how many hosts are tracked.
+# Never showed up in a crash trace yet only because the crash has always
+# happened earlier in the function before reaching this call - found by
+# auditing every part of the refresh path, not by a live crash here.
+# Now: cheap per-line string match against the raw file (no decode of
+# any OTHER host), encode_entry_line() called ONLY for the one entry
+# that's actually changing - every other line is copied through as
+# untouched raw text.
 func save_entry(nu, entry):
-    var entries = read_entries(nu)
-    var new_entries = []
+    var raw = ""
+    try:
+        raw = read_local(host_intel_path())
+    catch e:
+        raw = ""
+    var new_line = encode_entry_line(nu, entry)
+    var out = ""
     var found = false
-    for e in entries:
-        # Not throttled - same reasoning as find_entry() above, a plain
-        # scan/copy over the host list itself, not per-host field data.
-        if e.ip == entry.ip:
-            new_entries.append(entry)
+    for line in raw.split("\n"):
+        nu.throttle(nu.cpu_guard_fast())
+        var trimmed = line.trim()
+        if trimmed == "":
+            continue
+        var parts = trimmed.split(" ")
+        if parts[0] == entry.ip:
+            out = out + new_line + "\n"
             found = true
         else:
-            new_entries.append(e)
+            out = out + line + "\n"
     if not found:
-        new_entries.append(entry)
-    write_entries(nu, new_entries)
+        out = out + new_line + "\n"
+    save(host_intel_path(), out)
 
 # --- typed getters (none if never observed) ---
 # All take nu now (see read_entries() above for why) - every getter/
