@@ -188,6 +188,18 @@ func refresh_status(nu, uc, uhd, state, target):
             nu.debug_time("bailed out on hopeless trace", dbg_t0)
             return state
         nu.debug_time("1st check_trace() done", dbg_t0)
+        # EXPERIMENTAL (menu.bd startup CPU overload investigation, see
+        # field_notes.txt): the missing-target run crashed extremely
+        # reproducibly (98.60s vs 98.60s, two separate live runs) right
+        # around here - get_security()/probe_vuln() are real API calls
+        # with nothing throttling ahead of them; the next throttle() was
+        # AFTER them (line ~216 below, "pre-fetch-once throttle done"),
+        # same "pacing came after the risky work, not before it" gap
+        # already fixed elsewhere in this codebase. Added here for the
+        # same reason. Revert (delete this one line) if this makes things
+        # worse, same as the other tried-and-reverted attempts in
+        # hostdata.bd.
+        nu.throttle(nu.cpu_guard_fast())
         state.banner = conn.banner
         state.os_name = conn.os
         state.security = get_security(conn)
