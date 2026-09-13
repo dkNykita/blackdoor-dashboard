@@ -350,7 +350,28 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   near-zero at rest, or plateaus at some nonzero floor independent of
   activity. Delete after use, same as other throwaway tests.
 
-  REFRAMING (player-reported, source not yet cited): there's a
+  REFRAMING (player hypothesis, not yet directly confirmed - source of the
+  underlying mechanism still unclear, worth re-asking): cost roughly follows
+  "cpu cost / line of code + 10t CPU" - i.e. on top of the documented
+  per-line tick cost (budgeted against cpu_ticks/sec), there may be an
+  additional flat ~10-tick overhead somewhere (per call? per line? unclear
+  which). On a base-tier 10-ticks/sec CPU, a flat +10-tick hit alone would
+  already consume an entire second's whole budget, which would explain
+  near-instant saturation to 60-100% from almost anything. If this flat
+  overhead is truly tier-independent while the ticks/sec budget it's
+  measured against grows with tier, higher tiers would dilute it (10/40 =
+  25% instead of 10/10 = 100%) rather than eliminate it - tier upgrades
+  would still help, just less than assumed. NOT yet reconciled with the
+  crash trace above being pure local parsing (split()/int()/dict-build,
+  zero documented API calls with their own tick cost) - if the flat
+  overhead needs an actual API call to trigger, it shouldn't apply to
+  decode_fw()/decode_tuple_list() at all, which is a real open question
+  test_cpu_decay.bd's plain-arithmetic burst (no function/API calls,
+  just i*2 assignments) should help settle: if THAT barely moves get_cpu()
+  while decode()'s string/dict-builtin calls do, the overhead is tied to
+  calling something, not to raw line count.
+
+  ALSO REFRAMING (player-reported, source not yet cited): there's a
   max_cpu_usage_limit that stays equally high regardless of hardware tier,
   and almost ANY command pushes get_cpu() to 60-100% - i.e. the meter
   saturates near its ceiling from virtually any activity, not gradually
