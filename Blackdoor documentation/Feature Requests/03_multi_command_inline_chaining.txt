@@ -5,3 +5,10 @@ Nykita@localhost ~/scripts/Jobs > rm /home/Nykita/scripts/*;rm /home/Nykita/scri
 No such file: /home/Nykita/scripts/*;rm /home/Nykita/scripts/utils/*
 Nykita@localhost ~/scripts > rm /home/Nykita/scripts/* && rm /home/Nykita/scripts/utils/*
 No such file: /home/Nykita/scripts/* && rm /home/Nykita/scripts/utils/*
+
+Workaround for now: neither separator is parsed at all, so there's no
+partial-chaining trick to fall back on - just issue each command on its
+own line/Enter (rm /home/Nykita/scripts/*, then rm .../utils/* separately).
+For anything that needs to run as one unit (not just back-to-back cleanup),
+a short .bd script calling local_rm()/delete_file() per path is the actual
+scriptable equivalent of chaining today.
