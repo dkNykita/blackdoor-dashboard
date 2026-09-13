@@ -1,0 +1,7 @@
+Nykita@localhost ~/scripts > help economy
+
+ECONOMY
+  balance              Show current credits
+  shop                 Open the tool shop
+  Buy hardware upgrades and software tools.
+  Software unlocks new scripting APIs.

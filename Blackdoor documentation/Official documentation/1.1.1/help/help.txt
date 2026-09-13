@@ -1,13 +1,10 @@
-Source: help
+Nykita@localhost ~/scripts > help
 
 COMMANDS
 
   run <script>       Execute a script
   run <script> &    Run in background
-  <script> &         Start it backgrounded right away (run not required)
-  edit <file>        Open the code editor
-                     Ctrl+S save, Esc exit, Ctrl+Enter save+run without
-                     leaving, Ctrl+/ toggle a line comment
+  edit <file>        Open in editor
   new <name>         Create a file
   ls [path]          List directory
   cat <file>         Print file

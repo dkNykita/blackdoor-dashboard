@@ -1,0 +1,23 @@
+Nykita@localhost ~/scripts > help scripting
+
+SCRIPTING
+
+  run <script>       Execute a script
+  run <script> &    Run in background
+  edit <file>        Open in editor
+  new <name>         Create a file
+
+Language basics:
+
+  var x = 10
+  var ports = [22, 80, 443]       list literal
+  for port in ports: ...          loop over list
+  for i in range(1, 100): ...     numeric range
+  if x > 5: ...  else: ...        conditionals
+  len(ports)                      list length
+  ports[0]                        index access
+  str(x)  int(x)  type(x)        type conversion
+  log("msg")                      print to terminal
+
+  For API functions: help api
+  For full docs: read ~/docs/api_quickref.txt

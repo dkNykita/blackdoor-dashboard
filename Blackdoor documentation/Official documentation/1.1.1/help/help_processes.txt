@@ -1,0 +1,11 @@
+Nykita@localhost ~/scripts > help processes
+
+PROCESSES
+
+  ps / jobs           List processes
+  kill <pid>         Kill a process
+  bg                 Background current process
+  fg                 Foreground a bg process
+  daemons            List your planted daemons (needs Daemon Source)
+  daemons kill <ip> <script>  Stop one remotely
+  time <command>       Time how long a command takes to run

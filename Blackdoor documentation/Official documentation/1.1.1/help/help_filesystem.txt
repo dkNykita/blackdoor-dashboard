@@ -1,0 +1,25 @@
+Nykita@localhost ~/scripts > help filesystem
+
+FILESYSTEM
+
+  ls [path]          List directory (alias: dir)
+  cat <file>         Print file (aliases: read, show)
+  cd [path]          Change directory
+  pwd                Print working directory
+  cmd > file          Redirect output to a file (>> to append) - works with ls/cat/find/grep/etc, not run
+  mkdir <dir>          Create a directory
+  new/touch <file>       Create an empty file
+  edit/nano/vim <file>   Open a file in the text editor
+  rm/delete <file>      Delete a file (-r for a directory)
+  mv <src> <dst>        Move/rename a file
+  cp <src> <dst>        Copy a file
+  grep <file> <pattern>  Search a file for a pattern (-r <pattern> <path> to search recursively)
+  find <path> -name <pattern>  Find files by name pattern
+  sed 's/pattern/replacement/[g]' <file>  Search and replace (-i to edit the file, otherwise just prints)
+  diff <file1> <file2>    Compare two files line by line
+  echo <text>          Print text (combine with > to write a file)
+  whoami                Show your current username
+  hostname              Show the connected server's hostname
+  history               Show your command history
+
+
