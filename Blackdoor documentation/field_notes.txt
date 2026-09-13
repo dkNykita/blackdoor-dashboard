@@ -530,6 +530,11 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   this codebase's own "throttle every iteration, never skip" rule, which
   may itself need revisiting in light of get_cpu()'s real cost, though
   that rule was hard-won from real crashes too - not simple to just undo).
+  VERIFIED (2 live retests): the broken (extra-throttle) version
+  reproduced the +53s crash consistently, near-identical timings both
+  times - not a fluke. After reverting, a fresh `menu` run crashed at
+  +122.5s again (token 5, jobs=, line 4) - matches the original baseline
+  exactly. Revert confirmed clean; back to square one on an actual fix.
 
   REFRAMING (player hypothesis, not yet directly confirmed - source of the
   underlying mechanism still unclear, worth re-asking): cost roughly follows
