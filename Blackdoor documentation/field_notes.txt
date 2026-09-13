@@ -384,6 +384,61 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   just per item, the same way the outer per-line/per-item throttling
   already works one level up.
 
+  RESULT (tests/test_decode_pacing.bd, live, A/B: real decode_tuple_list()
+  vs a local copy with 1 extra mid-item throttle()): NEITHER crashed -
+  PART A held at a steady cpu=100 every round for 31 rounds (~840s, manually
+  interrupted, never overloaded); PART B held at a steady cpu=80 every round
+  for 37 rounds (~1442s, also manually interrupted, never overloaded). Two
+  things this settles:
+    1. decode_tuple_list()'s per-item throttle is, ON ITS OWN, apparently
+       SUFFICIENT to prevent a crash indefinitely - repeated hammering for
+       800-1400+ real seconds (far longer than the ~122s the real crash
+       took) never once overloaded. The extra mid-item throttle (PART B)
+       DID measurably lower the steady-state reading (100 -> 80) and slow
+       throughput (~26s/round -> ~39s/round), so it's a real, working
+       change - just not something this test could confirm prevents a
+       crash, since the unmodified version already didn't crash either.
+    2. This means decode_tuple_list() in isolation is NOT the actual cause
+       of the real menu.bd crash - something else, present in the real
+       read_entries() call chain but absent from this narrower test, is
+       the missing piece.
+  Also notable: get_cpu() reading pinned/repeating at EXACTLY 100 (PART A)
+  or EXACTLY 80 (PART B, matching cpu_guard_fast()'s own threshold value)
+  every single round, never fluctuating - suggests get_cpu() may move in
+  discrete steps tied to threshold boundaries rather than a smooth
+  continuous percentage, at least in this regime. And critically: sitting
+  at a LOGGED "cpu=100" for 800+ seconds straight, across many rounds,
+  never triggered the sustained-100%-for-5s kill - so a get_cpu() reading
+  of 100 at a poll point does NOT by itself mean the kill-trigger is
+  active; whatever it tracks must be more specific than "the last read
+  value", probably tied to genuinely-executing ticks rather than time
+  spent blocked inside throttle()'s own sleep(1) retry loop.
+
+  RE-EXAMINED read_entries() itself (utils/hostdata.bd:163-244) after the
+  above negative result - found what test_decode_pacing.bd was missing.
+  Between one per-token nu.throttle() (line 221) and the next, real
+  production code runs: tok assignment, TWO nu.debug_time() calls (one
+  right after throttle, one after the decode branch) PLUS the starts_with()
+  elif chain itself (up to 6 failed checks for a late branch like sqli=)
+  before the matching decode_*/decode_tuple_list() call. Crucially:
+  nu.debug_enabled() (utils/net.bd:30-31) is HARDCODED `return true` - not
+  a real toggle - so every real run unconditionally pays for both
+  debug_time() calls per token (each: a guard check, a full string
+  concatenation building the label, get_unix_time(), a log() call), on top
+  of the decode work itself. test_decode_pacing.bd exercised NONE of this -
+  only the bare decode_tuple_list() call.
+  NEXT (in progress): tests/test_token_dispatch.bd - reproduces read_entries()'s
+  FULL per-token dispatch block verbatim (elif chain + real debug_time()
+  calls) against the real crash trace's exact 5 tokens (fw=/users=/specs=/
+  jobs=/nmap=), hammered the same way. PART A = debug logging on (matches
+  production exactly); PART B = debug logging forced off for this test only,
+  to isolate how much of any difference is the debug instrumentation itself
+  vs. the elif-chain/decode cost. If PART A crashes and PART B survives (or
+  survives much longer), the always-on debug logging is a real, previously
+  under-weighted contributor - not just "not free" (already known) but
+  possibly THE missing piece between this test's clean survival and the
+  real crash.
+
   REFRAMING (player hypothesis, not yet directly confirmed - source of the
   underlying mechanism still unclear, worth re-asking): cost roughly follows
   "cpu cost / line of code + 10t CPU" - i.e. on top of the documented

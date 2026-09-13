@@ -1,0 +1,78 @@
+# tests/test_token_dispatch.bd - does read_entries()'s FULL per-token
+# dispatch block crash where bare decode_tuple_list() alone (see
+# tests/test_decode_pacing.bd) did NOT? That test hammered decode_tuple_
+# list() directly for 30-40+ rounds (800-1400+ real seconds) and never
+# once CPU-overloaded - a real negative result, decode_tuple_list()'s
+# own per-item throttle is apparently sufficient in isolation.
+#
+# What that test DIDN'T include, copied verbatim from read_entries()
+# (utils/hostdata.bd:210-241): the starts_with() elif chain (up to 6
+# failed checks before reaching a late branch like sqli=), AND - bigger
+# suspect - nu.debug_enabled() (utils/net.bd:30-31) is HARDCODED `return
+# true`, not a real toggle, so every real run unconditionally pays for
+# TWO nu.debug_time() calls per token (each: a guard check, a string
+# concat building the whole label, get_unix_time(), a log() call) that
+# this test now reproduces exactly, debug ON, same as the real game.
+#
+# PART A = current shape (per-token throttle, then elif dispatch + real
+# debug_time() calls, debug forced on - matches production exactly).
+# PART B = same, but with nu.debug_enabled() forced OFF for this test
+# only (a local override), to isolate how much of the difference (if
+# any) is the debug logging itself vs. the elif chain/decode work.
+#
+# Uses the exact 5 tokens from the real crash trace's line 1 (fw/users/
+# specs/jobs=/nmap=, in that order) so the elif chain gets exercised
+# the same way, including the two trailing empty-field quick-returns
+# the original historical comment specifically called out as risky.
+#
+# HOW TO RUN: test_token_dispatch A or test_token_dispatch B, note
+# whether/when/after how many rounds it CPU-overloads. Run each as a
+# separate execution (same reasoning as test_decode_pacing.bd).
+# @param part "A = debug logging on (matches production), B = debug off" default="A"
+
+import "/home/Nykita/scripts/utils/net" as nu
+sleep(1)
+import "/home/Nykita/scripts/utils/hostdata" as uhd
+sleep(1)
+
+var PART = get_param("part")   # "A" = debug on (matches production), "B" = debug off
+
+func debug_time_maybe(nu, label, t0):
+    if PART == "A":
+        nu.debug_time(label, t0)
+    # PART B: skip entirely, isolating the elif-chain/decode cost alone.
+
+# Same 5 tokens as the real crash trace's host_intel.txt line 1.
+var tokens = ["fw=0:0:0", "users=root:1,testuser:0", "specs=medium:20:medium:0:2", "jobs=", "nmap="]
+
+var t0 = get_unix_time()
+log("=== PART " + PART + " - starting, cpu=" + str(get_cpu()) + " ===")
+
+var round = 0
+while round < 40:
+    log("round " + str(round) + "  t=+" + str(get_unix_time() - t0) + "s  cpu=" + str(get_cpu()))
+    var i = 0
+    while i < len(tokens):
+        # Per-token throttle, exactly like read_entries() line 221.
+        nu.throttle(nu.cpu_guard_fast())
+        var tok = tokens[i]
+        debug_time_maybe(nu, "token " + str(i) + " (" + tok + ") throttle done", t0)
+        if tok.starts_with("ports="):
+            var ports = uhd.decode_tuple_list(nu, tok.substr(6, len(tok) - 6), ["port", "service"], ["int", "str"])
+        elif tok.starts_with("fw="):
+            var fw = uhd.decode_fw(tok.substr(3, len(tok) - 3))
+        elif tok.starts_with("users="):
+            var users = uhd.decode_tuple_list(nu, tok.substr(6, len(tok) - 6), ["name", "cracked"], ["str", "bool"])
+        elif tok.starts_with("specs="):
+            var specs = uhd.decode_specs(tok.substr(6, len(tok) - 6))
+        elif tok.starts_with("jobs="):
+            var jobs = uhd.decode_tuple_list(nu, tok.substr(5, len(tok) - 5), ["name", "listens_for", "status"], ["str", "str", "str"])
+        elif tok.starts_with("nmap="):
+            var nmap = uhd.decode_tuple_list(nu, tok.substr(5, len(tok) - 5), ["ip", "hostname", "source"], ["str", "str", "str"])
+        elif tok.starts_with("sqli="):
+            var sqli = uhd.decode_sqli(tok.substr(5, len(tok) - 5))
+        debug_time_maybe(nu, "token " + str(i) + " (" + tok + ") decode done", t0)
+        i = i + 1
+    round = round + 1
+
+log("=== PART " + PART + " survived all 40 rounds, t=+" + str(get_unix_time() - t0) + "s ===")
