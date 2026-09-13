@@ -1,6 +1,7 @@
 Report link: https://discordapp.com/channels/1490681520174661755/1491437688711282759/1548691534784888924
 
-FR: recursive flag for CP
+FR: recursive flag for CP and RM
 
 Nykita - 15:47:
 rm has it, cp could have it too
+rm at least has -r for directory, cp doesn't have anything
