@@ -3,5 +3,5 @@ Report link: https://discordapp.com/channels/1490681520174661755/149143768871128
 FR: recursive flag for CP and RM
 
 Nykita - 15:47:
-rm has it, cp could have it too
+~~rm has it, cp could have it too~~
 rm at least has -r for directory, cp doesn't have anything
