@@ -150,3 +150,55 @@ utils/creds.bd, real fix not a tests/ script)
   instead of removing the redundant pass; reverted (400c735) when
   batching was found unsafe elsewhere, which brought the full cost back
   until this fix.
+
+Full-codebase audit for the get_entry()-style redundant-pass bug
+  Goal: check crack.bd, grab.bd, cleanup.bd, firewall.bd, probe.bd,
+  sync.bd, and net.bd's walk_tree()/check_trace() family for the same
+  "decode/process everything when only one thing is needed" pattern
+  already found and fixed twice (get_entry(), cracked_accounts_for()).
+  Progress: complete read-through of every file, no live testing needed
+  (this was a static audit, not a runtime test).
+  Result: none of them have the bug - every throttled loop matches real,
+  necessary work (scan N ports because N were requested, download every
+  file because that's what "grab" means, etc.). sync.bd's use of the
+  "full" read_entries()/write_entries()/read_credentials() functions is
+  legitimate (do_sync() genuinely needs the complete list to merge/dedup).
+  FOUND one more real instance as a direct result: save_entry() (see its
+  own entry below) - the write-side twin of get_entry()'s bug, never
+  caught by a live crash because the crash always happened earlier in
+  the function.
+
+save_entry() fix - write-side twin of get_entry()'s bug (applied
+directly to utils/hostdata.bd)
+  Goal: save_entry() called read_entries() (full decode of every host)
+  then write_entries() (full RE-ENCODE of every host, 7 throttle() calls
+  per entry) just to change one host's data - called on every
+  refresh_status() and mark_cracked(). Does a targeted single-line
+  rewrite (encode only the changed entry, copy every other line through
+  as untouched raw text) reduce this cost?
+  Progress: applied, live-tested twice (missing-target, existing-target).
+  Result: INCONCLUSIVE - neither test run actually reached save_entry()
+  (it's called at the very end of refresh_status(); both runs crashed
+  well before that point). Fix remains theoretically sound (same
+  reasoning that worked for get_entry()) but structurally unexercised by
+  every real test so far.
+
+Throttle before get_security()/probe_vuln() in refresh_status() (applied
+directly to utils/dashboard.bd, then reverted)
+  Goal: missing-target run crashed extremely reproducibly (98.60s/98.60s
+  across two runs) right after "1st check_trace() done" - get_security()/
+  probe_vuln() run with no throttle() ahead of them (only after, further
+  down). Does a throttle() there delay/prevent the crash?
+  Progress: applied, one live test, reverted immediately after.
+  Result: ZERO measurable effect - crashed at +98.6000s, essentially
+  identical to +98.6020s/+98.6030s before this change. Unlike the two
+  prior throttle-placement experiments (both of which measurably shifted
+  the crash point, one worse and one much worse), this one changed
+  nothing. Reverted to keep the code simple. Reframed the missing-target
+  timing as NOT mysterious - it's a deterministic sum of fixed call costs
+  (reflects the creds.bd fix's ~33.6s saving exactly), unlike the
+  existing-target path which shows real bimodal variance (+40.3s vs
+  +109.5s) tied to something about actually connecting to a real target.
+  STATUS: 3 throttle-placement experiments tried total (2 harmful, 1
+  no-effect) - this direction looks exhausted; total-work-reduction fixes
+  remain the validated productive direction instead.

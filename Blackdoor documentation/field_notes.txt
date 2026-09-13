@@ -639,6 +639,73 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   total work or shifts the crash point, but nothing yet explains why the
   SAME code+data crashes at wildly different points across separate runs.
 
+  AUDIT (per-piece review of the ENTIRE call chain for the same
+  redundant-full-pass bug class, not just the pieces a crash happened to
+  hit): checked crack.bd, grab.bd, cleanup.bd, firewall.bd, probe.bd,
+  sync.bd, and net.bd's walk_tree()/check_trace() family. None of them
+  have the get_entry()/cracked_accounts_for()-style bug - every throttled
+  loop in those files does genuinely necessary work matched 1:1 to a real
+  action (scan N ports because N were requested, download every file in a
+  directory because that's what "grab" means, etc.), not a redundant
+  second pass over already-processed in-memory data. sync.bd's own use of
+  read_entries()/write_entries()/read_credentials() (the "full" functions)
+  is legitimate too - do_sync() genuinely needs the complete list to
+  merge/dedup, unlike get_entry()'s single-host lookup. FIXED as a direct
+  result of this audit: save_entry() (utils/hostdata.bd) had the exact
+  same bug on the WRITE side - full read_entries() decode of every host
+  PLUS full write_entries() re-encode of every host (7 throttle() calls
+  per entry), just to change one host's data. Called on every single
+  refresh_status() and mark_cracked() - never caught by a live crash
+  because the crash has always happened earlier in the function, before
+  reaching this call. New encode_entry_line() helper (shared with
+  write_entries(), which sync.bd's do_sync() still legitimately needs)
+  lets save_entry() do a cheap per-line string match and only encode the
+  one changed entry - every other host's line passes through as
+  untouched raw text.
+
+  LIVE-TESTED (2 real menu runs after the save_entry() fix): NEITHER run
+  actually reached save_entry() - it's called at the very end of
+  refresh_status(), and both runs crashed well before that point (missing
+  -target crashed after "1st check_trace() done", existing-target crashed
+  inside get_entry() itself before refresh_status() even started) - so
+  the fix remains theoretically sound but structurally unexercised by
+  every real test run so far. Missing-target run's timing (98.60s to
+  reach "1st check_trace() done") is now understood NOT to be mysterious -
+  it fully reflects the creds.bd fix's ~33.6s saving (130.7s baseline ->
+  98.6s), and is otherwise a deterministic sequence of the same calls
+  every time (no branching on real target state) - hence its striking
+  reproducibility (98.6000s / 98.6020s / 98.6030s across 3 separate runs
+  spanning 2 different code changes elsewhere). REFRAMING: the "timing
+  varies wildly" mystery isn't really about get_cpu()/CPU-load
+  determinism in general - it's specifically tied to scenarios that
+  actually reach the CONNECTED branch and interact with a real target
+  (existing-target run: +40.3s vs +109.5s, bimodal, not a smooth spread)
+  - something about that interaction (not yet identified) introduces real
+  variance; the missing-target/pure-local-computation path is rock solid.
+
+  TRIED AND REVERTED (same investigation): added a throttle() right after
+  "1st check_trace() done" in refresh_status() (utils/dashboard.bd),
+  theorizing get_security()/probe_vuln() ran unpaced right after
+  check_trace(). Live result: ZERO measurable effect - missing-target run
+  crashed at +98.6000s, essentially identical to +98.6020s/+98.6030s
+  before this change. Unlike the two other throttle-placement experiments
+  (hostdata.bd, both of which measurably shifted the crash point, one
+  worse and one much worse), this one changed nothing at all - consistent
+  with the "fixed sum of a deterministic call sequence" reframing above.
+  Reverted to keep the code simple since it provably didn't help.
+  STATUS: three throttle-placement experiments tried now (add mid-item,
+  remove per-token, add pre-API-call) - two made things worse, one did
+  nothing. Throttle PLACEMENT tuning near this crash zone does not appear
+  to be a productive direction anymore. Total-work-reduction fixes
+  (get_entry(), cracked_accounts_for(), save_entry()) ARE genuinely
+  effective (each one measurably improved or restructured something) even
+  though none has eliminated the crash outright - that remains the
+  validated productive direction; the fixed-cost-sum nature of the
+  missing-target path suggests further total-work reduction (fewer/
+  cheaper calls in refresh_status() itself, not pacing around the same
+  calls) is more likely to move the needle than further throttle
+  placement experiments.
+
   REFRAMING (player hypothesis, not yet directly confirmed - source of the
   underlying mechanism still unclear, worth re-asking): cost roughly follows
   "cpu cost / line of code + 10t CPU" - i.e. on top of the documented
