@@ -439,6 +439,55 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   possibly THE missing piece between this test's clean survival and the
   real crash.
 
+  CORRECTION (player-observed, contradicts the official doc): get_cpu()
+  itself adds load - it is NOT actually 0-cost the way the official
+  reference documents it ("Cost: 0 ticks"). If true, throttle()'s own
+  `while get_cpu() > threshold: sleep(1)` retry loop is partly self-
+  defeating - every poll nudges load back up somewhat, undoing part of
+  what the preceding sleep(1) just bought back. This is a plausible
+  explanation for the suspiciously exact, unmoving 100/80 readings seen
+  in test_decode_pacing.bd's results above: not a hard ceiling, but a
+  dynamic equilibrium between sleep(1)'s decay and get_cpu()'s own added
+  cost, roughly balancing out right around each call's own threshold.
+  Also explains why "polling more often (e.g. sleep(0.2) instead of
+  sleep(1)) does NOT help and can make things WORSE" (CPU LOAD section
+  above) more concretely than "polling itself executes lines" did before -
+  more frequent get_cpu() calls per unit time means more frequent direct
+  additions to the load being measured, not just generic per-line cost.
+
+  LIVE OBSERVATION (player, watching the real-time CPU meter directly
+  during a test_token_dispatch PART A run, not just our once-per-round
+  log samples): values bounced continuously and noisily across the full
+  0-100 range between samples (e.g. 20, 30, 70, 100, 50, 100, 70, 30...),
+  never settling. Reconciles cleanly with the flat "cpu=100 every round"
+  our log lines showed: our log() calls happen to sample right at the
+  moment just after a throttle() call finishes (i.e. right as/after a
+  fresh spike), so the true signal between samples is far noisier than
+  our sparse per-round logging ever showed - matches the per-line spike-
+  then-decay behavior confirmed earlier (test_cpu_decay.bd), just far more
+  volatile/irregular in practice than a clean sawtooth.
+
+  RESULT (tests/test_token_dispatch.bd, PART A - full production-matching
+  reproduction: per-token throttle + starts_with() elif chain + BOTH real
+  debug_time() calls, debug forced on, exact same 5 tokens as the real
+  crash trace): interrupted manually after 20 rounds, ~608s real time -
+  did NOT crash. This is the closest reproduction yet (identical dispatch
+  code, identical tokens) and it STILL survived roughly 5x longer than the
+  ~122s the real menu.bd run took to crash, and roughly 10x more total
+  token-dispatches (20 rounds x 5 tokens = 100, vs. the real crash's ~10
+  token-dispatches across host_intel.txt lines 1 and 4 combined). This
+  means neither raw token-dispatch volume NOR the always-on debug logging
+  (at least not alone) explains the gap - something specific to the REAL
+  run's context that isn't yet reproduced here is still missing. Leading
+  suspect not yet tested: the ~19s of import/state/mission-target setup
+  that runs BEFORE get_entry() in the real menu.bd run, which every test
+  so far has skipped (tests import only utils/net + utils/hostdata, not
+  menu.bd's full ~11-module chain) - worth testing next: prepend the same
+  import chain (all utils/*.bd modules, sleep(1) between each, matching
+  Krok 12's structure) before starting the token-dispatch hammering loop,
+  to see whether THAT'S the missing ingredient. PART B (debug off) not yet
+  run.
+
   REFRAMING (player hypothesis, not yet directly confirmed - source of the
   underlying mechanism still unclear, worth re-asking): cost roughly follows
   "cpu cost / line of code + 10t CPU" - i.e. on top of the documented
