@@ -566,6 +566,51 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   tried so far crash at a similar TOTAL amount of underlying work, just
   measured out differently by how fast/slow the pacing gets there.
 
+  ACTUAL FIX APPLIED (idea 1 above, done for real): get_entry() used to
+  always decode() EVERY host in host_intel.txt via read_entries()+
+  find_entry() - full decode cost paid even when the target isn't in the
+  file at all (exactly the real scenario: mission target 45.155.67.201
+  wasn't among the 4 hosts on file). New find_entry_by_host() (utils/
+  hostdata.bd) does a cheap per-line string match first (no decode_*()
+  call), only paying decode cost for the actual matching line - read_
+  entries()/find_entry() left untouched, still used by save_entry() and
+  utils/sync.bd's do_sync() which genuinely need the full list.
+  LIVE RESULT (2 real menu runs, missing target 45.155.67.201 and
+  existing target 94.140.22.83): WORKED AS INTENDED for get_entry()
+  itself - missing-target run did ZERO decode work (no "token" debug
+  lines at all, get_entry() done at +50.2s, all of it scan-only
+  throttle cost); existing-target run skipped decoding lines 1-3 entirely
+  and went straight to line 4's real data (get_entry() done at +109.5s).
+  BUT the script still crashed both times - just later, and in a
+  DIFFERENT place: utils/dashboard.bd's refresh_status(), around
+  cracked_accounts_for(). Strikingly, the gap from get_noise() to
+  cracked_accounts_for() done was nearly IDENTICAL both runs (~106.1s
+  missing-target, ~108.2s existing-target) despite get_entry() itself
+  taking wildly different amounts of time beforehand (50.2s vs 109.5s) -
+  meaning cracked_accounts_for()'s cost is driven by something totally
+  independent of get_entry()/host_intel.txt, most likely the size of
+  ~/.ssh/credentials, which was the same both runs.
+  ROOT CAUSE FOUND AND FIXED (utils/creds.bd): cracked_accounts_for() and
+  is_cracked() had the EXACT SAME redundant-work shape as get_entry() did -
+  both called read_credentials(nu) (a full throttled per-line pass
+  building a complete in-memory list) and then throttled AGAIN over that
+  already-built list just to filter for one host. Two full throttled
+  passes over the whole credentials file to answer a question about ONE
+  host. This function had actually been flagged once before (commit
+  874834f, "Fix cracked_accounts_for()/is_cracked() double-throttling
+  regression") - live-measured back then at the same ~107s cost - but
+  that fix batched the throttle to every 8 lines/items instead of
+  removing the redundant second pass, and was later reverted (400c735,
+  "Revert all throttle batching - confirmed regression") once batching
+  itself was independently found unsafe elsewhere, bringing the full
+  double-pass cost right back. Real fix applied now: both functions read
+  the file directly and filter inline in the SAME pass - one throttle()
+  per line total, not one per line (building the list) plus one per item
+  (filtering it). NOT YET LIVE-TESTED after this fix - next step is
+  another real `menu` run to see whether this closes the gap or whether
+  the crash moves again to yet another spot (whois()/connect()/
+  check_trace() are the next candidates downstream if so).
+
   REFRAMING (player hypothesis, not yet directly confirmed - source of the
   underlying mechanism still unclear, worth re-asking): cost roughly follows
   "cpu cost / line of code + 10t CPU" - i.e. on top of the documented
