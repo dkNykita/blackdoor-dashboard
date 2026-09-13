@@ -5,8 +5,26 @@ refactor session. Each file contains: Current behavior, Expected
 behavior, Process description, Steps to reproduce - ready to submit/
 report, or to use as a basis for discussion with other players/devs.
 
-OPEN: none currently - all 6 reports below were closed by v1.1.1
-(see Official documentation/Updates/v1.1.1 - Bug Fixes.txt).
+Three states now, one folder each:
+  Open/         - reported, not yet actively worked
+  Investigation/ - actively being investigated (may take a while,
+                  may never fully resolve - not the same as Closed)
+  Closed/       - resolved, with a "STATUS: RESOLVED" note per file
+
+OPEN: none currently.
+
+INVESTIGATION - see Investigation/ for full text:
+
+Investigation/01_get_cpu_run_to_run_inconsistency.txt [script]
+  get_cpu() produces wildly different crash timing across identical
+  runs of the same code+data (5 runs, same scenario: +40.7s/+111.0s/
+  +40.3s/+65.5s/+64.3s) - no explanation found despite an extensive
+  investigation (see field_notes.txt's "STARTUP CPU OVERLOAD
+  INVESTIGATION"). Previously WITHDRAWN pending retesting under the
+  corrected tick-cost model; retested thoroughly under that model and
+  CONFIRMED still unexplained - revived here instead of staying
+  withdrawn. menu.bd/utils/*.bd development is paused as of 2026-09-14
+  specifically because of this; see CLAUDE.md.
 
 CLOSED (v1.1.1) - see Closed/ for full text + resolution note per file:
 
@@ -51,10 +69,3 @@ Closed/06_prompt_ignores_whitespace_only_input.txt [ui, script]
 Note: "crash" (available tag) means a GAME crash (the app itself),
 not a script halting on an error - none of the reports above qualify,
 so none carry that tag.
-
-WITHDRAWN FOR NOW:
-  get_cpu() aggregate inconsistency across identical runs - pulled
-  pending retesting under the corrected tick-cost model (network calls
-  like connect()/download() turned out to cost real ticks, not 0 -
-  see field_notes.txt). Prior testing for this report was done under
-  the wrong cost assumption, so its conclusions aren't reliable yet.
