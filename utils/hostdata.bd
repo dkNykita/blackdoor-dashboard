@@ -222,28 +222,18 @@ func read_entries(nu):
         var entry = empty_entry(parts[0])
         var i = 1
         while i < len(parts):
-            # EXPERIMENTAL REMOVAL (menu.bd startup CPU overload
-            # investigation, see field_notes.txt): this per-token throttle()
-            # was originally added because the stretch between one field's
-            # per-item throttle (inside decode_tuple_list()) and the NEXT
-            # field's own decode call was unpaced - several failed
-            # starts_with() checks + a decode call, zero pacing. That was
-            # the right read at the time, but a later finding changes the
-            # calculus: get_cpu() itself adds load (not 0-cost as
-            # documented), so every throttle() call is itself extra
-            # self-inflicted load, not a free wait - confirmed directly by
-            # adding a SECOND throttle() elsewhere in this file, which made
-            # the real crash happen ~70s EARLIER instead of later. Testing
-            # the opposite direction here: removing this one relies on the
-            # per-LINE throttle just above plus decode_tuple_list()'s own
-            # per-item throttle (for ports/users/jobs/nmap) to carry the
-            # pacing instead of stacking a third layer on top. Risk: fw=/
-            # specs=/sqli= decode calls have NO internal throttle of their
-            # own, so they'd run fully unpaced between line-throttle and
-            # whatever comes next if this turns out to matter. REVERT (put
-            # nu.throttle(nu.cpu_guard_fast()) back here as the first line
-            # of this loop) if this makes things worse, same as the other
-            # attempt.
+            # TRIED AND REVERTED (menu.bd startup CPU overload
+            # investigation, see field_notes.txt): removing this per-token
+            # throttle() made the real crash happen almost immediately
+            # (+13.6s, on line 1's very first token) instead of +122.5s -
+            # dramatically worse than even the "add an extra throttle"
+            # attempt (+53s). Both directions away from the current single-
+            # throttle-per-token shape made things worse, not better - this
+            # is apparently close to a local optimum for this specific
+            # lever. Whatever is actually driving the crash, it isn't
+            # simply "how many throttle() calls" - don't keep tuning this
+            # count without a different underlying theory first.
+            nu.throttle(nu.cpu_guard_fast())
             var tok = parts[i]
             if nu.debug_enabled():
                 nu.debug_time("token " + str(i) + " (" + tok + ") throttle done", dbg_t0)
