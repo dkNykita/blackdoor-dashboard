@@ -1,0 +1,7 @@
+FR: Multi-command inline sending (chaining with ; or &&)
+
+Nykita:
+Nykita@localhost ~/scripts/Jobs > rm /home/Nykita/scripts/*;rm /home/Nykita/scripts/utils/*
+No such file: /home/Nykita/scripts/*;rm /home/Nykita/scripts/utils/*
+Nykita@localhost ~/scripts > rm /home/Nykita/scripts/* && rm /home/Nykita/scripts/utils/*
+No such file: /home/Nykita/scripts/* && rm /home/Nykita/scripts/utils/*

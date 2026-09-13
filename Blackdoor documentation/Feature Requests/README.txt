@@ -11,3 +11,7 @@ or use as a basis for discussion with other players/devs.
 02_cp_recursive_flag.txt [terminal]
   cp has no recursive flag, unlike rm which already has one -
   inconsistent, can't copy a whole directory tree in one command.
+
+03_multi_command_inline_chaining.txt [terminal]
+  ; and && aren't treated as command separators - the whole line
+  (separator included) is parsed as one literal command and fails.
