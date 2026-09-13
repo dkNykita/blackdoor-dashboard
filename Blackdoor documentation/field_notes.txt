@@ -746,6 +746,31 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   script has done anything at all) is now the most telling single number -
   if THAT'S already 60-100%, it all but confirms this.
 
+  FULL CODEBASE AUDIT (all 84 functions, 12 files - not just the crash
+  path) - see Blackdoor documentation/Codebase Audit/ for the complete
+  write-up (Independent pass, Integrated pass cross-referenced against
+  this file, Synthesis.txt). Confirmed crack.bd/grab.bd/cleanup.bd/
+  firewall.bd/probe.bd/sqli.bd/sync.bd have none of the redundant-pass
+  bug pattern - two independent methods (live debugging and a fresh
+  static read), same answer. Surfaced several things the live crash-
+  chasing never had a chance to notice - most importantly, cracked_
+  accounts_for() was STILL the single most expensive remaining call
+  (~72.5s, every dashboard refresh, whether or not anything changed
+  since the last one) even after its own double-pass fix - a caching
+  opportunity nobody had proposed because the investigation was focused
+  on removing redundant PASSES, not on avoiding repeat work across
+  separate refreshes of unchanged data.
+
+  APPLIED (Synthesis.txt's P1 recommendation): state.accounts (menu.bd)
+  now starts as `none` and is only populated by refresh_status()'s
+  cracked_accounts_for() call when still none - mark_cracked()
+  (utils/dashboard.bd) keeps it correct incrementally by appending the
+  just-cracked account directly (no rescan) instead of invalidating it,
+  and menu.bd's target-switch handler (choice "t") resets it to none
+  since a different host has a different cracked-accounts answer. Same
+  total-work-reduction pattern that already worked for get_entry()/
+  save_entry() - NOT YET LIVE-TESTED.
+
 LOGS
   Servers write your activity to /var/log/auth.log. When you disconnect,
   IDS-enabled servers scan that log and add noise for every entry with

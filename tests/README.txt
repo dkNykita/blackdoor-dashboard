@@ -202,3 +202,17 @@ directly to utils/dashboard.bd, then reverted)
   STATUS: 3 throttle-placement experiments tried total (2 harmful, 1
   no-effect) - this direction looks exhausted; total-work-reduction fixes
   remain the validated productive direction instead.
+
+cracked_accounts_for() caching (Codebase Audit Synthesis.txt P1, applied
+directly to menu.bd + utils/dashboard.bd)
+  Goal: cracked_accounts_for() was STILL the single most expensive
+  remaining call in refresh_status() (~72.5s every refresh) even after
+  its own double-pass fix, because it re-scans the whole credentials
+  file on every refresh regardless of whether anything changed. Does
+  caching the result in state.accounts (invalidated only by a real
+  crack or a target switch) eliminate most of that cost?
+  Progress: applied (state.accounts starts none, refresh_status() only
+  calls cracked_accounts_for() when still none, mark_cracked() updates
+  the cache incrementally, target-switch resets it to none). NOT YET
+  LIVE-TESTED.
+  Result: pending.
