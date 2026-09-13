@@ -771,6 +771,35 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   total-work-reduction pattern that already worked for get_entry()/
   save_entry() - NOT YET LIVE-TESTED.
 
+  LIVE-TESTED (2 real menu runs, same missing/existing targets as
+  before): STRUCTURALLY UNABLE to exercise the cache benefit either
+  time. state.accounts starts `none` on every FRESH menu.bd run (the
+  state dict is redeclared from scratch each execution) - caching only
+  helps the 2nd+ refresh_status() call WITHIN one script execution (a
+  later "r", a target switch back, an action that triggers another
+  refresh). Both test scenarios crash BEFORE ever reaching the
+  interactive dispatch loop where a second refresh could even be
+  triggered - missing-target crashes right after its FIRST check_
+  trace() (inside the FIRST and only refresh_status() call this run
+  ever makes); existing-target crashes inside get_entry(), before
+  refresh_status() is even entered once. Numbers this run: missing-
+  target cracked_accounts_for() cost ~79.2s (89.56-10.41), crash at
+  +105.4s (vs. ~98.6s pre-fix - within this investigation's already-
+  observed natural run-to-run noise, not a regression); existing-target
+  crashed at +40.3s again, the same bimodal "bad" outcome as before,
+  unrelated to this fix (crashes before get_entry() finishes).
+  CONCLUSION: this fix is real and will genuinely help a long play
+  session with many refreshes/actions against the same target - but it
+  does NOT address the STARTUP crash this investigation is chasing,
+  because that crash happens on/before the FIRST refresh, before any
+  caching can apply. The single most expensive UNAVOIDABLE-on-first-call
+  cost is still cracked_accounts_for()'s full credentials-file scan
+  (~72-90s observed range) - reducing THAT first-call cost (not just
+  skipping repeats) would need something more invasive, e.g. a secondary
+  per-host credentials index (Independent/04_creds.txt's second
+  alternative) - not yet attempted, real added complexity (a second file
+  to keep in sync).
+
 LOGS
   Servers write your activity to /var/log/auth.log. When you disconnect,
   IDS-enabled servers scan that log and add noise for every entry with

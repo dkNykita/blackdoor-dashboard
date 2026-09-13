@@ -213,6 +213,17 @@ directly to menu.bd + utils/dashboard.bd)
   crack or a target switch) eliminate most of that cost?
   Progress: applied (state.accounts starts none, refresh_status() only
   calls cracked_accounts_for() when still none, mark_cracked() updates
-  the cache incrementally, target-switch resets it to none). NOT YET
-  LIVE-TESTED.
-  Result: pending.
+  the cache incrementally, target-switch resets it to none).
+  Live-tested twice (missing-target, existing-target).
+  Result: INCONCLUSIVE by construction, not by failure - both scenarios
+  crash before ever reaching a SECOND refresh_status() call within the
+  same script execution (missing-target crashes during its one and only
+  refresh; existing-target crashes before refresh_status() is even
+  entered), and caching only helps the 2nd+ call. The fix is real and
+  will help long play sessions with repeated refreshes/actions, but does
+  NOT address the startup crash this investigation is chasing - that
+  happens on/before the first refresh, where the full ~72-90s cracked_
+  accounts_for() cost is unavoidable regardless of caching. See
+  field_notes.txt for the full reasoning and the next-idea it points to
+  (a secondary per-host credentials index, to reduce the FIRST-call
+  cost itself - not yet attempted).
