@@ -120,14 +120,24 @@ func encode_tuple_list(nu, items, field_names, field_types):
 
 func decode_fw(blob):
     var parts = blob.split(":")
-    return {"active": parts[0] == "1", "layers": int(parts[1]), "layers_remaining": int(parts[2])}
+    return {
+        "active": parts[0] == "1",
+        "layers": int(parts[1]),
+        "layers_remaining": int(parts[2])
+    }
 
 func encode_fw(fw):
     return (fw.active ? "1" : "0") + ":" + str(fw.layers) + ":" + str(fw.layers_remaining)
 
 func decode_specs(blob):
     var parts = blob.split(":")
-    return {"cpu_tier": parts[0], "cpu_ticks": int(parts[1]), "ram_tier": parts[2], "daemons_used": int(parts[3]), "max_daemons": int(parts[4])}
+    return {
+        "cpu_tier": parts[0],
+        "cpu_ticks": int(parts[1]),
+        "ram_tier": parts[2],
+        "daemons_used": int(parts[3]),
+        "max_daemons": int(parts[4])
+    }
 
 func encode_specs(specs):
     return specs.cpu_tier + ":" + str(specs.cpu_ticks) + ":" + specs.ram_tier + ":" + str(specs.daemons_used) + ":" + str(specs.max_daemons)

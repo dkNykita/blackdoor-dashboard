@@ -1,0 +1,51 @@
+# test_prompt_whitespace.bd - THROWAWAY test, checks v1.1.1's "prompt() no
+# longer discards whitespace-only input" fix against the three inputs
+# menu.bd's "-" sentinel convention cares about: bare Enter (0 chars),
+# a single space + Enter, and "-" (the sentinel itself). Run once, type
+# exactly what each prompt asks for, then read back the 6 log() lines.
+# Delete after use.
+#
+# What each result tells us:
+#   Test 1 (bare Enter) - if this still never returns, bare Enter is a
+#     SEPARATE thing from the whitespace-discard bug and wasn't touched.
+#   Test 2 (space + Enter) - if this now returns instead of hanging,
+#     the fix works, but note the trimmed value: it'll be "", NOT "-",
+#     so nu.prompt_default()'s `trimmed == "-"` check will NOT treat a
+#     stray space as "use the default" - it needs its own decision.
+#   Test 3 (dash) - sanity check, should behave exactly as before.
+# Also runs the same three through nu.prompt_default() directly so we
+# see the ACTUAL resolved value menu.bd would get today, not just the
+# raw prompt() return.
+
+import "/home/Nykita/scripts/utils/net" as nu
+sleep(1)
+
+log("=== Raw prompt() ===")
+
+log("Test 1: press ONLY Enter, nothing else")
+var a = prompt("Bare Enter test: ")
+log("Got: [" + a + "]  trimmed: [" + a.trim() + "]")
+
+log("Test 2: type ONE space then Enter")
+var b = prompt("Space test: ")
+log("Got: [" + b + "]  trimmed: [" + b.trim() + "]")
+
+log("Test 3: type - then Enter")
+var c = prompt("Dash test: ")
+log("Got: [" + c + "]  trimmed: [" + c.trim() + "]")
+
+log("=== nu.prompt_default() (what menu.bd actually uses) ===")
+
+log("Test 4: press ONLY Enter, nothing else")
+var d = nu.prompt_default("Bare Enter (default): ", "DEFAULT")
+log("Resolved: [" + d + "]")
+
+log("Test 5: type ONE space then Enter")
+var e = nu.prompt_default("Space (default): ", "DEFAULT")
+log("Resolved: [" + e + "]")
+
+log("Test 6: type - then Enter")
+var f = nu.prompt_default("Dash (default): ", "DEFAULT")
+log("Resolved: [" + f + "]")
+
+log("Done - report all 6 [Got]/[Resolved] lines back.")

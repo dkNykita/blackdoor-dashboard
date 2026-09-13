@@ -31,7 +31,11 @@ func read_credentials(nu):
         var at = parts[0].split("@")
         if len(at) < 2:
             continue
-        creds.append({"account": at[0], "host": at[1], "password": parts[1]})
+        creds.append({
+            "account": at[0],
+            "host": at[1],
+            "password": parts[1]
+        })
     return creds
 
 # REVERTED batching here too - throttle every iteration, no exceptions,

@@ -75,7 +75,11 @@ func refresh_status(nu, uc, uhd, state, target):
     # same way a remote server is). Known in advance for
     # state.target_is_own_ip, so skip the call rather than attempt-and-
     # catch every refresh.
-    var fw = {"active": false, "layers": 0, "layers_remaining": 0}
+    var fw = {
+        "active": false,
+        "layers": 0,
+        "layers_remaining": 0
+    }
     if not state.target_is_own_ip:
         try:
             fw = probe_firewall(target)

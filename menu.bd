@@ -129,35 +129,52 @@ nu.debug_time("imports done", startup_t0)
 # that still doesn't parse, and this literal below uses only plain
 # string keys, never a computed one.
 #
-# CONFIRMED (parse error, live, isolated test): object literals can't
-# span multiple lines at all - "Expected property name in object
-# literal", reproduced even with a bare 2-key literal and zero
-# comments. Every other multi-line construct in this codebase (if/
-# while/for bodies, function calls split across lines) is fine; object
-# literals specifically must be written on ONE line. Field notes for
-# individual keys below (can't live inline the way a comment normally
-# would next to what it explains, for the same reason):
-# - ids_log_cleared: separate from logs_dirty - true only right after a
-#   successful do_scrub_log() (real LogScrubber, clears IDS's in-memory
-#   record too), false after raw delete or crack/grab (neither touches
-#   IDS's memory). Both are per-session guesses, not live checks - see
-#   print_dashboard()'s own LOG FILE section in utils/dashboard.bd.
-# - trace_ceiling: connect()'s own trace_time - this connection's trace
-#   ceiling, fixed at connect time (not the live countdown
-#   get_trace_time() reports while connected). none until the first
-#   successful connect to this target. Shown on the dashboard so a
-#   hopeless target (<= net.bd's trace_critical(), confirmed to loop
-#   check_trace() forever if you try to work through it - see net.bd's
-#   trace_hopeless()) is visible BEFORE picking an action, not
-#   discovered via a failed one.
-# - target_is_own_ip: set once per target (startup, "t") -
-#   probe_firewall()/whois()/connect() all raise rather than degrade
-#   gracefully on your own IP (confirmed: it's not a valid target the
-#   same way a remote server is), and none of the connect()-based menu
-#   actions (2/3/4/5/6) work there either. Skips those calls entirely
-#   instead of attempting-and-catching, and greys out the actions that
-#   can't do anything on this target.
-var state = {"logs_dirty": false, "ids_log_cleared": false, "fw_active": false, "fw_layers": 0, "fw_layers_remaining": 0, "noise": 0, "accounts": [], "owner": "", "banner": "", "os_name": "", "security": -1, "trace_ceiling": none, "users": none, "next_vuln": none, "open_ports": none, "specs": none, "jobs": none, "daemons_here": none, "nmap_data": none, "sqli_status": none, "target_is_own_ip": false}
+# Multi-line object literals were a parse error pre-v1.1.1 (see
+# Bug reports/Closed/02_object_literals_cannot_span_multiple_lines.txt) -
+# fixed now, so field notes live inline again instead of in this block.
+var state = {
+    "logs_dirty": false,
+    # separate from logs_dirty - true only right after a successful
+    # do_scrub_log() (real LogScrubber, clears IDS's in-memory record
+    # too), false after raw delete or crack/grab (neither touches IDS's
+    # memory). Both are per-session guesses, not live checks - see
+    # print_dashboard()'s own LOG FILE section in utils/dashboard.bd.
+    "ids_log_cleared": false,
+    "fw_active": false,
+    "fw_layers": 0,
+    "fw_layers_remaining": 0,
+    "noise": 0,
+    "accounts": [],
+    "owner": "",
+    "banner": "",
+    "os_name": "",
+    "security": -1,
+    # connect()'s own trace_time - this connection's trace ceiling,
+    # fixed at connect time (not the live countdown get_trace_time()
+    # reports while connected). none until the first successful connect
+    # to this target. Shown on the dashboard so a hopeless target
+    # (<= net.bd's trace_critical(), confirmed to loop check_trace()
+    # forever if you try to work through it - see net.bd's
+    # trace_hopeless()) is visible BEFORE picking an action, not
+    # discovered via a failed one.
+    "trace_ceiling": none,
+    "users": none,
+    "next_vuln": none,
+    "open_ports": none,
+    "specs": none,
+    "jobs": none,
+    "daemons_here": none,
+    "nmap_data": none,
+    "sqli_status": none,
+    # set once per target (startup, "t") - probe_firewall()/whois()/
+    # connect() all raise rather than degrade gracefully on your own IP
+    # (confirmed: it's not a valid target the same way a remote server
+    # is), and none of the connect()-based menu actions (2/3/4/5/6) work
+    # there either. Skips those calls entirely instead of
+    # attempting-and-catching, and greys out the actions that can't do
+    # anything on this target.
+    "target_is_own_ip": false
+}
 sleep(1)  # CONFIRMED fix - see comment above the imports
 nu.debug_time("state declared", startup_t0)
 
