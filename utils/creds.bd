@@ -38,21 +38,57 @@ func read_credentials(nu):
         })
     return creds
 
-# REVERTED batching here too - throttle every iteration, no exceptions,
-# even over an already-built in-memory list (see read_credentials()'s
-# comment above for why: an isolated test proved ~13 unpaced iterations
-# of even trivial work is enough to crash on its own).
+# FIXED (menu.bd startup CPU overload investigation, see field_notes.txt):
+# both functions below used to call read_credentials(nu) - a full
+# throttled pass over every line, building a complete in-memory list -
+# and then throttle AGAIN over that already-built list just to filter
+# for one account/host. Two full throttled passes over the whole file
+# to answer a question about ONE host, same redundant-work shape as
+# hostdata.bd's old get_entry() (see find_entry_by_host() above it in
+# that file). Live-measured cost of this exact redundancy before:
+# cracked_accounts_for() alone cost ~106-108s during a dashboard
+# refresh, REGARDLESS of how long get_entry() itself took beforehand -
+# a flat cost tied to credentials file size, not to anything else going
+# on. A prior attempt (874834f) tried to fix this by batching the
+# throttle to every 8 lines/items instead of removing the redundant
+# pass - reverted later (400c735) when batching itself was found unsafe
+# elsewhere. Real fix here is the same "less total work" pattern as
+# find_entry_by_host(): read the file ONCE, filter inline in the same
+# pass, one throttle() per line total instead of one per line PLUS one
+# per already-parsed item.
 func is_cracked(nu, account, host):
-    for c in read_credentials(nu):
+    nu.throttle(nu.cpu_guard_conservative())
+    var raw = read_local("/home/" + whoami() + "/.ssh/credentials")
+    for line in raw.split("\n"):
         nu.throttle(nu.cpu_guard_conservative())
-        if c.account == account and c.host == host:
+        var trimmed = line.trim()
+        if trimmed == "" or trimmed.starts_with("#"):
+            continue
+        var parts = trimmed.split(" ")
+        if len(parts) < 2:
+            continue
+        var at = parts[0].split("@")
+        if len(at) < 2:
+            continue
+        if at[0] == account and at[1] == host:
             return true
     return false
 
 func cracked_accounts_for(nu, host):
+    nu.throttle(nu.cpu_guard_conservative())
+    var raw = read_local("/home/" + whoami() + "/.ssh/credentials")
     var accounts = []
-    for c in read_credentials(nu):
+    for line in raw.split("\n"):
         nu.throttle(nu.cpu_guard_conservative())
-        if c.host == host:
-            accounts.append(c.account)
+        var trimmed = line.trim()
+        if trimmed == "" or trimmed.starts_with("#"):
+            continue
+        var parts = trimmed.split(" ")
+        if len(parts) < 2:
+            continue
+        var at = parts[0].split("@")
+        if len(at) < 2:
+            continue
+        if at[1] == host:
+            accounts.append(at[0])
     return accounts
