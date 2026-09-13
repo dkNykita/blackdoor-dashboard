@@ -222,17 +222,28 @@ func read_entries(nu):
         var entry = empty_entry(parts[0])
         var i = 1
         while i < len(parts):
-            # Per-TOKEN throttle, not just per-line and per-list-item
-            # (inside decode_tuple_list()) - confirmed this session (live
-            # crash) that the stretch between the last per-item throttle
-            # inside one field's decode_tuple_list() and the NEXT field's
-            # own decode call (several failed starts_with() checks +
-            # decode_specs() + two empty-field decode_tuple_list() quick
-            # returns, all with zero pacing) was a real pre-existing gap
-            # in the original per-field-only pacing - the added work of
-            # decode_tuple_list()'s generic per-field loop (vs. the old
-            # single-literal construction) was enough to tip it over.
-            nu.throttle(nu.cpu_guard_fast())
+            # EXPERIMENTAL REMOVAL (menu.bd startup CPU overload
+            # investigation, see field_notes.txt): this per-token throttle()
+            # was originally added because the stretch between one field's
+            # per-item throttle (inside decode_tuple_list()) and the NEXT
+            # field's own decode call was unpaced - several failed
+            # starts_with() checks + a decode call, zero pacing. That was
+            # the right read at the time, but a later finding changes the
+            # calculus: get_cpu() itself adds load (not 0-cost as
+            # documented), so every throttle() call is itself extra
+            # self-inflicted load, not a free wait - confirmed directly by
+            # adding a SECOND throttle() elsewhere in this file, which made
+            # the real crash happen ~70s EARLIER instead of later. Testing
+            # the opposite direction here: removing this one relies on the
+            # per-LINE throttle just above plus decode_tuple_list()'s own
+            # per-item throttle (for ports/users/jobs/nmap) to carry the
+            # pacing instead of stacking a third layer on top. Risk: fw=/
+            # specs=/sqli= decode calls have NO internal throttle of their
+            # own, so they'd run fully unpaced between line-throttle and
+            # whatever comes next if this turns out to matter. REVERT (put
+            # nu.throttle(nu.cpu_guard_fast()) back here as the first line
+            # of this loop) if this makes things worse, same as the other
+            # attempt.
             var tok = parts[i]
             if nu.debug_enabled():
                 nu.debug_time("token " + str(i) + " (" + tok + ") throttle done", dbg_t0)
