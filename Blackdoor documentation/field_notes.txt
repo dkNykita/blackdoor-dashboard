@@ -350,6 +350,25 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   near-zero at rest, or plateaus at some nonzero floor independent of
   activity. Delete after use, same as other throwaway tests.
 
+  REFRAMING (player-reported, source not yet cited): there's a
+  max_cpu_usage_limit that stays equally high regardless of hardware tier,
+  and almost ANY command pushes get_cpu() to 60-100% - i.e. the meter
+  saturates near its ceiling from virtually any activity, not gradually
+  from accumulated load. This gives a simpler explanation for the constant-
+  ~3.7s-throttle finding above than an "ambient background load" theory:
+  if nearly everything already saturates the reading regardless of size,
+  the NEXT throttle()'s cost is dominated by a fixed DECAY curve back down
+  under threshold (50/80), not by how much extra work was actually added -
+  cheap and expensive decodes alike already maxed the meter out either way,
+  so of course the recovery time looks constant. Doesn't yet explain why
+  tier upgrades would help at all (field_notes previously assumed get_cpu()
+  is tier-normalized - "the same code costs proportionally fewer percentage
+  points... on a machine with more ticks/sec" - if the ceiling itself is
+  tier-independent and reached almost immediately, that assumption needs
+  re-examining too). test_cpu_decay.bd's idle baseline (t=+0s, before this
+  script has done anything at all) is now the most telling single number -
+  if THAT'S already 60-100%, it all but confirms this.
+
 LOGS
   Servers write your activity to /var/log/auth.log. When you disconnect,
   IDS-enabled servers scan that log and add noise for every entry with
