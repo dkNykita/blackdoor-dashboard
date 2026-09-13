@@ -51,13 +51,18 @@
 # ids_log_cleared display logic.
 #
 # Every "leave it blank" prompt below says "type -" instead of "default
-# X" or "space + Enter" - confirmed (retested): prompt() does not submit
-# on a bare Enter, and a lone space doesn't work either, the terminal's
-# own input widget discards whitespace-only input before it ever reaches
-# the script. The only reliable default/skip signal is a visible non-
-# whitespace sentinel - "-" - which nu.prompt_default() checks for
-# directly instead of the unreachable empty-after-trim() check this used
-# to rely on. See utils/net.bd's prompt_default().
+# X" or "space + Enter". Pre-v1.1.1 this was because prompt() never even
+# submitted on a bare Enter or a lone space - the terminal's own input
+# widget discarded whitespace-only input before it ever reached the
+# script, so an empty-after-trim() check was unreachable. RE-TESTED after
+# v1.1.1 (test_prompt_whitespace.bd, live): both now DO submit - bare
+# Enter and a lone space each return immediately as "" (trimmed). That
+# makes the "-" sentinel MORE necessary than before, not less: an
+# accidental bare Enter/space used to just hang (annoying but harmless);
+# now it silently resolves to "" instead of the intended default. Keep
+# wording every default prompt as "type -", never "blank/Enter for
+# default" - nu.prompt_default() (utils/net.bd) only treats a literal
+# "-" as the default signal, exactly as before.
 #
 # @param target "target to manage (defaults to current mission target, or your own IP if neither is set)" default=""
 

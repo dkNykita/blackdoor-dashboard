@@ -343,12 +343,22 @@ func walk_tree(conn, connect_str, host, root, on_file, context):
 
 # Consolidates the repeated "prompt -> trim -> if sentinel: default" shape
 # (~9 call sites in menu.bd, all fixed in the same pass that introduced
-# the "-" sentinel - see this module's own header history / menu.bd for
-# why bare-Enter/whitespace can't be used as the default signal). Lives
+# the "-" sentinel - see menu.bd's own header for why bare-Enter/
+# whitespace still can't be used as the default signal, even though
+# v1.1.1 made prompt() actually submit them instead of hanging). Lives
 # here, not in menu.bd, because a top-level script's own func declarations
 # cost ticks while a module's don't (confirmed by two independent players
 # on the hexhaven Discord) - menu.bd is this codebase's only top-level
 # script.
+#
+# RE-VERIFIED live post-v1.1.1 (test_prompt_whitespace.bd): bare Enter and
+# a lone space both now resolve to "" here, NOT to default_value - only a
+# literal "-" does. Before v1.1.1 this distinction never mattered (bare
+# Enter/space never reached this function at all, prompt() just hung) -
+# now it does: a mis-press silently returns an empty string instead of
+# waiting for real input. Don't relax this check to also treat "" as
+# "use the default" - every existing "(type - for X)" prompt wording
+# depends on "-" being the one and only default signal.
 func prompt_default(message, default_value):
     sleep(log_pace())
     throttle(cpu_guard_conservative())
