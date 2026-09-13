@@ -487,6 +487,25 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   Krok 12's structure) before starting the token-dispatch hammering loop,
   to see whether THAT'S the missing ingredient. PART B (debug off) not yet
   run.
+
+  PART B RESULT (live, later session): finally run, alongside a repeat
+  of PART A. PART A this time: 19 rounds, ~587s, no crash. PART B: 18
+  rounds, ~549s, no crash. Per-round pacing is ESSENTIALLY IDENTICAL
+  between the two (round1 ~32.8s vs ~33.0s, round2 ~66.0s vs ~64.7s, and
+  so on through round 17-19, never more than ~1-2s apart) - CONCLUSION:
+  the always-on debug_enabled()/debug_time() logging is CONCLUSIVELY
+  ruled out as a meaningful cost factor. Both variants also, yet again,
+  survive far longer (~550-600s) than the real crash (~100-150s) without
+  ever overloading - the 4th isolated-hammering test in a row (after
+  test_decode_pacing.bd A/B and test_token_dispatch.bd PART A) to fail
+  to reproduce the real crash in isolation. Combined with the earlier
+  test_dispatch_after_imports.bd being abandoned as too slow to get a
+  comparable run, EVERY synthetic-isolation avenue tried this
+  investigation has now come back negative - strongly suggesting the
+  real crash depends on something in the FULL real menu.bd context
+  (real cumulative session state, or the exact real API-call sequence)
+  that no synthetic hammering loop has managed to recreate, rather than
+  on raw work volume, debug logging, or import-chain debt individually.
   test_dispatch_after_imports.bd (the above test, actually built): PART A
   run, manually interrupted after only round 2 (~65s into dispatch) - the
   player judged waiting for a comparable 20-round/608s run not worth the

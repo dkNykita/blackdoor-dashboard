@@ -38,14 +38,21 @@ test_token_dispatch.bd
   elif chain + both real nu.debug_time() calls, debug forced on to match
   production - not just decode_tuple_list() alone) crash when hammered
   with the real crash trace's exact 5 tokens?
-  Progress: PART A run once, manually interrupted after 20 rounds (~608s).
-  PART B (debug off) NOT YET RUN.
-  Result (PART A): did NOT crash - survived ~5x longer (608s vs ~122s)
-  and ~10x more token-dispatches (100 vs ~10) than the real crash needed.
-  CONCLUSION so far: neither raw token-dispatch volume nor (as far as
-  PART A alone shows) the always-on debug logging fully explains the
-  real crash - something else is still missing. Superseded in
-  Active/tests/ by test_dispatch_after_imports.bd; kept here in git.
+  Progress: PART A run twice (20 rounds/~608s, then 19 rounds/~587s),
+  PART B run once (18 rounds/~549s). Restored to Active/tests/ (swapped
+  back in over test_dispatch_after_imports.bd, which was abandoned) for
+  this second round of testing.
+  Result: neither PART ever crashed, and PART A vs PART B show
+  ESSENTIALLY IDENTICAL per-round pacing (never more than ~1-2s apart
+  across 18-20 rounds) - CONCLUSIVELY rules out the always-on debug
+  logging as a meaningful cost factor. Both survived ~550-608s, ~5x
+  longer than the real ~100-150s crash, the same negative result as
+  every other isolated-hammering test this investigation has tried
+  (test_decode_pacing.bd, test_dispatch_after_imports.bd). CONCLUSION:
+  every synthetic-isolation angle tried so far has failed to reproduce
+  the real crash - it likely depends on something in the FULL real
+  menu.bd context, not on raw work volume, debug logging, or import
+  debt individually.
 
 test_dispatch_after_imports.bd
   Goal: same token-dispatch hammering as test_token_dispatch.bd, but run
