@@ -1287,6 +1287,30 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   whether T10's persistent floor ever fully clears given a real restart
   rather than just idle time.
 
+  FRESH-SESSION RE-TEST (done immediately after, via a genuine game
+  restart - zero prior kills, the cleanest possible starting condition,
+  specifically to settle the confound above): the SAME settle=8 hold-
+  mode test at n=17 died on r=0 - the very FIRST attempt, from a
+  completely clean session. This is a clarifying result: it SIGNIFICANTLY
+  WEAKENS the pure session-fatigue explanation, since there was no
+  fatigue to speak of, and correspondingly STRENGTHENS the original
+  STAGE 2/3 conclusion that hold mode's instability is a real property
+  of repeated bursts (or of the kill trigger's own history/phase
+  sensitivity, as T07 already demonstrated exists) rather than an
+  artifact of a contaminated session. It sits in tension with STAGE 3's
+  clean 5/5 single-shot survival rate at this same n=17 - a hold-mode
+  run's r=0 attempt should be structurally identical to a single-shot
+  run's only attempt, yet this one died immediately from an even
+  cleaner starting condition than any of STAGE 3's 5 successes. With
+  only one fresh-session data point, a single unlucky phase-alignment
+  (per T07's model) remains fully consistent with this result too -
+  more fresh-session repeats would be needed to fully distinguish "hold
+  mode is inherently more dangerous than single-shot at the same n"
+  from "this was one unlucky roll." Practically: the settle=3-vs-8
+  "no improvement" comparison should be treated as unreliable
+  (confounded), but the core NOT-SHARP finding from STAGE 2 now stands
+  on firmer ground, confirmed under the cleanest possible condition.
+
 LOGS
   Servers write your activity to /var/log/auth.log. When you disconnect,
   IDS-enabled servers scan that log and add noise for every entry with

@@ -1711,3 +1711,61 @@ NOTES       : IMPORTANT CONFOUND, not fully resolved by this batch: by
               test T10's own recommended follow-up (whether the
               elevated floor eventually clears given enough real time,
               or requires an actual restart) as a side benefit.
+
+RUN-ID      : T11 settle=8 re-test, GENUINE FRESH GAME SESSION (0 prior
+              kills - the cleanest possible starting condition, done to
+              disentangle the session-fatigue confound flagged above)
+WHEN        : 2026-09-14, fresh game boot
+START-STATE : genuinely fresh - not merely a fresh script launch within
+              an existing session, an actual new game session with zero
+              prior overload kills
+TIER        : base 10t/s
+RAW         : Nykita@localhost ~/scripts > T11 arith 17 0 100 8
+               KILLBOUND mode=arith n=17 step=0 rungs=100 settle=8 entry_cpu=0
+               CALIB arith8=3.00200009346008s pred_n=13 (0 = clock too coarse)
+               RUNG r=0 mode=arith n=17
+
+               [SYSTEM] CPU overloaded. All processes terminated.
+
+               1 process killed.
+SCALAR      : Died on r=0 - the very FIRST hold-mode attempt, from a
+              genuinely fresh session, at settle=8.
+KILLED?     : yes-at r=0 (first attempt)
+VS PREDICT  : This is the single most clarifying data point yet on the
+              session-fatigue confound: the CLEANEST possible starting
+              condition (a real fresh game boot, zero prior kills, none
+              of T10's persistent-floor contamination possible) STILL
+              produced an immediate death on the very first hold-mode
+              attempt at n=17 - a size that survived 5/5 times as a
+              single-shot run in STAGE 3 (mid-session, after ~4 prior
+              kills). This is NOT explained by session-level fatigue,
+              since there was none to speak of.
+NOTES       : This significantly WEAKENS (though with n=1, does not
+              fully eliminate) the pure "session fatigue confound"
+              explanation for the earlier settle=3/settle=8 hold-mode
+              failures, and correspondingly STRENGTHENS the original
+              STAGE 2/3 interpretation: hold-mode's instability is
+              likely a real property of repeated bursts within one run
+              (or of the kill trigger's own history/phase-sensitivity,
+              per T07), not merely an artifact of a contaminated,
+              kill-heavy session. It also sits oddly alongside STAGE 3's
+              clean 5/5 single-shot survival rate at the exact same
+              n=17 - since a hold-mode run's r=0 attempt should be
+              structurally identical to a single-shot run's only
+              attempt, yet here it died immediately from an even
+              CLEANER starting condition than any of STAGE 3's 5
+              successes. With only one fresh-session data point, this
+              cannot yet be treated as a settled rate (a single unlucky
+              phase-alignment per T07's model remains fully consistent
+              with this result) - more fresh-session single attempts at
+              n=17 would be needed to distinguish "hold mode specifically
+              is more dangerous than single-shot at the same n" from
+              "this was one unlucky roll that could equally have
+              happened to a single-shot run." Given each such repeat
+              costs a full game restart, further fresh-session data
+              collection is left to the user's judgement on time cost
+              versus value; the finding as it stands is already
+              sufficient to treat the settle=3-vs-8 comparison's earlier
+              "no improvement" reading as unreliable (confounded), while
+              the core NOT-SHARP / hold-mode-instability conclusion from
+              STAGE 2 stands, now on firmer ground.

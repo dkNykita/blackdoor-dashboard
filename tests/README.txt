@@ -508,10 +508,19 @@ T11.bd  (T11, CPU-load research programme - NOT a menu.bd test)
   "the accumulation mechanism itself is unaffected by settle length"
   from "session-level fatigue from ~10 prior kills is now confounding
   everything." A clean re-test needs a genuine FRESH GAME SESSION
-  (not just fresh script launches within this same long session) -
-  recommended before further T11/T12/T13 work. See CPU Research/
-  results.txt (T11 STAGES 1-3 + settle=8 follow-up) and field_notes.txt
-  for the full writeup.
+  (not just fresh script launches within this same long session).
+  FRESH-SESSION RE-TEST: done immediately after, from a genuine new
+  game boot (zero prior kills, the cleanest possible starting
+  condition). Result: died on r=0 - the VERY FIRST hold-mode attempt,
+  at settle=8, from a completely clean session. This significantly
+  WEAKENS the session-fatigue explanation (there was none to speak of)
+  and STRENGTHENS the original conclusion that hold mode's instability
+  is a real property of repeated bursts (or of kill-trigger phase-
+  sensitivity per T07), not a contamination artifact - though with n=1
+  fresh-session data point, a single unlucky phase-alignment remains
+  consistent with this too; more fresh-session repeats would sharpen
+  it further. See CPU Research/results.txt (T11 STAGES 1-3 + settle=8
+  follow-ups) and field_notes.txt for the full writeup.
 
 T18.bd  (T18, CPU-load research programme - NOT a menu.bd test)
   Goal: price log() itself. Does it cost exactly one tick regardless of its
