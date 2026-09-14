@@ -1,4 +1,4 @@
-Report link: none yet - about to be posted to the community Discord as a unified report
+Report link: https://discordapp.com/channels/1490681520174661755/1549068397457973260
 
 BUG REPORT: CPU load instability investigation - non-deterministic kill boundary, get_cpu() polling flakiness, log() cost surcharge
 

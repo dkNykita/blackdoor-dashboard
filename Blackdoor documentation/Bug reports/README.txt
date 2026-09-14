@@ -42,9 +42,10 @@ Investigation/01_cpu_load_instability_investigation.txt [script]
   cost; (4) a persistent elevated floor after any kill; (5) log() with
   string concatenation costing ~7-9x a plain line; (6) get_unix_time()
   returning a float against its documented int. Dev (2026-09-14) has
-  acknowledged a likely cause and is preparing a beta-branch fix -
-  this consolidated report was drafted to compare against it once
-  posted. menu.bd/utils/*.bd development remains paused; see CLAUDE.md.
+  acknowledged a likely cause and is preparing a beta-branch fix - this
+  consolidated report was posted to Discord the same day (see Report
+  link:) to compare against it once the fix lands. menu.bd/utils/*.bd
+  development remains paused; see CLAUDE.md.
   Active research programme for this report: Investigation/CPU Research/
   (README.txt = methodology + 28-experiment plan; results.txt = per-run
   log) - the T01-T28 scripts it defines live in ../../tests/.
