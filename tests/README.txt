@@ -352,6 +352,38 @@ T09.bd  (T09, CPU-load research programme - NOT a menu.bd test)  [DONE]
   See CPU Research/results.txt (T09 runs 1-3) and field_notes.txt for
   the full writeup.
 
+T06.bd  (T06, CPU-load research programme - NOT a menu.bd test)  [DONE]
+  Goal: KILL CATCHABILITY - is the "[SYSTEM] CPU overloaded" kill
+  interceptable via try/catch? A methodology question: if catchable,
+  every future kill-based test could log its own exact death point and
+  keep running instead of relying on inference from the last printed
+  checkpoint. P1 (raise() inside try/catch, proves the language feature
+  itself works here) -> P2 (a 200-iteration unpaced burst at top level,
+  inside try - the actual answer) -> P3/P4 (nested + error-object
+  fields, only reachable if P2 was caught).
+  Progress: COMPLETE, 3/3 runs, all identical.
+  Result: NOT CATCHABLE, confirmed unambiguously and identically in all
+  3 runs - exactly the test's own predicted/expected branch. P1 prints
+  cleanly (caught=1, try/catch genuinely works in this script/session).
+  Output then stops immediately after "P2 flat burst starting NOW" in
+  every run, followed by the kill banner - no "P2 FLAT CAUGHT=1", no
+  P3, no P4, ever. The pre-burst cpu reading (59.9999999999983) is
+  IDENTICAL down to the float-noise digits in all 3 runs. This CONFIRMS
+  the kill is a genuine external/engine-level termination, not a
+  language-level error - no in-script handler can ever intercept it or
+  keep the script alive past it. METHODOLOGY-CONFIRMING: every crash
+  location this whole investigation has ever recorded, inferred from
+  the last-printed checkpoint, was the only method available and is
+  validated by this result, not merely assumed. Side observation
+  (informal): the user watched the live CPU meter hold near 0 for ~1s
+  after the burst started before jumping 80->100->crash, while the
+  script's OWN pre-burst get_cpu() read at roughly the same moment
+  already showed 60 - reinforces the open question (also raised in
+  T09) of whether the live UI meter and the get_cpu() API value are
+  the same quantity or sample on different cadences. See CPU
+  Research/results.txt (T06 runs 1-3) and field_notes.txt for the full
+  writeup.
+
 T18.bd  (T18, CPU-load research programme - NOT a menu.bd test)
   Goal: price log() itself. Does it cost exactly one tick regardless of its
   argument, or does cost scale with STRING LENGTH, with the number of

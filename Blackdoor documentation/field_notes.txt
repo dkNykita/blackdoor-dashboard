@@ -1079,6 +1079,31 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   cost anywhere in that range. Full data: CPU Research/results.txt, T09
   runs 1-3.
 
+  T06 (kill catchability) is complete next and answers a methodology
+  question underlying every prior crash location in this document: is
+  the "[SYSTEM] CPU overloaded. All processes terminated." kill
+  catchable via try/catch? 3 identical runs confirm NOT CATCHABLE -
+  a P1 control (raise() inside try/catch) prints cleanly every time,
+  proving the language feature itself works in this script/session,
+  but the actual test (a 200-iteration unpaced burst inside try, at top
+  level) never logs its own catch - output stops immediately after the
+  pre-burst log line in all 3 runs, followed directly by the kill
+  banner, with no further script output at all. This CONFIRMS the kill
+  is a genuine external/engine-level process termination, not a
+  language-level raised error - no in-script handler can ever intercept
+  it or keep the script alive past it. Retroactively validates this
+  entire document's standing method of inferring a crash's location
+  from the last-printed checkpoint: that was never just a convenient
+  assumption, it is the ONLY method available, now confirmed directly.
+  Side observation (informal, not measured): watching the live in-game
+  CPU meter during the burst showed it holding near 0 for about a
+  second before jumping 80 -> 100 -> crash, while the script's own
+  pre-burst get_cpu() API read at roughly that same moment already
+  showed 60 - a hint (not proof) that the live UI meter and the
+  get_cpu() API value may sample or update on different cadences,
+  matching a similar open question raised by T09's optional live-meter
+  observation. Full data: CPU Research/results.txt, T06 runs 1-3.
+
 LOGS
   Servers write your activity to /var/log/auth.log. When you disconnect,
   IDS-enabled servers scan that log and add noise for every entry with

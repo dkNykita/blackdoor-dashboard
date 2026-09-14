@@ -1076,3 +1076,69 @@ NOTES       : The single cleanest, most unambiguous result the whole
               that the true underlying signal is a complex, continuously
               -evolving quantity between any two discrete sample points,
               not a simple step function.
+
+RUN-ID      : T06, runs 1-3/3 (kill catchability - is the CPU-overload
+              kill interceptable via try/catch, a methodology question
+              for every future kill-based test)
+WHEN        : 2026-09-14, same session as T01-T04, T07-T09
+START-STATE : "clean start" ; jobs confirmed empty before run 1 (ps not
+              separately shown, but jobs clean and cpu=0 at each T06
+              start is consistent with a clean process state each time)
+TIER        : base 10t/s, per T02
+RAW         : Nykita@localhost ~/scripts > T06
+               T06 start cpu=0 burst_n=200
+               T06 P1 CONTROL caught=1 - try/catch works here, a catch block can log
+               T06 P1 done ctl=1 t=+5.80900001525879s cpu=40
+               T06 P2 flat burst starting NOW - 200 unpaced iterations, cpu=59.9999999999983
+
+               [SYSTEM] CPU overloaded. All processes terminated.
+
+               1 process killed.
+               [runs 2 and 3: byte-for-byte identical shape, t=+5.802s
+               and t=+5.797s respectively for P1 done, same
+               cpu=59.9999999999983 pre-burst reading both times]
+SCALAR      : P1 CONTROL caught=1 (all 3 runs). Pre-burst cpu=
+              59.9999999999983 (IDENTICAL in all 3 runs, same float-
+              noise suffix). Output STOPS immediately after the "P2
+              flat burst starting NOW" line in all 3 runs - no "P2 FLAT
+              CAUGHT=1", no P3, no P4, in any run.
+KILLED?     : yes-at: "T06 P2 flat burst starting NOW - 200 unpaced
+              iterations, cpu=..." (the line immediately BEFORE the
+              burst's while loop - the burst itself never got to log
+              anything, consistent with an unpaced kill mid-loop)
+VS PREDICT  : Matches the test's own "P1 CONTROL caught=1, then output
+              STOPS after P2 flat burst starting NOW, banner, nothing
+              else -> NOT CATCHABLE" branch EXACTLY, identically, in
+              all 3 runs. This is the EXPECTED result per the test's
+              own stated hypothesis. CONFIRMED: the "[SYSTEM] CPU
+              overloaded. All processes terminated." kill is NOT
+              catchable via try/catch - it is a genuine external/
+              engine-level process termination, not a language-level
+              raised error, and no in-script handler can ever intercept
+              it or keep the script running past it.
+NOTES       : METHODOLOGY-CONFIRMING RESULT: every crash location this
+              whole investigation has ever recorded was INFERRED from
+              the last-printed checkpoint (never directly self-reported
+              by the dying script, since no handler can catch the kill)
+              - this result CONFIRMS that inference approach was the
+              only one available and was legitimate, not just an
+              assumption of convenience. P3 (does execution continue
+              past a caught overload) and P4 (nested try/catch,
+              e.message/e.line) remain untested - correctly so, since
+              they only matter if P2 were caught, and it never is; no
+              follow-up needed per the test's own decision table.
+              SIDE OBSERVATION (informal, not lab-grade): the user
+              watched the live in-game CPU meter during the burst and
+              reported it held near 0 for about a second after the
+              burst started, then jumped 80 -> 100 -> crash - NOT an
+              immediate jump to saturation. This is notable because the
+              script's OWN pre-burst get_cpu() read (logged the instant
+              before the burst begins) already shows cpu=60, not 0 -
+              i.e. the API reading and what the user saw on the live UI
+              meter disagreed at roughly the same moment. Purely
+              informal/eyeballed, not measured, but it reinforces the
+              standing open question (raised in T09's optional live-
+              meter-watching note) of whether the live UI meter and the
+              get_cpu() API value are genuinely the same quantity or
+              sample/update on different cadences - worth a dedicated,
+              precisely-timed test if this thread is ever picked up.
