@@ -384,6 +384,61 @@ T06.bd  (T06, CPU-load research programme - NOT a menu.bd test)  [DONE]
   Research/results.txt (T06 runs 1-3) and field_notes.txt for the full
   writeup.
 
+T10.bd  (T10, CPU-load research programme - NOT a menu.bd test)  [DONE]
+  Goal: DEATH TRACE - what does get_cpu() read at (or one line before)
+  the kill, and for how many real seconds does it sit at the ceiling
+  first? First test of the KILL-TRIGGER block; logs one numbered
+  get_cpu() sample per unpaced line until the engine kills it, instead
+  of inferring the death point from whatever last happened to print.
+  PART A instruments get_cpu(); PART B (control) substitutes a copy of
+  the loop counter to isolate get_cpu()'s own polling cost.
+  Progress: COMPLETE, 8/8 runs (3 cold PART A >5s apart, 3 hot PART A
+  <=0.5s apart back to back, 2 PART B) - run in a CONTINUED session,
+  not a fresh boot, which turned out to matter (see below).
+  Result: THREE major findings.
+  (1) RUN-TO-RUN VARIANCE REPRODUCED DIRECTLY: 5 of 6 PART-A runs died
+  at exactly n=5 (t~5.4s), cpu=100 every sample; the 6th survived to
+  n=9 (t~9.8s, nearly DOUBLE), with the only difference in its own
+  trace being a single dip to cpu=90 (not 100) at n=5 - a below-ceiling
+  "blip" that appears to have reset or delayed the kill's internal
+  countdown. This is exactly T04's already-demonstrated rapid-polling
+  instability (identical rapid-fire get_cpu() reads gave different
+  values run to run there too) - but T10 now shows that instability,
+  when it happens to land below the ceiling mid-burst, can measurably
+  extend a script's survival time. This is the leading mechanistic
+  candidate for the central menu.bd variance mystery: chance below-
+  ceiling blips in an inherently rapid-poll-unstable meter, not any
+  real randomness in the underlying engine.
+  (2) THE "5 STRAIGHT SECONDS" KILL RULE: sustained-ceiling duration
+  before death brackets to (4.3s, 5.5s] for normal runs and (3.3s,
+  4.4s] for run 6's second (post-dip) streak - broadly consistent with
+  ~5s but not pinned down more precisely than that by this instrument's
+  ~1.1s sampling granularity. Neither confirms nor refutes an exact
+  5.0s constant.
+  (3) UNPLANNED, MAJOR SIDE FINDING ON log() COST: both PART A (~1.10s/
+  iteration) and PART B (~1.00s/iteration, no get_cpu() at all) ran
+  3-5x SLOWER than the test's own predicted 3.3-5.0 iterations/sec for
+  a 2-3 statement loop body. The ~0.1s gap between A and B matches
+  get_cpu()'s expected single extra tick exactly - but the remaining
+  ~1.0s (10 ticks) for a loop body of just n=n+1 + one log() line (3
+  str() calls, 2 concatenations) implies THAT LOG() LINE COSTS ROUGHLY
+  7-9 TICKS BY ITSELF, not the 1 tick budgeted for this exact debug-
+  line style everywhere in field_notes.txt. Not yet isolated/confirmed
+  - T18 (log() pricing, not yet run) is the properly controlled
+  instrument for this; T10 only surfaced it as a side effect.
+  ALSO: entry_cpu reads ~0 (matching T01/T03/T09's "fresh script's
+  first read is 0" pattern) but floor_cpu, read only 3 SLEEP-ONLY
+  seconds later, reads 30-40 - backwards from simple decay, and it does
+  NOT reset even after >5s idle between kills (climbs 30->30->40 then
+  plateaus at 40 across the session regardless of cold/hot spacing).
+  Strong evidence that repeated kills within one continued session
+  leave a PERSISTENT elevated idle floor that doesn't fully clear the
+  way the clean ~10 floor did in T01/T03/T04/T08/T09 - none of which
+  had just experienced a violent kill. Methodological caution for any
+  test run in a session where a kill already happened. See CPU
+  Research/results.txt (T10 runs 1-8) and field_notes.txt for the full
+  writeup.
+
 T18.bd  (T18, CPU-load research programme - NOT a menu.bd test)
   Goal: price log() itself. Does it cost exactly one tick regardless of its
   argument, or does cost scale with STRING LENGTH, with the number of
