@@ -29,16 +29,22 @@ Open/01_param_default_type_and_quoting_leak.txt [script]
 
 INVESTIGATION - see Investigation/ for full text:
 
-Investigation/01_get_cpu_run_to_run_inconsistency.txt [script]
-  get_cpu() produces wildly different crash timing across identical
-  runs of the same code+data (5 runs, same scenario: +40.7s/+111.0s/
-  +40.3s/+65.5s/+64.3s) - no explanation found despite an extensive
-  investigation (see field_notes.txt's "STARTUP CPU OVERLOAD
-  INVESTIGATION"). Previously WITHDRAWN pending retesting under the
-  corrected tick-cost model; retested thoroughly under that model and
-  CONFIRMED still unexplained - revived here instead of staying
-  withdrawn. menu.bd/utils/*.bd development is paused as of 2026-09-14
-  specifically because of this; see CLAUDE.md.
+Investigation/01_cpu_load_instability_investigation.txt [script]
+  (Renamed from 01_get_cpu_run_to_run_inconsistency.txt, original
+  report kept at the bottom of the file for history.) Consolidates the
+  original get_cpu() run-to-run inconsistency symptom (5 runs, same
+  code+data: +40.7s/+111.0s/+40.3s/+65.5s/+64.3s) with 6 concrete,
+  independently-reproduced findings from the CPU Research programme's
+  controlled testing: (1) a non-deterministic kill boundary under
+  repeated near-lethal bursts - the leading root-cause candidate; (2)
+  get_cpu() quantizing to multiples of 10 and disagreeing under rapid
+  polling; (3) its decay window not matching a real throttle-loop's
+  cost; (4) a persistent elevated floor after any kill; (5) log() with
+  string concatenation costing ~7-9x a plain line; (6) get_unix_time()
+  returning a float against its documented int. Dev (2026-09-14) has
+  acknowledged a likely cause and is preparing a beta-branch fix -
+  this consolidated report was drafted to compare against it once
+  posted. menu.bd/utils/*.bd development remains paused; see CLAUDE.md.
   Active research programme for this report: Investigation/CPU Research/
   (README.txt = methodology + 28-experiment plan; results.txt = per-run
   log) - the T01-T28 scripts it defines live in ../../tests/.
