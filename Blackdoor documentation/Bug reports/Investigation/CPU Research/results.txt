@@ -5,4 +5,24 @@ PROTOCOL in README.txt. Newest at the bottom. When a test's repeats are
 all in, also write its one-paragraph VERDICT into ../../tests/README.txt
 (Result:) and, if it changes the model, into ../field_notes.txt.
 
-(no runs recorded yet - programme authored 2026-09-14)
+RUN-ID      : T01 run 1/? (attempt 1, aborted by script bug)
+WHEN        : 2026-09-14, first live run of the whole programme
+START-STATE : fresh-boot ; ps/jobs clean: y
+TIER        : not reached
+RAW         : Nykita@localhost ~/scripts > T01
+               Line 163: Cannot convert '"10"' to int.
+SCALAR      : N/A - crashed on line 1 of its own logic, before t0 logged
+KILLED?     : no (script error, not a CPU-overload kill)
+VS PREDICT  : N/A - not a measurement, an authoring bug in the test itself
+NOTES       : Root cause: `# @param blocks ... default="10"` (quoted)
+              made get_param("blocks","10") return the literal string
+              '"10"' (quotes included); int() on that throws exactly
+              this message. NOT a CPU-model finding - a pre-existing,
+              already-known-elsewhere BDScript quirk (see field_notes.txt
+              VERIFIED VS DOCS and CLAUDE.md's gotchas list) that the
+              T01-T28 authoring pass didn't apply. Fixed across all 28
+              scripts same day (23 quoted @param defaults unquoted, 32
+              get_param() sites defensively stripped of quotes - see
+              tests/README.txt's 2026-09-14 entry for the full list).
+              Re-run T01 from scratch next session; this record stays as
+              the paper trail for why run 1 doesn't count as data.

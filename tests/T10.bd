@@ -98,9 +98,9 @@
 #     4) idle ~30s, then two PART B runs.
 #   8 runs total, each ~23s of script time, ~5-6 minutes all in.
 #   Record the final n of every run, and paste every run in full.
-# @param part "A = log get_cpu() each line, B = control without it" default="A"
+# @param part "A = log get_cpu() each line, B = control without it" default=A
 
-var PART = get_param("part", "A")
+var PART = get_param("part", "A").replace("\"", "").trim()
 var c0 = get_cpu()
 sleep(3)
 log("KILLTRACE part=" + PART + " entry_cpu=" + str(c0) + " floor_cpu=" + str(get_cpu()))

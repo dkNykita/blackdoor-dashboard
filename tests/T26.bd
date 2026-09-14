@@ -181,7 +181,7 @@
 #   If the run ends on ABORT-TRACE, the target's own trace ceiling is too
 #   tight for a 10-second connected window - pick another host. PHASE A's ten
 #   lines are still valid data in every abort case; paste them anyway.
-# @param part "C = connect probe, N = null control that never connects" default="C"
+# @param part "C = connect probe, N = null control that never connects" default=C
 # @param host "user@ip of an account you have already cracked (ignored when part=N)" optional
 
 # The instrument. ONE definition, called three times with a one-character
@@ -221,8 +221,8 @@ func mark(tag, t0):
 # PHASE A starts from.
 var c_entry = get_cpu()
 sleep(3)
-var PART = get_param("part", "C")
-var HOST = get_param("host", "")
+var PART = get_param("part", "C").replace("\"", "").trim()
+var HOST = get_param("host", "").replace("\"", "").trim()
 var t0 = get_unix_time()
 log("T26 part=" + PART + " host=" + HOST + " entry_cpu=" + str(c_entry) + " floor_cpu=" + str(get_cpu()))
 mark("PRE", t0)

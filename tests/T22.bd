@@ -101,7 +101,7 @@
 # PATHS: /home/Nykita/ is assumed to be home - must match T22_bomb.bd.
 # @param polls "how many 1-second polls before a clean exit" default=40
 
-var POLLS = int(get_param("polls", "40"))
+var POLLS = int(get_param("polls", "40").replace("\"", "").trim())
 var F = "/home/Nykita/t22_victim.txt"
 var t0 = get_unix_time()
 var c = get_cpu()

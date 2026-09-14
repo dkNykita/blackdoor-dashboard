@@ -201,13 +201,13 @@
 # preamble + the sleep calibration + at most one block of overshoot).
 # The control arm ends in ~10 seconds if it behaves.
 #
-# @param lvl "target sustained load percent: 100 (control) 95 90 82 70 60 50" default="82"
-# @param tier "CPU ticks per second from T02: 10 20 40 80 160" default="10"
-# @param hold "seconds to hold the plateau" default="60"
+# @param lvl "target sustained load percent: 100 (control) 95 90 82 70 60 50" default=82
+# @param tier "CPU ticks per second from T02: 10 20 40 80 160" default=10
+# @param hold "seconds to hold the plateau" default=60
 
-var LVL = get_param("lvl", "82")
-var TIER = get_param("tier", "10")
-var HOLD = get_param("hold", "60")
+var LVL = get_param("lvl", "82").replace("\"", "").trim()
+var TIER = get_param("tier", "10").replace("\"", "").trim()
+var HOLD = get_param("hold", "60").replace("\"", "").trim()
 sleep(1)
 var L = int(LVL)
 var RATE = int(TIER)

@@ -17,6 +17,21 @@ The four test_cpu_decay/decode_pacing/token_dispatch/dispatch_after_imports
 scripts predate the programme (they came out of the frozen menu.bd
 investigation) and are NOT part of T01-T28.
 
+2026-09-14 CROSS-CUTTING FIX (before any test but T01 was run in-game):
+T01's first real run crashed immediately - "Line 163: Cannot convert
+'"10"' to int." Root cause: `@param ... default="10"` (quoted) embeds
+literal quote characters into what get_param() returns; the workflow
+subagents that authored T01-T28 didn't know this project-specific quirk
+(menu.bd's utils/net.bd and utils/sqli.bd already defend against it).
+Fixed across the whole set in one pass: 23 quoted @param defaults ->
+unquoted (11 files: T01,T03,T10,T11,T12,T13,T19,T20,T24,T25,T26), and
+32 get_param() call sites (15 files, including T22/T22_bomb/T27/T28
+which had no quoted @param but were guarded anyway) now chain
+`.replace("\"", "").trim()`. Full writeup: field_notes.txt's VERIFIED
+VS DOCS. None of the per-script entries below have been re-audited
+individually for this - treat every T01-T28 script's param handling as
+fixed as of this date regardless of what its own entry says.
+
 test_cpu_decay.bd
   Goal: characterize get_cpu()'s actual behavior over time in isolation
   (does it decay to near-zero at rest, or plateau at a nonzero floor?),

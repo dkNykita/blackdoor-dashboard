@@ -95,8 +95,8 @@
 # drift control. If the iv=0.25 arm is killed or caps out, repeat twice
 # more to prove the kill is reproducible rather than phase luck.
 #
-# @param cycles "how many times to repeat the 4-condition cycle" default="3"
-# @param loadn "iterations in the fixed load unit (about half T11's n*)" default="5"
+# @param cycles "how many times to repeat the 4-condition cycle" default=3
+# @param loadn "iterations in the fixed load unit (about half T11's n*)" default=5
 
 func load_unit(n):
     var j = 0
@@ -108,8 +108,8 @@ func load_unit(n):
 
 var T0 = get_unix_time()
 log("T19 launch cpu=" + str(get_cpu()))
-var CYCLES = int(get_param("cycles", "3"))
-var LOADN = int(get_param("loadn", "5"))
+var CYCLES = int(get_param("cycles", "3").replace("\"", "").trim())
+var LOADN = int(get_param("loadn", "5").replace("\"", "").trim())
 var SETTLE = 2
 sleep(1)
 log("T19 start cycles=" + str(CYCLES) + " loadn=" + str(LOADN) + " settle=" + str(SETTLE))

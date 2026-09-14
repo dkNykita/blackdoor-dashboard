@@ -283,11 +283,11 @@
 # cpu=100 for ~840s without dying, which already shows the killer counts
 # something other than the meter. Where T11 and T14/T15/T18 disagree, report
 # both and treat the disagreement as the finding; do not average them.
-# @param mode "arith | zero | cpu | time | intlog | concatlog" default="arith"
-# @param n "first rung size, in loop iterations" default="6"
-# @param step "rung increment; 0 = repeat the same n (sharpness test)" default="3"
-# @param rungs "how many rungs before giving up" default="10"
-# @param settle "seconds of sleep before AND after every burst" default="3"
+# @param mode "arith | zero | cpu | time | intlog | concatlog" default=arith
+# @param n "first rung size, in loop iterations" default=6
+# @param step "rung increment; 0 = repeat the same n (sharpness test)" default=3
+# @param rungs "how many rungs before giving up" default=10
+# @param settle "seconds of sleep before AND after every burst" default=3
 
 var c0 = get_cpu()
 
@@ -372,11 +372,11 @@ func b_concatlog(n, s):
 
 sleep(1)
 
-var MODE = get_param("mode", "arith")
-var N = int(get_param("n", "6"))
-var STEP = int(get_param("step", "3"))
-var RUNGS = int(get_param("rungs", "10"))
-var S = int(get_param("settle", "3"))
+var MODE = get_param("mode", "arith").replace("\"", "").trim()
+var N = int(get_param("n", "6").replace("\"", "").trim())
+var STEP = int(get_param("step", "3").replace("\"", "").trim())
+var RUNGS = int(get_param("rungs", "10").replace("\"", "").trim())
+var S = int(get_param("settle", "3").replace("\"", "").trim())
 sleep(1)
 var k = 0
 var r = 0

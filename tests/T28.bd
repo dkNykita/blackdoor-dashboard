@@ -297,11 +297,11 @@ func burst(n, s):
 sleep(1)
 
 var T0 = get_unix_time()
-var START = int(get_param("start", "8"))
-var RUNGS = int(get_param("rungs", "9"))
+var START = int(get_param("start", "8").replace("\"", "").trim())
+var RUNGS = int(get_param("rungs", "9").replace("\"", "").trim())
 sleep(1)
-var SET = int(get_param("settle", "3"))
-var REPS = int(get_param("reps", "4"))
+var SET = int(get_param("settle", "3").replace("\"", "").trim())
+var REPS = int(get_param("reps", "4").replace("\"", "").trim())
 sleep(1)
 var conf = "unreadable"
 try:

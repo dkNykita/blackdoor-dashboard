@@ -1050,6 +1050,31 @@ CONFIRMED THIS SESSION (live testing of the refactored Active tree):
     every time. Consistent with this codebase's existing no-confirmed-
     closures caution, but worth a cleaner isolated test before treating
     it as certain.
+  - `# @param name "desc" default=VALUE` - VALUE must be written UNQUOTED
+    even when it's conceptually a string (`default=10`, `default=clock`,
+    `default=A`), matching the official syntax exactly. Writing
+    `default="10"` (quoting it, the natural instinct) makes the engine's
+    @param parser store the literal quote characters as part of the
+    default - so get_param("x", "10") then returns the 4-character
+    string '"10"' (quotes included), not '10'. `int()` on that value
+    fails with "Cannot convert '"10"' to int." - this is EXACTLY how it
+    was first caught live: T01.bd's `# @param blocks ... default="10"`
+    plus `int(get_param("blocks", "10"))` crashed on line 1 of real
+    execution. This is the same root mechanism `utils/net.bd`'s
+    resolve_raw_target() and `utils/sqli.bd`'s normalize_path() were
+    already defending against with `.replace("\"", "").trim()` - it
+    wasn't understood as a general @param-syntax issue until this. Fix
+    applied everywhere in tests/T01-T28: (1) any `default="VALUE"` @param
+    line rewritten to `default=VALUE` (23 declarations, 11 files), and
+    (2) every get_param() call site, whether or not it has a matching
+    @param line, now defensively chains `.replace("\"", "").trim()`
+    before use (32 call sites, 15 files) - belt-and-suspenders, matching
+    the net.bd/sqli.bd convention, since a plain inline
+    `get_param(name, "fallback")` call with NO @param declaration at all
+    hasn't been proven immune to the same quoting quirk and costs nothing
+    to guard anyway. Any NEW .bd script (test or otherwise) should either
+    never quote an @param default, or defensively strip quotes at every
+    get_param() use - ideally both.
   - Object literals CANNOT span multiple lines at all - confirmed via
     the engine's own parse error ("Expected property name in object
     literal") AND an isolated live test that bisected it down to a

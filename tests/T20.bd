@@ -183,13 +183,13 @@
 #
 # RUNTIME: probe ~23s, bomb ~6s. Minimum block ~3 min, full block ~7 min.
 #
-# @param mode "P = probe (the measurement), K = kill bomb (makes prelude B)" default="P"
-# @param tag "prelude label printed on every line: A cold, B post-kill, C post-finish, D idle" default="?"
+# @param mode "P = probe (the measurement), K = kill bomb (makes prelude B)" default=P
+# @param tag "prelude label printed on every line: A cold, B post-kill, C post-finish, D idle" default=?
 
 var c0 = get_cpu()
 var t0 = get_unix_time()
-var MODE = get_param("mode", "P")
-var TAG = get_param("tag", "?")
+var MODE = get_param("mode", "P").replace("\"", "").trim()
+var TAG = get_param("tag", "?").replace("\"", "").trim()
 log("T20[" + TAG + "] mode=" + MODE + " LINE1_cpu=" + str(c0) + " t_abs=" + str(t0))
 var a = 0
 var r = 0

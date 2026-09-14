@@ -245,11 +245,11 @@
 #   ambiguously between them, add 4 more runs to C - the reversal is the
 #   load-bearing claim and C is the block that carries it.
 #
-# @param tag "block+run label printed on every line, e.g. A1, B3, C2" default="?"
+# @param tag "block+run label printed on every line, e.g. A1, B3, C2" default=?
 
 var c0 = get_cpu()
 var t0 = get_unix_time()
-var TAG = get_param("tag", "?")
+var TAG = get_param("tag", "?").replace("\"", "").trim()
 log("T25[" + TAG + "] LINE1_cpu=" + str(c0) + " t_abs=" + str(t0))
 var a = 0
 var r = 0

@@ -100,9 +100,9 @@
 #   exactly 0 on a fresh script, so anything above 0 here is load that
 #   existed before this script's first line ran.
 #
-# @param run "run number, 1-8 - only used to label the output" default="?"
+# @param run "run number, 1-8 - only used to label the output" default=?
 
-var RUN = get_param("run", "?")
+var RUN = get_param("run", "?").replace("\"", "").trim()
 var ITER = 10
 var c0 = get_cpu()
 var t0 = get_unix_time()

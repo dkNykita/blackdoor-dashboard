@@ -207,10 +207,10 @@
 #   banner. A truncated paste is still a complete result - the last
 #   "T12 B r=k" line names the exact rep the timer could not tolerate.
 # =====================================================================
-# @param ms "yield between bursts, milliseconds: 1000 | 500 | 250 | 100 | 50" default="1000"
+# @param ms "yield between bursts, milliseconds: 1000 | 500 | 250 | 100 | 50" default=1000
 
 var cl = get_cpu()
-var MS = get_param("ms")
+var MS = get_param("ms").replace("\"", "").trim()
 var Y = 1.0
 var LBL = "1000"
 var a = 0
