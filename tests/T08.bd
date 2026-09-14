@@ -1,0 +1,414 @@
+# tests/T08.bd - T08 "Meter memory II: decay from
+# saturation over seconds, and the ~3.7s throttle constant"
+#
+# ONE QUESTION
+#   Starting from a saturated meter, what does get_cpu() read after
+#   exactly k whole seconds of sleeping (k = 0,1,2,3,5,8)? A step down
+#   to the floor, or a graded decay?
+#
+# WHY THIS IS THE SHARPEST OPEN NUMBER IN THE CORPUS
+#   Two well-replicated observations flatly contradict each other:
+#     (a) test_cpu_decay.bd's idle phase: ONE sleep(1) per iteration is
+#         enough for get_cpu() to sit at a rock-steady 10.0, 8 samples
+#         running, never climbing. -> the meter clears in under 1s.
+#     (b) every real nu.throttle() in the crash traces costs ~3.7s
+#         (1 mandatory sleep(1) + ~2.7 retries) before get_cpu() falls
+#         back under 80 - replicated ~10 times in one trace, and cross-
+#         confirmed by the mid-item-throttle A/B (+3.8s per added call).
+#         -> the meter stays above 80 for ~2.7-3.1s after trivial work.
+#   Both cannot be true of the same signal. This test measures which,
+#   by taking ONE clean sample per delay instead of polling.
+#
+# THE THREE MODELS, WITH NUMBERS (base tier, floor taken as ~10-20)
+#   A. STEP / SHORT WINDOW (<=1s of memory)
+#        k=0 ~90-100, and k=1,2,3,5,8 ALL equal at the floor.
+#        If A: the 3.7s throttle constant is NOT the meter decaying.
+#        It becomes a genuine anomaly needing its own explanation, and
+#        every "wait for it to drop" pacing assumption in the codebase
+#        is resting on a mechanism that does not exist. Major redirect.
+#   B. GEOMETRIC DECAY / EMA (a power-of-two smoothing factor)
+#        (reading - floor) falls by a CONSTANT RATIO each second.
+#        Signature: successive (post - floor) values divide to the same
+#        number. If that ratio is 1/2, 3/4, 7/8, 15/16... the dyadic
+#        readings already on record (93.75 = 100*15/16, 99.9984741210938
+#        = 100*(1-2^-16), 49.94140625) are explained in one stroke.
+#   C. LINEAR DRAIN at ~10 points/second (one base-tier tick's worth)
+#        k=0 100, k=1 90, k=2 80, k=3 70, k=5 50, k=8 20 (floor).
+#        Signature: successive DIFFERENCES are constant, ~10.
+#        This is the model that reproduces the ~3.7s throttle constant
+#        exactly (crossing below 80 just after k=2, plus throttle()'s
+#        own mandatory first sleep), and it matches the player's live
+#        meter, which only ever shows MULTIPLES OF 10.
+#   B and C are both "graded"; the corpus has independent evidence for
+#   each, so the test reports enough precision to separate them.
+#
+# HOW TO READ THE RESULT (sort the printed lines BY k, not by phase)
+#   all k>=1 equal              -> A. Short window. Redirect the whole
+#                                  investigation off "decay" onto
+#                                  whatever else makes throttle() cost
+#                                  3.7s (T19's job).
+#   constant ratio of (post-floor) -> B. Read the ratio off directly;
+#                                  it IS the smoothing constant.
+#   constant difference ~10     -> C. One tick = 10 points, drained at
+#                                  one tick-equivalent per second.
+#   post still ~100 at k=8      -> neither. The meter's memory is far
+#                                  longer than ANY pacing in this
+#                                  codebase assumes. Everything built on
+#                                  sleep(1)-clears-it is built on sand.
+#   readings track PHASE ORDER instead of k -> not decay at all but
+#                                  drift/accumulation over the run; see
+#                                  "SCRAMBLED ORDER" below, this is the
+#                                  single most important confound and
+#                                  the test is built to catch it.
+#
+# SCRAMBLED ORDER (the design choice that separates decay from drift)
+#   Phases run k = 0, 3, 1, 8, 2, 5, 0, 2 - deliberately NOT ascending.
+#   If the readings fall monotonically when sorted BY k but scatter when
+#   sorted by phase number, the fall is caused by k: real decay.
+#   If they fall monotonically by PHASE NUMBER regardless of k, the fall
+#   is a session-long trend (long-window memory, warm-up, accumulation)
+#   and has nothing to do with the delay - an ascending-k design would
+#   have reported exactly the same shape and drawn exactly the wrong
+#   conclusion. P7 (k=0 again) and P8 (k=2 again) are literal replicates
+#   of P1 and P5 late in the run: if P7~=P1 and P8~=P5, there is no
+#   drift and the k-ordering is trustworthy.
+#
+# THE BURST IS CALIBRATED SUB-LETHAL - AND P1 IS ITS SAFETY CHECK
+#   Saturation is 15 unrolled `x = x + 1` lines: ~1.5s of continuous
+#   execution at base tier, well inside the 5-sustained-seconds kill.
+#   (test_cpu_decay.bd's fatal burst was 50 LOOP ITERATIONS - ~150
+#   executed lines, ~15s - which is why it died before measuring
+#   anything and why this test is unrolled instead of looped.)
+#   15 unrolled lines has never been run, so P1 goes first on purpose:
+#   if it is lethal we learn it from the very first phase and the
+#   surviving "T08 P1 k=0 begin" line says so unambiguously.
+#   `x = x + 1`, not `x = 1`, so a dead-store optimiser cannot elide it.
+#
+# INSTRUMENT ACCOUNTING (the observer effect is the whole difficulty)
+#   - The decay is NOT POLLED. Polling is self-defeating here: every
+#     get_cpu() call is a line, every line re-elevates the very quantity
+#     being measured - the documented livelock. So each delay gets its
+#     own phase with EXACTLY ONE post-burst capture, and every phase
+#     carries byte-for-byte identical instrument load. Differences
+#     between phases are therefore pure k.
+#   - The k delay lines are bare `sleep(1)` - exactly ONE line per
+#     second of delay, the minimum possible. A loop would have cost 2-3
+#     lines per second, i.e. injected MORE load the longer the delay:
+#     precisely the confound this test exists to avoid.
+#   - `pre = get_cpu()` before each burst does triple duty: it is the
+#     per-phase FLOOR estimate (9 independent samples of it), the
+#     contamination check (is 6s of settle actually enough?), and an
+#     identical 1-line offset in every phase, so it cancels out.
+#   - The result is logged IMMEDIATELY after the capture, not deferred:
+#     the log cannot affect a number already taken, and logging at once
+#     means a kill can never destroy a measurement that was made.
+#   - Every phase opens with 6x sleep(1) of settle. If decay is longer
+#     than 6s, `pre` will show it rather than silently poisoning the
+#     next burst.
+#
+# P9 - THE THROTTLE PROBE (the second half of the title)
+#   Runs LAST, after every clean phase, so its polling cannot
+#   contaminate them. Same 15-line burst, then nu.throttle()'s exact
+#   shape inlined - sleep(1), then poll-and-sleep while the reading is
+#   above cpu_guard_fast()'s 80 - and reports the total wait.
+#   ~3.7s here reproduces the trace constant in isolation for the first
+#   time. Compare it against the k at which the UNPOLLED curve crosses
+#   80: if the polled wait is much longer than that k, the difference is
+#   the poll's own self-inflicted load (the thing T19 decomposes).
+#   Bounded at ~14s so it cannot livelock the run; exit_cpu>80 in the
+#   output means it timed out, which is itself a headline result.
+#
+# HOW TO RUN
+#   1. Fresh session. Run `ps` and `jobs` first, confirm both empty.
+#   2. run T08   - then TOUCH NOTHING for ~2 minutes.
+#   3. Paste back EVERY "T08 " line, at FULL PRECISION (do not round -
+#      the trailing digits are what separate model B from model C).
+#   4. If it dies, paste what printed anyway: the last surviving line
+#      names the exact phase, and since every phase's burst is
+#      identical, a death names 15 unrolled lines as lethal - a fact
+#      nothing in the corpus has established.
+#   REPEATS: 2 runs, back to back, same session. A 3rd immediately if
+#   the two runs disagree on SHAPE (step vs graded) - that disagreement
+#   would itself be the headline: the meter is not a deterministic
+#   function of elapsed time, which would be the first direct handle
+#   anyone has had on the run-to-run variance mystery.
+#   RUNTIME: ~2 minutes per run. No imports, no file I/O, no API calls.
+
+var t0 = get_unix_time()
+var x = 0
+var pre = 0
+var post = 0
+var c = 0
+var tp = 0
+log("T08 start - decay from saturation, k = 0,3,1,8,2,5,0,2 - cpu=" + str(get_cpu()))
+
+# ---------------- P1  k=0  (also: is a 15-line unrolled burst lethal?)
+log("T08 P1 k=0 begin")
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+post = get_cpu()
+log("T08 P1 k=0 pre=" + str(pre) + " post=" + str(post) + " t=" + str(get_unix_time() - t0))
+
+# ---------------- P2  k=3
+log("T08 P2 k=3 begin")
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+sleep(1)
+sleep(1)
+sleep(1)
+post = get_cpu()
+log("T08 P2 k=3 pre=" + str(pre) + " post=" + str(post) + " t=" + str(get_unix_time() - t0))
+
+# ---------------- P3  k=1
+log("T08 P3 k=1 begin")
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+sleep(1)
+post = get_cpu()
+log("T08 P3 k=1 pre=" + str(pre) + " post=" + str(post) + " t=" + str(get_unix_time() - t0))
+
+# ---------------- P4  k=8
+log("T08 P4 k=8 begin")
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+post = get_cpu()
+log("T08 P4 k=8 pre=" + str(pre) + " post=" + str(post) + " t=" + str(get_unix_time() - t0))
+
+# ---------------- P5  k=2
+log("T08 P5 k=2 begin")
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+sleep(1)
+sleep(1)
+post = get_cpu()
+log("T08 P5 k=2 pre=" + str(pre) + " post=" + str(post) + " t=" + str(get_unix_time() - t0))
+
+# ---------------- P6  k=5
+log("T08 P6 k=5 begin")
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+post = get_cpu()
+log("T08 P6 k=5 pre=" + str(pre) + " post=" + str(post) + " t=" + str(get_unix_time() - t0))
+
+# ---------------- P7  k=0 REPLICATE of P1 (drift control)
+log("T08 P7 k=0 begin")
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+post = get_cpu()
+log("T08 P7 k=0 pre=" + str(pre) + " post=" + str(post) + " t=" + str(get_unix_time() - t0))
+
+# ---------------- P8  k=2 REPLICATE of P5 (drift control at the crossing)
+log("T08 P8 k=2 begin")
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+sleep(1)
+sleep(1)
+post = get_cpu()
+log("T08 P8 k=2 pre=" + str(pre) + " post=" + str(post) + " t=" + str(get_unix_time() - t0))
+
+# ---------------- P9  throttle probe - polled wait to below 80, LAST
+log("T08 P9 throttle-probe begin")
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+tp = get_unix_time()
+sleep(1)
+c = get_cpu()
+while c > 80 and get_unix_time() - tp < 14:
+    sleep(1)
+    c = get_cpu()
+log("T08 P9 throttle pre=" + str(pre) + " exit_cpu=" + str(c) + " wait=" + str(get_unix_time() - tp))
+
+log("T08 done - paste every T08 line, full precision, unrounded")

@@ -1,0 +1,129 @@
+# tests/T03.bd - T03: BASELINE NOISE FLOOR
+# =========================================================================
+# PURPOSE
+#   Measure the run-to-run variance of the simplest possible workload, so
+#   that every later experiment in this programme has an error bar. This
+#   is the control the investigation never ran: no imports, no file I/O,
+#   no network, no throttle(), no branching on data, and exactly ONE
+#   get_cpu() call in the whole script. It runs the same fixed arithmetic
+#   burst five times per run and reports how long each one took.
+#
+#   Two facts in the corpus bracket the answer and they disagree:
+#     - the local-only menu.bd path hit the same checkpoint at 98.6000s /
+#       98.6020s / 98.6030s across three runs (3 ms over 100 s).
+#     - the connected/decode path spread 40.3s -> 111.0s on identical
+#       code and identical data (2.7x).
+#   The hammering tests (30.4 / 30.9 / 30.5 s per round) cannot settle it:
+#   those loops were throttle()-regulated, so their stability was a
+#   negative-feedback controller's, not the engine's. There is no
+#   controller anywhere in this file.
+#
+# WHAT EACH RESULT MEANS
+#   (1) Tight within runs AND across runs (<5% run level, <10% sample)
+#       -> engine tick delivery to a bare script is DETERMINISTIC. The
+#          noise floor R is small, later A/B tests can trust small
+#          differences, and menu.bd's variance comes from something this
+#          probe does not do: get_cpu() polling, throttle(), a live
+#          connection, file I/O, imports, or string/dict built-ins.
+#   (2) Bursts scatter WITHIN each run (B0..B4 differ a lot, every run
+#       scatters the same way)
+#       -> ambient per-tick jitter. The engine is noisy at sample level;
+#          every single-sample measurement in this programme needs
+#          repeats, and the 2.7x crash-point spread may be nothing but
+#          this noise accumulated over ~100 seconds of execution.
+#   (3) TIGHT within each run but each run sits at its OWN level (run 3's
+#       five samples all ~2.1s, run 4's all ~2.6s)
+#       -> THE MOST IMPORTANT OUTCOME. Per-RUN state, not per-tick noise:
+#          something about a script launch (warm-up, allocation, residual
+#          load, scheduling state) sets a speed for that entire run and
+#          holds it. That is exactly the shape of the central mystery -
+#          same code, same data, different run, different crash point -
+#          and it would move the investigation off menu.bd entirely.
+#   (4) It CRASHES with "[SYSTEM] CPU overloaded"
+#       -> a major result on its own: ~30 unpaced ticks is fatal. Report
+#          which Bn was the last line printed. See SAFETY below.
+#
+# HOW TO RUN
+#   1. Fresh game start preferred. Confirm nothing else is running and
+#      PASTE the output of all three:  ps   /   jobs   /   daemons
+#      (daemon-absence has only ever been asserted, never captured).
+#   2. clear
+#   3. run T03 1      <- wait for the DONE line
+#      run T03 2      <- immediately, touch nothing in between
+#      ... straight through to ...
+#      run T03 8
+#      The number only labels the output so pasted blocks cannot be
+#      mislabelled or reordered; it changes nothing the script does.
+#      Foreground only - never `run T03 1 &`.
+#   4. Between runs: no alt-tab, no menus, no clear, no other typing. The
+#      only keystrokes are the next run command.
+#   5. Paste all 8 blocks (7 lines each) in order, plus the wall-clock
+#      time of day at run 1 and at run 8.
+#
+# REPEATS
+#   8 back to back. ABSOLUTE MINIMUM 6 - fewer cannot distinguish a 15%
+#   spread from chance. If one run looks wild, add 4 MORE runs; never
+#   discard it. Re-run the whole block from scratch if the game is
+#   restarted, because this block is the reference dataset that T14-T19
+#   and T20-T25 are judged against.
+#   ~30 s per run at base tier, ~5 minutes for the whole block.
+#
+# FIRST THING TO CHECK IN THE OUTPUT
+#   B0's burst= value. Decimals (2.4731) mean the clock has sub-second
+#   resolution and burst= is the primary scalar - which is what
+#   field_notes' +98.6020s figures imply, even though web_api.txt
+#   declares get_unix_time() -> int. If every burst= prints as a whole
+#   number (2 / 2.0 / 3), say so immediately: the clock is integer
+#   resolution, burst= is useless at this scale, DONE total= becomes the
+#   only scalar, and that documented contradiction resolves for the docs.
+#
+# SAFETY - THE BURST *IS* THE EXPERIMENT, SO IT IS DELIBERATELY UNPACED
+#   The burst is 10 iterations of a 2-line body = 20 executed body lines,
+#   plus up to 11 loop-condition evaluations, plus the 3 lines around it:
+#   23-34 ticks, i.e. 2.3-3.4 s at base tier (10 ticks/s) and less on
+#   every higher tier. The kill needs 5 STRAIGHT seconds at 100%, and
+#   test_cpu_decay.bd's fatal burst was 50 iterations (~100-150 ticks),
+#   so this should keep ~1.6 s of margin even in the worst case. If T02
+#   measured the tier as base AND a burst here reads over 3.5 s, change
+#   ITER from 10 to 6 BEFORE run 1 - never mid-block, or the 8 runs stop
+#   being comparable. Everything else is paced: every burst is preceded
+#   by a full sleep(1) and the prelude's own sleep(1), identically.
+#
+# WHY THERE IS ONLY ONE get_cpu() CALL
+#   Every prior test used get_cpu() as controller (inside throttle()), as
+#   instrument (in every log line) and as suspect (it may add load) all
+#   at once, so no observed value could be attributed to the workload
+#   rather than to the measurement. Here it runs exactly once, on the
+#   first executed line, BEFORE t0 is taken - outside every timed window
+#   and an identical constant in every run. This also makes run N+1's
+#   cpu0 a clean carryover reading for run N: test_cpu_decay.bd got
+#   exactly 0 on a fresh script, so anything above 0 here is load that
+#   existed before this script's first line ran.
+#
+# @param run "run number, 1-8 - only used to label the output" default="?"
+
+var RUN = get_param("run", "?")
+var ITER = 10
+var c0 = get_cpu()
+var t0 = get_unix_time()
+var n = 0
+var j = 0
+var x = 0
+var a = 0
+var b = 0
+log("START run=" + str(RUN) + " cpu0=" + str(c0) + " iter=" + str(ITER))
+sleep(1)
+
+while n < 5:
+    sleep(1)
+    j = 0
+    a = get_unix_time()
+    while j < ITER:
+        x = j * 2
+        j = j + 1
+    b = get_unix_time()
+    sleep(1)
+    log("R" + str(RUN) + " B" + str(n) + " burst=" + str(b - a) + " total=" + str(b - t0))
+    n = n + 1
+
+log("R" + str(RUN) + " DONE total=" + str(get_unix_time() - t0))

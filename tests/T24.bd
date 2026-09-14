@@ -1,0 +1,265 @@
+# tests/T24.bd - T24: PULSE HUNT.
+# The first UNALIASED, controller-free time series this investigation has.
+#
+# =====================================================================
+# ONE QUESTION
+# =====================================================================
+#   Is there a periodic ENGINE-SIDE event - an autosave, a world-sim
+#   step, a trace/IDS sweep - that intermittently steals tick throughput
+#   from a script that is already running?
+#
+# =====================================================================
+# WHY THIS ONE IS METHODOLOGICALLY NEW
+# =====================================================================
+#   Every get_cpu() sample in the entire corpus was taken immediately
+#   after a throttle() returned - i.e. at the exact one instant per cycle
+#   when a feedback controller had just guaranteed the reading was at its
+#   setpoint. That is a textbook aliasing trap: the logged series measures
+#   THE THROTTLE'S SETPOINT, not the workload. It is why our logs show a
+#   dead-flat "cpu=100" for 800 seconds while the player, watching the
+#   live meter between those samples, saw 20,30,70,100,50,100,70,30...
+#   A periodic event is exactly the kind of signal that survey destroys.
+#
+#   This script contains NO controller, NO throttle(), and NO get_cpu()
+#   anywhere inside the measured loop. It samples on a fixed cadence and
+#   infers throughput purely from wall-clock time for a PROVABLY FIXED
+#   executed-line count. Nothing here reacts to the thing it measures.
+#
+#   Why suspect a pulse at all:
+#     - The five crashes that define the central mystery cluster
+#       DISCRETELY - +40.7/+40.3, +65.5/+64.3, +111.0 - three tight
+#       clusters, not a smooth spread. A script racing a periodic event
+#       at a different phase each run produces exactly that: start just
+#       before a pulse and you lose throughput early, start just after
+#       and you get one clean window first.
+#     - A job literally named AUTOSAVE_PULSE has been seen running on one
+#       of the player's own hosts (reported from in-game host data, not
+#       from any file in this repo - treat as motivation, not evidence).
+#     - "Scheduler jitter / frame quantisation" is on the open-questions
+#       list as the most obvious untested mechanism for run-to-run
+#       variance, and nothing has ever probed it.
+#
+#   The 20-line unrolled burst is deliberately IDENTICAL to T20's mode-P
+#   burst, so burst= here and burst= there are the same ruler and can be
+#   compared directly across the two tests.
+#
+# =====================================================================
+# THE FIVE SIGNATURES THIS DISCRIMINATES
+# =====================================================================
+#   S1 PULSE ......... a few isolated rounds with burst= well above the
+#                      run's median, EVENLY SPACED in the at= column, and
+#                      - the decisive part - appearing at DIFFERENT round
+#                      indices in each run but at a consistent period in
+#                      absolute time. Engine-side, script-independent.
+#   S2 SELF-RESONANCE  slow rounds at the SAME round index in every run
+#                      (e.g. always R3 and R11). That is this script's own
+#                      load curve beating against its own pacing - a
+#                      finding, but a script-relative one, NOT an engine
+#                      pulse. Only the phase-shifted repeats can tell S1
+#                      and S2 apart, which is why the waits between runs
+#                      are deliberately unequal.
+#   S3 DRIFT ......... burst= grows monotonically with round index, no
+#                      isolated outliers. Not a pulse: accumulation. This
+#                      would be the single most important result for the
+#                      crash mystery - it is T20's "hidden budget debt"
+#                      model (M4) visible inside one run, and a script
+#                      whose throughput decays predicts crash times that
+#                      depend only on its starting condition.
+#   S4 STALL ......... nap= inflates while burst= stays flat. The engine
+#                      halted WALL-CLOCK time, it did not squeeze the tick
+#                      budget. A whole-engine hitch (frame/world tick), a
+#                      different mechanism with a different fix, and one
+#                      no fixed-work-timed test could ever have separated.
+#   S5 FLAT .......... everything within the noise floor. Autosave/world-
+#                      sim pulses leave the candidate list and the
+#                      explanation moves to per-run initial conditions.
+#
+# =====================================================================
+# WHAT EACH RESULT MEANS
+# =====================================================================
+#   >=2 slow rounds per run in >=2 of the 3 runs, at DIFFERENT round
+#   indices, whose absolute timestamps all fit one period P
+#       -> S1 CONFIRMED. There is a periodic engine-side event. Every
+#          crash-timing measurement in the corpus is confounded by the
+#          phase at which the script happened to start, and the discrete
+#          crash clusters finally have a mechanism. Next step becomes
+#          measuring P precisely and correlating it with an in-game
+#          observable (a save icon, a trace tick, a daemon).
+#   Slow rounds at the SAME round index across all three runs
+#       -> S2. Self-inflicted, not environmental. The pulse hypothesis
+#          dies but a real, reproducible intra-script effect is born.
+#   No outliers but a rising burst= trend in all three runs
+#       -> S3. Go straight to T20/M4: the meter resets but the engine's
+#          budget does not.
+#   Outliers live in nap=, not burst=
+#       -> S4. Re-aim at wall-clock stalls, not tick accounting.
+#   Every burst= within ~25% of the run's median, no repeatable spacing
+#       -> S5 REFUTED. Delete the periodic-event branch of the tree.
+#   The script is KILLED mid-run
+#       -> a result, not a failure. The START line has already printed, so
+#          the kill is timestamped to within one round by the last at=
+#          value, and the burst= values just before it say whether
+#          throughput was already degrading. Paste it exactly as it died.
+#
+# =====================================================================
+# OUTPUT FORMAT
+# =====================================================================
+#   Header (always first):
+#     T24[tag] START rounds=<R> nap=<N> line1_cpu=<c> t_abs=<t>
+#       line1_cpu = get_cpu() on executable line 1, before anything in
+#                   this process has run. Outside every measured bracket;
+#                   it is the only get_cpu() call before the DONE line and
+#                   it ties this run to T20's carryover series.
+#       t_abs     = raw get_unix_time() at line 1. ABSOLUTE ON PURPOSE -
+#                   it is what lets three separate runs be stitched into
+#                   one pooled time series covering ~5 minutes, which is
+#                   the only way a 40-120s period can be seen at all.
+#                   It is also the clock check: decimals => float clock,
+#                   read burst=; a whole number => 1-second resolution,
+#                   in which case burst= is quantised and the at= column's
+#                   round-to-round period becomes the primary readout.
+#   Per round:
+#     T24[tag] R<n> nap=<s> burst=<s> at=<s>
+#       R<n>  = round index, FIRST on the line so a truncated paste still
+#               localises itself. Its cost is identical every round, so it
+#               cannot manufacture periodicity.
+#       nap   = measured seconds for sleep(N). Should be ~N every time.
+#               When it is not, the ENGINE stalled, not the budget (S4).
+#       burst = measured seconds for 20 unrolled `a = a + 1` lines. THE
+#               THROUGHPUT READOUT. 20 lines = 20 ticks = 2.0s at the base
+#               tier's 10 ticks/sec, so burst= is a direct tick-rate meter.
+#       at    = seconds since line 1. The time axis.
+#   Final line (absent = killed, which is itself data):
+#     T24[tag] DONE rounds=<n> a=<n> want=<n> total=<s> end_cpu=<c>
+#               t_abs=<t>
+#       a MUST equal want (20 per round). Any other value means the bursts
+#       did not execute the statement count the source shows and every
+#       burst= this run is void.
+#
+# =====================================================================
+# HOW TO READ IT
+# =====================================================================
+#   1. Write each run's burst= column out and take its MEDIAN, ignoring
+#      R0 (R0 follows the prelude and is a warm-up, not a sample).
+#      Mark every round with burst= >= 1.5 x median as SLOW.
+#   2. For each SLOW round, compute its ABSOLUTE time: that run's START
+#      t_abs plus the round's at=. Pool all slow rounds from all runs.
+#   3. Look for one period P between 8s and 120s such that every pooled
+#      slow time sits within one round period of the same phase mod P.
+#      One P that fits all three runs = S1. No such P = S5.
+#   4. Before concluding S1, check the round INDICES. Same index every
+#      run = S2 (self-resonance), not an engine pulse, no matter how
+#      regular the spacing looks.
+#   5. Check nap= separately with the same procedure. Outliers there and
+#      not in burst= are S4.
+#   6. Sanity-check the at= column against total=: consecutive at= deltas
+#      should be near-constant. A delta larger than the round period is
+#      time that went missing between brackets - that is throughput lost
+#      in the ~20% of wall-clock this instrument does not cover, and it is
+#      confirming evidence in its own right.
+#
+# =====================================================================
+# HOW TO RUN - @param binds POSITIONALLY: tag, then rounds, then nap.
+# =====================================================================
+#   Run `ps` and `jobs` first and paste them. Nothing else may be running.
+#
+#     RUN 1:  run T24 P1
+#     wait about 20 seconds, then
+#     RUN 2:  run T24 P2
+#     wait about 7 seconds (a DIFFERENT wait on purpose), then
+#     RUN 3:  run T24 P3
+#
+#   The unequal waits are the whole design: a fixed-period engine event
+#   then lands at a different round index in each run while keeping the
+#   same absolute period, which is precisely what separates S1 from S2.
+#   Do not try to time the waits accurately - the t_abs values record what
+#   actually happened, so "roughly 20s" and "roughly 7s" is enough.
+#
+#   Paste EVERY line of EVERY run, IN ORDER, labelled with its tag.
+#   Do not reorder, deduplicate or tidy the lines - the order is data.
+#   Do not touch the game during a run, and do not alt-tab (window focus
+#   is a different test's variable; changing it here contaminates this one).
+#
+#   OPTIONAL 4th run, only if runs 1-3 look suspiciously flat: repeat at a
+#   different cadence to break a possible alias -
+#     run T24 A1 22 1     (faster cadence, ~3.8s)
+#     run T24 A2 22 3     (slower cadence, ~5.8s)
+#   A pulse whose period happens to be a near-multiple of the default
+#   cadence is invisible at that cadence and obvious at another.
+#   Pass digits only for rounds and nap; rounds clamps to 4-40, nap to 1-3.
+#
+#   REPEATS: 3 runs minimum. If run 1 shows clear outliers, do 5 total -
+#   a period claimed from two runs is a coincidence, from four it is a
+#   measurement.
+#
+# =====================================================================
+# SAFETY - THE BURST IS NOT THE EXPERIMENT HERE
+# =====================================================================
+#   Unlike T09/T18, this script is NOT trying to get killed and a kill
+#   costs us the series. It is paced accordingly: the longest unpaced
+#   stretch is ~26 executed lines (~2.6s of continuous load at base tier),
+#   bracketed by a real sleep(2) every round - the same shape as T20's
+#   mode P, and well inside the documented 5-seconds-at-100% kill window.
+#   The prelude before the first sleep is ~16 lines (~1.6s). It should
+#   never die. If it does under nap=2, that is a major finding on its own:
+#   report it and do not "fix" it by adding a throttle(), because a
+#   throttle() would put the controller back in the loop and destroy the
+#   one property that makes this test worth running.
+#
+# RUNTIME: ~4.8s per round x 22 rounds + prelude = ~1 min 50s per run.
+#          Three runs with the waits between them: ~6 minutes total.
+#
+# @param tag "run label printed on every line: P1, P2, P3 ..." default="?"
+# @param rounds "how many samples (4-40). 22 is ~110s at nap=2" default="22"
+# @param nap "sleep seconds per round, 1-3. Changes the sampling cadence - only change it to break a suspected alias" default="2"
+
+var c0 = get_cpu()
+var t0 = get_unix_time()
+var TAG = get_param("tag", "?")
+var R = int(get_param("rounds", "22"))
+var NAP = int(get_param("nap", "2"))
+if R < 4:
+    R = 4
+if R > 40:
+    R = 40
+if NAP < 1:
+    NAP = 1
+if NAP > 3:
+    NAP = 3
+log("T24[" + TAG + "] START rounds=" + str(R) + " nap=" + str(NAP) + " line1_cpu=" + str(c0) + " t_abs=" + str(t0))
+var a = 0
+var r = 0
+var ta = 0
+var tb = 0
+var tc = 0
+sleep(1)
+
+while r < R:
+    ta = get_unix_time()
+    sleep(NAP)
+    tb = get_unix_time()
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    tc = get_unix_time()
+    log("T24[" + TAG + "] R" + str(r) + " nap=" + str(tb - ta) + " burst=" + str(tc - tb) + " at=" + str(tc - t0))
+    r = r + 1
+
+log("T24[" + TAG + "] DONE rounds=" + str(r) + " a=" + str(a) + " want=" + str(20 * R) + " total=" + str(get_unix_time() - t0) + " end_cpu=" + str(get_cpu()) + " t_abs=" + str(get_unix_time()))

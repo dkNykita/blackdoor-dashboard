@@ -1,0 +1,277 @@
+# tests/T26.bd - T26: DOES ANYTHING BUT YOUR OWN LINES
+# FEED THE METER? The connected / live-trace / cooling-trace idle floor.
+#
+# ============================================================================
+# ONE QUESTION
+# ============================================================================
+#   With the script doing the exact same trivial work every second, does
+#   get_cpu()'s idle floor read HIGHER while a connection is open and its
+#   trace is counting down than it does with nothing connected?
+#
+# ============================================================================
+# WHY IT MATTERS
+# ============================================================================
+#   Every model of the CPU meter in this corpus assumes the meter is fed by
+#   ONE thing: lines this script executed. Nothing official says that. A live
+#   trace, an IDS sweep and an open socket are all engine-side simulation
+#   state, and the official docs list them neither as CPU contributors nor as
+#   non-contributors. Nobody has ever measured a connected idle floor - no
+#   prior script in tests/ has opened a connection at all.
+#
+#   The corpus keeps circling the same asymmetry. field_notes.txt once
+#   reframed the whole variance mystery as "specifically tied to scenarios
+#   that actually reach the CONNECTED branch and interact with a real target",
+#   then the 5x repeat block (+40.7 / +111.0 / +40.3 / +65.5 / +64.3s)
+#   contradicted it - all five died in pure local token parsing, no socket
+#   open. The reframe was dropped without ever being measured.
+#
+#   But note WHAT that block could not rule out. A trace does not end when you
+#   disconnect: traces() keeps the host listed with status "cooling" and a
+#   remaining countdown, and utils/net.bd's wait_for_trace_recovery() exists
+#   precisely because that state outlives the script that created it. That is
+#   the only known piece of game state that (a) persists across script runs,
+#   (b) decays on real wall-clock time, and (c) nobody has ever checked for a
+#   CPU cost. Five back-to-back runs against a host you have been connecting
+#   to all session are five runs starting at five different points on that
+#   cooling curve. If a cooling trace costs even one tick per second, that is
+#   a run-to-run variance source hiding in plain sight - which is why PHASE C
+#   below (cooling, disconnected) matters as much as PHASE B (connected).
+#
+# ============================================================================
+# DESIGN - ONE INSTRUMENT, THREE ENVIRONMENTS, ONE RUN
+# ============================================================================
+#   Three phases, all measured by the SAME function poll() called with a
+#   different one-character label. The 3-line loop body is therefore provably
+#   identical across phases - same str() calls, same concatenations, same
+#   tick cost - so the instrument cancels out and the whole comparison lives
+#   inside a single run. Nothing is compared across runs.
+#
+#     PHASE A  10 polls  nothing connected, no trace          (the baseline)
+#     PHASE B  10 polls  connection open, trace counting down
+#     PHASE C  12 polls  disconnected, trace now "cooling"    (the sleeper)
+#
+#   poll()'s body is deliberately the same shape as test_cpu_decay.bd's idle
+#   loop (sleep(1) + one log + one increment), the loop that produced this
+#   investigation's known floor of a rock-steady 10.0. So PHASE A is directly
+#   comparable to an existing, replicated measurement, not just to itself.
+#
+#   get_trace_time(), traces(), ids_status() and server_specs() are called
+#   ONLY on the bracketing MARK lines, never inside a poll loop. The B-IN and
+#   B-OUT marks print the live trace countdown either side of PHASE B, which
+#   is all the proof needed that the trace was genuinely running during it -
+#   at the cost of nothing inside the instrument itself.
+#
+#   PART N is the null control: the identical script with every connect /
+#   ids_status / server_specs call skipped, same phase lengths, same sleeps,
+#   same labels, no connection ever opened. It measures how much of any
+#   A -> B -> C pattern is simply the meter drifting with elapsed script
+#   runtime. Run it; without it a rising pattern is uninterpretable.
+#
+# ============================================================================
+# HOW TO READ THE PASTE - THE PRIMARY STATISTIC IS NOT THE MEDIAN
+# ============================================================================
+#   The meter appears to be QUANTISED. Every steady reading on record is a
+#   multiple of 10 (the live in-game meter has only ever shown multiples of
+#   10; the idle floor is 10.0 + float noise, never 3.0 or 7.0). On a base
+#   tier 10 CPU one tick == 10 meter points, so the smallest environmental
+#   contribution this instrument can resolve as a VALUE CHANGE is a full
+#   tick per second.
+#
+#   So do not average. For each phase report TWO numbers:
+#     (1) the MODAL value        - what most samples read
+#     (2) the ELEVATED COUNT     - how many of that phase's samples read
+#                                  ABOVE phase A's modal value
+#   A sub-tick environmental cost cannot move (1) but WILL move (2): it shows
+#   up as the floor flickering one step up on some fraction of the samples
+#   (e.g. A 0/10 elevated, B 4/10 elevated) while the modal value stays 10.0.
+#   That fraction is the finest measurement this instrument can make, and it
+#   is invisible to a median.
+#
+# ============================================================================
+# WHAT EACH POSSIBLE RESULT MEANS
+# ============================================================================
+#   1. INERT (the prediction). A, B and C all share one modal value, elevated
+#      counts all zero or all equal. -> Only your own executed lines move the
+#      meter. Closes "a connected line is intrinsically more expensive than
+#      the same line run locally" as an explanation for the existing-target
+#      vs missing-target asymmetry, and closes the connected branch as a
+#      suspect in the variance mystery. A clean, load-bearing negative.
+#
+#   2. STANDING CONNECTION COST. B's modal >= A's modal + 10, sustained over
+#      most of PHASE B, and C falls back to A's level. -> An open socket is a
+#      standing per-second cost. Every connected line in menu.bd is then more
+#      expensive than the identical local line, and every throttle() inside a
+#      connected block has less headroom than its threshold implies.
+#
+#   3. THE TRACE, NOT THE SOCKET (the jackpot). B elevated AND C elevated,
+#      with C decaying back toward A as the cooling countdown runs down, A
+#      lowest. -> Engine-side trace simulation feeds the player's CPU meter.
+#      This is a cross-run variance source: a script started while a trace is
+#      cooling begins with less headroom than the identical script started
+#      after it cleared, with zero code or data difference between the runs.
+#      That is exactly the shape of the +40.7 / +111.0 / +40.3 / +65.5 /
+#      +64.3s spread. If this is what comes back, the next test is obvious -
+#      run the same script at t+0s, t+60s and t+180s after a disconnect.
+#
+#   4. SUB-TICK CONTRIBUTION. Modal values all equal, but the elevated counts
+#      differ materially between phases. -> Real, smaller than one tick per
+#      second. Same interpretation as 2 or 3 depending on which phases are
+#      elevated, just weaker; repeat with longer phases to firm it up.
+#
+#   5. CONNECT() TRANSIENT ONLY. One, maybe two elevated samples at the very
+#      start of PHASE B, then back to A's floor for the rest. -> That is just
+#      connect()'s own documented 5 ticks decaying away. NOT a standing cost.
+#      Read it as outcome 1, and as a free confirmation of T08's decay curve.
+#
+#   6. DRIFT / ARTEFACT. PART N reproduces the same A -> B -> C pattern with
+#      no connection at any point. -> The pattern is elapsed script runtime,
+#      not the environment, and every phase comparison in this script is void.
+#      Report it loudly; it would also compromise any other test that assumes
+#      the floor is stationary over a minute.
+#
+# ============================================================================
+# OUTPUT FORMAT
+# ============================================================================
+#   Poll lines:   <PH> <n> cpu=<c> t=<s>
+#     PH and n come FIRST on purpose: a truncated or half-written final line
+#     still names the phase and index it died in.
+#   MARK lines:   MARK <tag> t= tt= ntr= st= rem= noise= cpu=
+#     tag   PRE / B-IN / B-OUT / C-IN / C-OUT
+#     tt    get_trace_time() - the live countdown
+#     ntr   len(traces()) - how many traces the engine is tracking
+#     st    traces()[0].status - "active" / "paused" / "cooling"
+#     rem   traces()[0].remaining
+#   MARK PRE is also the CLEAN-START CHECK: if ntr is not 0 at PRE, a trace
+#   was already cooling before this script ran. Say so when you paste - that
+#   makes it a dirty-start run, which is interesting data but not a baseline.
+#   CONNECT line: whether the socket opened AND whether login actually worked
+#     (connect() returns success:true with an empty user on bad credentials -
+#     see utils/dashboard.bd; an unauthenticated session is not the condition
+#     this test means by "connected", hence the ABORT-NOAUTH guard).
+#   SPECS line:   the remote box's real cpu_tier / cpu_ticks / ram slots.
+#     No trace in this entire investigation has ever recorded a real
+#     cpu_ticks value from anywhere. Free calibration data, 1 tick.
+#   Last line is always either T26 DONE or an ABORT-* line naming the reason.
+#   Its absence means the engine killed the script - report that too.
+#
+# ============================================================================
+# HOW TO RUN  (@param binds POSITIONALLY - no -flag= syntax)
+# ============================================================================
+#   Pick a host you have ALREADY CRACKED and pass user@ip so the connection
+#   authenticates - a bare ip never auto-authenticates. 94.140.22.83 is the
+#   preferred target: it is the existing-target host the whole 5-run variance
+#   block was measured against.
+#
+#     1) Fresh session, nothing else running (check with `ps` and `jobs`),
+#        and check `traces` is EMPTY before you start - run 1 must be clean.
+#     2) T26 N                        (~70s) - paste it ALL
+#        The null control FIRST, while the trace state is still clean.
+#     3) T26 C root@94.140.22.83      (~70s) - paste it ALL
+#     4) T26 C root@94.140.22.83      (~70s) - paste it ALL
+#   Three runs, ~3.5 minutes of script time, no waiting required between them.
+#   Run 4 is deliberately started while run 3's trace is still cooling: its
+#   MARK PRE line will show ntr=1 st=cooling, and its PHASE A is then a
+#   COOLING-TRACE baseline rather than a clean one. Comparing run 4's PHASE A
+#   against run 3's PHASE A is a direct, free cross-run test of exactly the
+#   carryover that outcome 3 predicts - do not skip it, and do not wait for
+#   recovery first. Note in the paste which runs showed ntr=0 at PRE.
+#   OPTIONAL 4th run against a DIFFERENT cracked host, only if runs 3-4 came
+#   back elevated: it tells you whether the amount is target-specific.
+#
+#   If the run ends on ABORT-TRACE, the target's own trace ceiling is too
+#   tight for a 10-second connected window - pick another host. PHASE A's ten
+#   lines are still valid data in every abort case; paste them anyway.
+# @param part "C = connect probe, N = null control that never connects" default="C"
+# @param host "user@ip of an account you have already cracked (ignored when part=N)" optional
+
+# The instrument. ONE definition, called three times with a one-character
+# label, so the measured loop is textually identical in every phase.
+func poll(ph, reps, t0):
+    var n = 0
+    while n < reps:
+        sleep(1)
+        log(ph + " " + str(n) + " cpu=" + str(get_cpu()) + " t=" + str(get_unix_time() - t0))
+        n = n + 1
+
+# A sleep BETWEEN the two definitions, deliberately. Whether a never-called
+# func definition costs tick budget is an open question (T17); if it does,
+# these two bodies back to back plus the launch lines would be an ~18-line
+# unpaced burst at startup - the exact shape that has killed scripts in this
+# project before. Two seconds here removes the only real kill risk in the file.
+sleep(2)
+
+# Bracketing readout. sleep(1) is its FIRST line, per this codebase's
+# hard-won rule that a function called from a busy spot must pace on the way
+# IN, not deeper inside its body. The second sleep caps the unpaced run at 6
+# lines. Everything it calls is documented 0 ticks.
+func mark(tag, t0):
+    sleep(1)
+    var tl = traces()
+    var st = "-"
+    var rem = 0
+    if len(tl) > 0:
+        st = tl[0].status
+        rem = tl[0].remaining
+    sleep(1)
+    log("MARK " + tag + " t=" + str(get_unix_time() - t0) + " tt=" + str(get_trace_time()) + " ntr=" + str(len(tl)) + " st=" + st + " rem=" + str(rem) + " noise=" + str(get_noise()) + " cpu=" + str(get_cpu()))
+
+# entry_cpu is a secondary observable, not the headline: it reads the meter
+# right after the file's own declarations, so a high value means declaring
+# this file cost real budget. floor_cpu after the sleep is the actual baseline
+# PHASE A starts from.
+var c_entry = get_cpu()
+sleep(3)
+var PART = get_param("part", "C")
+var HOST = get_param("host", "")
+var t0 = get_unix_time()
+log("T26 part=" + PART + " host=" + HOST + " entry_cpu=" + str(c_entry) + " floor_cpu=" + str(get_cpu()))
+mark("PRE", t0)
+poll("A", 10, t0)
+
+sleep(2)
+var conn = {"success": false, "user": "", "trace_time": 0, "hostname": "-"}
+if PART == "C":
+    try:
+        conn = connect(HOST, 22)
+    catch e:
+        log("CONNECT-RAISED " + str(e.message))
+sleep(2)
+log("CONNECT ok=" + str(conn.success) + " user=" + str(conn.user) + " tcap=" + str(conn.trace_time) + " box=" + str(conn.hostname))
+sleep(2)
+
+if PART == "C" and not conn.success:
+    log("ABORT-NOCONN " + HOST + " - port never opened. PHASE A is valid, paste it.")
+    return
+if PART == "C" and conn.user == "":
+    log("ABORT-NOAUTH socket opened but login failed - pass user@ip for a CRACKED account. PHASE A is valid, paste it.")
+    disconnect(conn)
+    return
+if PART == "C" and conn.trace_time < 60:
+    log("ABORT-TRACE ceiling only " + str(conn.trace_time) + "s, too tight for a 10s window - pick another host. PHASE A is valid, paste it.")
+    disconnect(conn)
+    return
+sleep(1)
+
+var ids0 = "-"
+if PART == "C":
+    ids0 = ids_status(conn)
+sleep(2)
+var sp = {"cpu_tier": "-", "cpu_ticks": 0, "ram_slots": 0, "ram_used": 0}
+if PART == "C":
+    sp = server_specs(conn)
+sleep(2)
+log("SPECS tier=" + str(sp.cpu_tier) + " ticks=" + str(sp.cpu_ticks) + " ram=" + str(sp.ram_slots) + "/" + str(sp.ram_used) + " ids=" + ids0)
+
+mark("B-IN", t0)
+poll("B", 10, t0)
+mark("B-OUT", t0)
+
+sleep(1)
+if PART == "C":
+    disconnect(conn)
+sleep(2)
+
+mark("C-IN", t0)
+poll("C", 12, t0)
+mark("C-OUT", t0)
+log("T26 DONE part=" + PART + " - paste EVERY A / B / C line and EVERY MARK line")

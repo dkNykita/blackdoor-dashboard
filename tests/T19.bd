@@ -1,0 +1,163 @@
+# tests/T19.bd - T19: throttle poll cost - does watching the
+# meter hold it up?
+# ---------------------------------------------------------------------
+# PURPOSE
+# throttle() (utils/net.bd:165) is exactly:
+#     sleep(log_pace())            # log_pace() == 1
+#     while get_cpu() > threshold:
+#         sleep(log_pace())
+# Its cost is the single most-cited number in this whole investigation:
+# a near-constant ~3.7s per call, across ~10 samples spanning a 122s
+# run, whether it followed a cheap 2.1s empty-field decode or an
+# expensive 14.3s 3-item decode. That number has NEVER been broken down
+# into "one mandatory sleep plus k retries" - the retry count has never
+# once been counted. This test counts it, and then asks the question
+# that number cannot answer on its own: is the poll loop a passive
+# observer of a decaying meter, or does polling itself feed the load it
+# is waiting on?
+#
+# THREE THINGS MEASURED, one run:
+#   PHASE P (unpolled reference): after an identical load unit, sleep a
+#     FIXED k seconds and take exactly ONE get_cpu() reading. k = 1..5.
+#     The smallest k whose reading is <= 80 is how long the meter takes
+#     to clear 80 WHEN NOBODY IS WATCHING IT. Nothing in this corpus has
+#     ever measured that - every decay number we have was produced by a
+#     loop that polled while it waited. This is the floor everything in
+#     PHASE T is compared against.
+#   PHASE T (polled sweep, 4 conditions interleaved per cycle):
+#     iv=1/thr=80   - reproduces production throttle() exactly
+#     iv=1/thr=50   - cpu_guard_conservative(); every throttle ever
+#                     measured in this investigation used 80, never 50
+#     iv=0.5/thr=80 - half interval, ~2x the polls per second
+#     iv=0.25/thr=80- quarter interval, ~4x the polls per second
+#   Conditions are INTERLEAVED (one of each, per cycle) rather than run
+#   as separate executions, so session drift hits every arm equally.
+#
+# WHAT EACH POSSIBLE RESULT MEANS
+#   polls= at iv=1/thr=80 is 3-5 and wait= is ~3.7s +/-0.5s
+#     -> the famous constant is decomposed at last: 1 mandatory sleep +
+#        (polls-1) retries. Every cost model in the corpus can finally
+#        be written in terms of retries instead of a magic number.
+#   polls= is 1 EVERY time and wait= is ~1.0s
+#     -> the wait loop NEVER retries, and production's ~3.7s is NOT in
+#        the wait loop at all - it is call/line overhead somewhere else.
+#        That would retire "throttle costs 3.7s of CPU recovery" as a
+#        misattribution and redirect the whole cost model. Pre-registered
+#        as a live possibility, not a failed run.
+#   wait= roughly FLAT across iv=1 / 0.5 / 0.25 while polls= scales
+#   about 1:2:4
+#     -> polling is passive; the wait is pure elapsed-time decay;
+#        field_notes.txt's "polling more often does NOT help and can
+#        make things WORSE" is wrong as stated. NOTE the asymmetry:
+#        under pure decay the FASTER poller should finish ~0.4s EARLIER
+#        on average (finer sampling grid), so "exactly equal" is already
+#        weak evidence of a small perturbation, not of none.
+#   wait= GROWS as iv shrinks (>2.0s from iv=1 to iv=0.25), or the
+#   iv=0.25 arm hits its poll cap, or the script is killed in an
+#   iv=0.25 round
+#     -> the instrument sustains what it measures. throttle()'s ~3.7s is
+#        then partly self-inflicted, the abandoned test_cpu_scale result
+#        (6.7x slower at half the sleep) is reproduced at primitive
+#        scale, and the three prior guess-and-kill attempts at
+#        sub-second polling are explained rather than just survived.
+#   PHASE P clears 80 materially FASTER than the iv=1 polled wait
+#     -> the cleanest possible signature of the observer effect: the
+#        meter drops sooner when it is not being read.
+#   wait=(thr=50) - wait=(thr=80) > 1.0s at iv=1, and PHASE P crosses 80
+#   and 50 at different k
+#     -> the reading really is a decaying quantity through 50..80 and
+#        cpu_guard_conservative() buys real headroom.
+#   wait=(thr=50) and wait=(thr=80) within +/-0.3s, and PHASE P jumps
+#   from >80 straight to <50 between adjacent k
+#     -> a cliff, not a ramp. The reading does not decay smoothly through
+#        that range, and cpu_guard_conservative()=50 has never bought
+#        anything over cpu_guard_fast()=80 in the entire codebase.
+#
+# THE LOAD UNIT IS A DELIBERATE UNPACED BURST. Each round runs ~22
+# unpaced lines (load_unit(5) plus 5 bookkeeping lines) between one
+# sleep and the next. At base tier that is ~2.2s of execution - under
+# the 5-second sustained-100% kill window by design, and IDENTICAL in
+# every arm, so no wait= difference can be blamed on a different amount
+# of preceding work. Do NOT raise loadn above ~10 without T11's
+# measured kill boundary n* in hand: loadn=10 is already ~3.7s of
+# unpaced execution, close to the window.
+#
+# HOW TO RUN
+#   T19              # defaults: cycles=3 loadn=5, ~2.5-3 min
+#   T19 5 5          # deeper, if cycle-to-cycle spread is big
+#   T19 3 3          # lighter load, if the default arm is killed
+# Run it on a quiet session (ps/jobs clear) and paste back EVERY line
+# starting with "P ", "> " or "R ". A kill IS a result: the last "> "
+# line printed names the exact iv/thr condition that killed it.
+#
+# REPEATS: one run gives 5 PHASE P points and 3 replicates per PHASE T
+# condition, enough to see a 2s effect. Repeat the whole run once as a
+# drift control. If the iv=0.25 arm is killed or caps out, repeat twice
+# more to prove the kill is reproducible rather than phase luck.
+#
+# @param cycles "how many times to repeat the 4-condition cycle" default="3"
+# @param loadn "iterations in the fixed load unit (about half T11's n*)" default="5"
+
+func load_unit(n):
+    var j = 0
+    var x = 0
+    while j < n:
+        x = x + j
+        j = j + 1
+    return x
+
+var T0 = get_unix_time()
+log("T19 launch cpu=" + str(get_cpu()))
+var CYCLES = int(get_param("cycles", "3"))
+var LOADN = int(get_param("loadn", "5"))
+var SETTLE = 2
+sleep(1)
+log("T19 start cycles=" + str(CYCLES) + " loadn=" + str(LOADN) + " settle=" + str(SETTLE))
+sleep(1)
+log("--- PHASE P: unpolled decay, exactly 1 get_cpu() per round ---")
+
+for k in [1, 2, 3, 4, 5]:
+    sleep(SETTLE)
+    var ppre = get_cpu()
+    var pls = get_unix_time()
+    var pxx = load_unit(LOADN)
+    var plb = get_unix_time() - pls
+    sleep(k)
+    var pc = get_cpu()
+    sleep(1)
+    log("P k=" + str(k) + " pre=" + str(ppre) + " load=" + str(plb) + " after=" + str(pc))
+
+sleep(2)
+log("--- PHASE T: polled throttle sweep, 4 conditions per cycle ---")
+var IVS = [1, 1, 0.5, 0.25]
+var THRS = [80, 50, 80, 80]
+var CAPS = [12, 12, 24, 48]
+sleep(1)
+
+var cyc = 1
+while cyc <= CYCLES:
+    for k in [0, 1, 2, 3]:
+        var iv = IVS[k]
+        var thr = THRS[k]
+        var cap = CAPS[k]
+        log("> c" + str(cyc) + " iv=" + str(iv) + " thr=" + str(thr))
+        sleep(SETTLE)
+        var pre = get_cpu()
+        var ls = get_unix_time()
+        var xx = load_unit(LOADN)
+        var lb = get_unix_time() - ls
+        var ws = get_unix_time()
+        sleep(iv)
+        var n = 1
+        var c = get_cpu()
+        while c > thr and n < cap:
+            sleep(iv)
+            n = n + 1
+            c = get_cpu()
+        var el = get_unix_time() - ws
+        sleep(1)
+        log("R c" + str(cyc) + " iv=" + str(iv) + " thr=" + str(thr) + " pre=" + str(pre) + " load=" + str(lb) + " wait=" + str(el) + " polls=" + str(n) + "/" + str(cap) + " exit=" + str(c))
+    cyc = cyc + 1
+
+sleep(1)
+log("T19 done total=" + str(get_unix_time() - T0) + "s - paste every P / > / R line")

@@ -1,0 +1,316 @@
+# tests/T17.bd - T17: DECLARATION COST, script vs module.
+#
+# ONE QUESTION: does a never-called `func` definition consume tick budget,
+# and does it cost the same at a script's top level as inside an imported
+# module?
+#
+# WHY IT MATTERS - three sources, three DIFFERENT answers, all load-bearing
+#   [OFFICIAL] editor_documentation.txt line 6 and security_guide.txt line
+#     39: "Scripts run line by line. Each line costs one tick." / "Every
+#     line your script RUNS costs 1 tick." A never-called body does not
+#     run, so 12 definitions should cost 12 ticks - not 24.
+#   [THIS CODEBASE, reproduced live] field_notes.txt, CPU LOAD: importing
+#     costs ticks "proportional to the imported file's line count (not just
+#     its top-level statements - the whole file, function bodies included,
+#     even though those bodies don't run yet)". That says 24 lines cost 24
+#     ticks inside a module no matter what is written on them.
+#   [COMMUNITY, unverified] usesPython 18.08.2026 16:45 "Turns out
+#     declaring functions uses up ticks"; publord_ozai 21:27 "call-free
+#     declares were free in modules"; usesPython 21:28 "They still are, I
+#     had to revert to putting all the functions in a module."
+#   Krok 12 moved four functions out of menu.bd into utils/dashboard.bd on
+#   the strength of that community claim alone - menu.bd's own header calls
+#   the move "this session's live test of whether the net effect is
+#   actually smaller, not a certainty". field_notes.txt separately records
+#   a CONFIRMED crash zone sitting exactly here: "script startup between
+#   the last import and ~200 unpaced var/func lines". Nobody has ever put a
+#   number on any of it. This script does, in ~70 seconds.
+#
+# THE DECOMPOSITION - the part every earlier draft of this test missed
+#   "Module declarations are free" CANNOT be tested by timing a 1-func
+#   module against a 13-func module. Those two files also differ by 24 RAW
+#   LINES, and this codebase's own field note says raw lines are exactly
+#   what an import is billed for. Any difference would be unattributable.
+#   So there are THREE modules, and two of them are the same length:
+#     T17_mod_a    8 lines total,  1 declaration            (baseline)
+#     T17_mod_b   32 lines total, 13 declarations   (+24 lines, +12 decls)
+#     T17_mod_c   32 lines total,  1 declaration   (+24 lines,  +0 decls)
+#   mod_c's extra 24 lines are the never-executed BODY of its single func.
+#   mod_b and mod_c are therefore byte-for-byte equal in LENGTH and differ
+#   only in how many declarations those lines form. Hence:
+#     (C - A) = price of 24 extra never-executed RAW LINES, decls fixed
+#     (B - C) = price of 12 extra DECLARATIONS, raw lines fixed  <-- the
+#               community claim, isolated for the first time
+#   The in-script side mirrors it exactly and carries its own ruler:
+#     INL-CTRL   24 lines of `a = a + 1`        0 declarations  (the ruler)
+#     INL-12x2   12 funcs x 2 lines = 24 lines, 12 declarations
+#     INL-4x6     4 funcs x 6 lines = 24 lines,  4 declarations
+#   All three in-script arms are 24 raw lines; only the declaration count
+#   changes. Because INL-CTRL is measured inside this same run, the verdict
+#   does NOT depend on T02 having been run first.
+#
+# HOW TO READ IT - let R = the INL-CTRL span (24 executed statements).
+#   The script prints R, R/2 and R/6 for you on the SUM-PRED line, so this
+#   is a direct side-by-side against the measured spans on SUM-RAW.
+#     BILLED PER RAW LINE (field_notes right, official docs wrong):
+#       INL-12x2 ~= INL-4x6 ~= R    AND  (C-A) ~= R    AND  (B-C) ~= 0
+#     BILLED PER EXECUTED STATEMENT (official docs right, field_notes wrong):
+#       INL-12x2 ~= R/2  AND  INL-4x6 ~= R/6  AND  (C-A) ~= 0  AND
+#       (B-C) ~= R/2
+#     MODULE DECLARATIONS FREE, IN-SCRIPT ONES NOT (the community claim,
+#     and the sole justification Krok 12 ever had):
+#       INL-12x2 >= 0.4*R   AND   (B-C) <= 0.15*R
+#     DECLARATIONS FREE EVERYWHERE / HOISTED AT PARSE TIME:
+#       INL-12x2 and INL-4x6 both <= 0.15*R. Then read T17-L1CPU: above 0
+#       means this whole file's declarations were billed BEFORE line 1
+#       (test_cpu_decay.bd established a bare fresh script reads exactly 0
+#       on its first line); ~0 means declarations are billed nowhere.
+#     IMPORT IS A FLAT FEE, NOT PER LINE:
+#       (C-A) ~= 0 AND (B-A) ~= 0 while the import spans themselves are
+#       clearly > 0. Then "import cost is proportional to line count" needs
+#       a correction and the community claim is accidentally right for the
+#       wrong reason.
+#     BONUS, FREE - IS IMPORT CACHED WITHIN ONE SCRIPT? Every module is
+#       imported TWICE under two aliases, round-robin (A1 B1 C1 A2 B2 C2).
+#       field_notes says import is NOT cached, so round 2 must cost the
+#       same as round 1. If every n=2 span is ~0 while its n=1 span is not,
+#       import IS cached per script and the "re-runs a shared base module
+#       N+1 times" bullet is wrong. Round-robin order also means any
+#       session warm-up drift hits all three arms equally instead of
+#       aliasing into the A/B/C deltas.
+#
+#   INVALID RUN - discard and re-run, do not interpret:
+#     * INL-CTRL span is ~0, or is smaller than both other in-script arms
+#       (the ruler itself failed).
+#     * import A > import C, or import C > import B (ordering violated).
+#     * any single import span > 8s (something other than file content is
+#       dominating the import, most likely a large fixed per-import fee).
+#     * the cpu= column climbs monotonically across the arm lines and never
+#       returns near its INL-CTRL value - the sleeps did not settle the
+#       meter between arms; re-run with every sleep(2) raised to sleep(3).
+#     * a= on the CTRL line is not exactly 24, or a= on T17 DONE is not 24.
+#
+# IS THE BURST THE EXPERIMENT? YES, for the three in-script arms - pricing
+#   an unpaced declaration block IS the question, so those 24 lines are
+#   deliberately unpaced. Sizing: 24 lines is ~2.4s of continuous load at
+#   base tier, inside the documented ~5s-at-100% kill window and well under
+#   test_cpu_decay.bd's known-lethal ~150-line loop. Every burst is
+#   bracketed by sleep(2) on both sides. The six module arms - the untested
+#   community claim, the highest-value result here - are ALL banked before
+#   the first burst runs, and INL-CTRL (the ruler) is banked before the two
+#   declaration bursts. A KILL IS A RESULT: dying inside INL-12x2 after
+#   INL-CTRL survived means a declaration costs MORE per line than a plain
+#   statement, which no model above predicts and would be the single most
+#   surprising outcome available here.
+#
+# EVERY LINE IS SELF-DESCRIBING: each arm line carries its own arm name,
+#   raw line count, declaration count, post-arm cpu and cumulative at=+Ns,
+#   so a paste that stops anywhere is still fully interpretable and
+#   localizes the kill to one named arm.
+#
+# OBSERVER EFFECT: get_cpu() is never inside a timed bracket. It appears
+#   once on line 1 - before any other line of this script can have moved
+#   the meter - and once per arm log line, always AFTER that arm's span is
+#   closed, in an identical position in every arm. So it cannot enter any
+#   span or any delta, and the cpu= column is a free second channel showing
+#   what each arm did to the meter. get_unix_time() brackets every arm
+#   identically, so its own cost cancels in every subtraction. No summary
+#   line divides by a measured value, so an integer-resolution clock
+#   degrades precision but cannot crash the run.
+#
+# WHERE THIS SITS IN THE PROGRAMME
+#   T14 (T14.bd) asks the general question - is budget charged
+#   per physical source line, per statement, or per evaluated operation -
+#   for lines that actually EXECUTE. T17 is the same question for the one
+#   construct whose lines mostly DON'T execute, asked in both of the two
+#   places a declaration can live. If T14 has already run, its verdict
+#   predicts the in-script arms here and a disagreement between them is
+#   itself the finding (declarations are charged by a different rule than
+#   ordinary code). T02 (T02.bd) converts every span here into
+#   ticks via sec_per_unit, but is NOT required: INL-CTRL is this run's own
+#   ruler, measured in the same session, on the same 24-line scale.
+#
+# HOW TO RUN
+#   1) Put ALL FOUR files in /home/Nykita/scripts/ :
+#        T17.bd  T17_mod_a.bd  T17_mod_b.bd  T17_mod_c.bd
+#      The three module files MUST keep their 6-line headers at exactly the
+#      same length, and T17_mod_b.bd and T17_mod_c.bd must stay exactly the
+#      same TOTAL length as each other (32 lines). Do not edit one without
+#      editing the others - that parity IS the control.
+#   2) Run `ps` and `jobs`, confirm nothing else is running, paste that too.
+#   3) Run `T17`. Paste back EVERY line, including T17-L1CPU.
+#   4) REPEATS: 3 runs, back to back, same session, ~70s each. Report the
+#      median of the three for every arm. A 4th run only if the three put
+#      (B-C) on opposite sides of the 0.15*R line.
+#   5) IF IT REFUSES TO PARSE: the func blocks below are packed with no
+#      blank line between them. Add exactly one blank line between each
+#      `return 1` and the next `func`, in ALL THREE in-script arms AND in
+#      T17_mod_b.bd, then re-run - "blank lines are mandatory between
+#      defs" is itself a finding worth reporting, and doing it in all four
+#      places at once keeps the line counts matched across arms.
+
+var c0 = get_cpu()
+var t0 = get_unix_time()
+var ts = 0
+var te = 0
+var a = 0
+sleep(1)
+var ia1 = 0
+var ia2 = 0
+var ib1 = 0
+var ib2 = 0
+var ic1 = 0
+sleep(1)
+var ic2 = 0
+var nr = 0
+var n12 = 0
+var n46 = 0
+sleep(1)
+log("T17-L1CPU cpu=" + str(c0) + " (a bare fresh script reads exactly 0 here - anything higher means this file was billed before line 1)")
+log("T17-CLOCK raw=" + str(t0) + " (decimals => float clock; a whole number => 1s resolution and every span below is quantized)")
+log("T17-START arms=impA1,impB1,impC1,impA2,impB2,impC2,CTRL,12x2,4x6 - every arm differs by 24 raw lines only")
+sleep(2)
+
+ts = get_unix_time()
+import "/home/Nykita/scripts/T17_mod_a" as ma1
+ia1 = get_unix_time() - ts
+log("T17 IMP arm=A n=1 filelines=8 decls=1 span=" + str(ia1) + " cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+sleep(2)
+
+ts = get_unix_time()
+import "/home/Nykita/scripts/T17_mod_b" as mb1
+ib1 = get_unix_time() - ts
+log("T17 IMP arm=B n=1 filelines=32 decls=13 span=" + str(ib1) + " cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+sleep(2)
+
+ts = get_unix_time()
+import "/home/Nykita/scripts/T17_mod_c" as mc1
+ic1 = get_unix_time() - ts
+log("T17 IMP arm=C n=1 filelines=32 decls=1 span=" + str(ic1) + " cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+sleep(2)
+
+ts = get_unix_time()
+import "/home/Nykita/scripts/T17_mod_a" as ma2
+ia2 = get_unix_time() - ts
+log("T17 IMP arm=A n=2 filelines=8 decls=1 span=" + str(ia2) + " cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+sleep(2)
+
+ts = get_unix_time()
+import "/home/Nykita/scripts/T17_mod_b" as mb2
+ib2 = get_unix_time() - ts
+log("T17 IMP arm=B n=2 filelines=32 decls=13 span=" + str(ib2) + " cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+sleep(2)
+
+ts = get_unix_time()
+import "/home/Nykita/scripts/T17_mod_c" as mc2
+ic2 = get_unix_time() - ts
+log("T17 IMP arm=C n=2 filelines=32 decls=1 span=" + str(ic2) + " cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+sleep(2)
+
+log("T17 BURSTS begin - 3 unpaced 24-line arms follow, the burst IS the experiment")
+sleep(2)
+
+ts = get_unix_time()
+a = a + 1
+a = a + 1
+a = a + 1
+a = a + 1
+a = a + 1
+a = a + 1
+a = a + 1
+a = a + 1
+a = a + 1
+a = a + 1
+a = a + 1
+a = a + 1
+a = a + 1
+a = a + 1
+a = a + 1
+a = a + 1
+a = a + 1
+a = a + 1
+a = a + 1
+a = a + 1
+a = a + 1
+a = a + 1
+a = a + 1
+a = a + 1
+te = get_unix_time()
+nr = te - ts
+sleep(2)
+log("T17 INL arm=CTRL rawlines=24 decls=0 span=" + str(nr) + " a=" + str(a) + " cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+sleep(2)
+
+ts = get_unix_time()
+func i01():
+    return 1
+func i02():
+    return 1
+func i03():
+    return 1
+func i04():
+    return 1
+func i05():
+    return 1
+func i06():
+    return 1
+func i07():
+    return 1
+func i08():
+    return 1
+func i09():
+    return 1
+func i10():
+    return 1
+func i11():
+    return 1
+func i12():
+    return 1
+te = get_unix_time()
+n12 = te - ts
+sleep(2)
+log("T17 INL arm=12x2 rawlines=24 decls=12 span=" + str(n12) + " cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+sleep(2)
+
+ts = get_unix_time()
+func j01():
+    z = 1
+    z = 1
+    z = 1
+    z = 1
+    return 1
+func j02():
+    z = 1
+    z = 1
+    z = 1
+    z = 1
+    return 1
+func j03():
+    z = 1
+    z = 1
+    z = 1
+    z = 1
+    return 1
+func j04():
+    z = 1
+    z = 1
+    z = 1
+    z = 1
+    return 1
+te = get_unix_time()
+n46 = te - ts
+sleep(2)
+log("T17 INL arm=4x6 rawlines=24 decls=4 span=" + str(n46) + " cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+sleep(2)
+
+log("T17 SUM-RAW ctrl=" + str(nr) + " 12x2=" + str(n12) + " 4x6=" + str(n46) + " (all three arms are 24 raw lines)")
+sleep(1)
+log("T17 SUM-PRED per_raw_line=" + str(nr) + " per_stmt_12x2=" + str(nr / 2) + " per_stmt_4x6=" + str(nr / 6) + " free=0 - compare against SUM-RAW")
+sleep(1)
+log("T17 SUM-IMP A=" + str(ia1) + "/" + str(ia2) + " B=" + str(ib1) + "/" + str(ib2) + " C=" + str(ic1) + "/" + str(ic2) + " (n=1/n=2; n=2 ~0 while n=1 >0 => import IS cached per script)")
+sleep(1)
+log("T17 SUM-DEC rawlines24=(C-A)=" + str((ic1 + ic2) / 2 - (ia1 + ia2) / 2) + " decls12=(B-C)=" + str((ib1 + ib2) / 2 - (ic1 + ic2) / 2))
+sleep(1)
+log("T17 SUM-READ (B-C)~0 => MODULE DECLS FREE, community claim holds and Krok 12 was right | (B-C)~" + str(nr / 2) + " => decls billed in modules too")
+sleep(1)
+log("T17 DONE 9/9 arms a=" + str(a) + " (must be 24) total=+" + str(get_unix_time() - t0) + "s cpu=" + str(get_cpu()) + " - paste EVERY T17 line")

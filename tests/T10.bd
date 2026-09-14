@@ -1,0 +1,118 @@
+# tests/T10.bd - T10 "Death trace: what the meter reads at the
+# instant of the kill". First test of the KILL-TRIGGER block.
+#
+# PURPOSE
+#   No run in this entire investigation has ever logged a get_cpu() reading
+#   immediately before dying. Every crash point on record (+40.7s, +111.0s,
+#   +40.3s, +65.5s, +64.3s ...) was INFERRED from whichever debug checkpoint
+#   happened to print last. This script does nothing but print one numbered
+#   CPU sample per line, unpaced, until the engine kills it.
+#   THE UNPACED BURST *IS* THE EXPERIMENT. This is the one script in tests/
+#   that is deliberately allowed to violate the "sleep() every 5-8 lines"
+#   rule: the kill is the result, not a failure mode. Everything outside the
+#   loop is paced normally.
+#
+# WHAT IT ANSWERS
+#   1. What does get_cpu() actually read at (or one line before) death?
+#   2. For how many consecutive REAL seconds was it at the ceiling first?
+#      field_notes claims "100% for 5 straight seconds". Never measured.
+#   3. Is get_cpu() even the quantity the killer integrates? test_decode_
+#      pacing PART A sat at a LOGGED cpu=100 for ~840s and never died, which
+#      already hints the answer is no.
+#   4. What is the player's ACTUAL tick rate / CPU tier? Recorded nowhere in
+#      this project - every calculation so far has ASSUMED base tier.
+#   5. Does a killed script leave residual load for the next one? The
+#      entry_cpu number in the header line is a direct readout.
+#
+# OUTPUT FORMAT
+#   Header line:  KILLTRACE part=A entry_cpu=<c> floor_cpu=<c>
+#     entry_cpu = get_cpu() on the 2nd executable line, before any settle.
+#                 Cold run should be ~0 (test_cpu_decay saw exactly 0 here).
+#                 A HOT run reading well above that = carryover is real.
+#     floor_cpu = get_cpu() after sleep(3). This is the level the burst
+#                 starts climbing from. Expect ~10 (the known idle floor).
+#   Then one line per iteration, three space-separated numbers:
+#       n  t  cpu
+#     n   = iteration counter. FIRST on the line on purpose, so that even a
+#           truncated or half-written final line still tells us where it died.
+#     t   = whole seconds since the burst began (get_unix_time(), 0 ticks).
+#     cpu = PART A: get_cpu() at that instant.
+#           PART B: a copy of n (the control - see below).
+#   Final line, ONLY if nothing killed it:
+#       SURVIVED n=<n> t=<t> cpu=<c>
+#   Its ABSENCE is unambiguous proof of death rather than a quiet exit.
+#
+# HOW TO READ THE PASTED OUTPUT
+#   * LAST LINE = the meter's value at death, and the exact unpaced-line
+#     count that proved fatal. This is the headline number.
+#   * Lines sharing one t value = iterations per real second. The loop body
+#     is 2 or 3 executed lines (depending on whether the `while` condition
+#     line costs a tick - itself unknown), so:
+#         3.3 iter/s -> base tier 10 ticks/s, while-line DOES cost a tick
+#         5.0 iter/s -> base tier 10 ticks/s, while-line is FREE
+#         6.7 / 10.0 -> Mk.II (20 t/s), and so on doubling per tier
+#     Either way this is the first direct tier measurement in the corpus,
+#     and the 3.3-vs-5.0 split resolves the loop-condition tick question
+#     as a free bonus.
+#   * Count how long the tail sat at the ceiling. Two ways, use both:
+#       (a) number of DISTINCT t values whose cpu is at the ceiling
+#           (coarse: integer seconds, +/-1s of bucket-boundary error)
+#       (b) (number of SAMPLES at the ceiling) / (iterations per second)
+#           (finer, sub-second - preferred)
+#     If "100% for 5 straight seconds" is literally true, both land on 5.
+#   * Comparing final n across repeat runs is the cheapest probe of the
+#     central run-to-run-variance mystery that exists: a ~23-second
+#     experiment instead of a 40-120s one.
+#
+# PARTS
+#   PART A - the logged line includes get_cpu()      (instrumented arm)
+#   PART B - the logged line substitutes str(n) for str(get_cpu())  (control)
+#   The two logged expressions are structurally IDENTICAL: same three str()
+#   calls, same two concatenations, same line count per iteration. The ONLY
+#   difference is get_cpu() vs a plain variable read. The gap in final n
+#   between A and B therefore MEASURES how much get_cpu() polling shortens
+#   the fuse, instead of assuming it. (field_notes' "get_cpu() adds load"
+#   correction currently rests on one unquantified observation and is
+#   load-bearing for a third of this investigation.)
+#   In a PART B paste, column 3 equals column 1 - that is how you tell the
+#   arms apart at a glance.
+#
+# WHY THE LOOP IS TIME-BOUNDED, NOT COUNT-BOUNDED
+#   A fixed iteration cap is tier-dependent: at Mk.IV/Mk.V a 150-iteration
+#   burst finishes in under 2 real seconds, i.e. BEFORE the documented
+#   5-second window could ever elapse, and the run would "survive" for
+#   reasons having nothing to do with the kill predicate. The 20-second wall
+#   clock bound is tier-independent and gives 4x margin over the documented
+#   constant. The n < 400 clause is only a paste-volume safety valve; if a
+#   run ends at exactly n=400 with t far below 20, that means a high CPU
+#   tier - report it and we re-run with a bigger cap.
+#
+# HOW TO RUN (@param binds POSITIONALLY - no -flag= syntax)
+#   Run FIRST THING in a fresh session. Confirm with `ps` and `jobs` that
+#   nothing else is running.
+#     1) T10 A   - wait for the overload banner, paste EVERYTHING
+#        including the "[SYSTEM] CPU overloaded..." line.
+#     2) idle ~30s, repeat. Three COLD PART A runs total.
+#     3) Three more PART A runs BACK TO BACK, retyping within ~3 seconds of
+#        each kill. Cold-vs-hot entry_cpu is the carryover measurement.
+#     4) idle ~30s, then two PART B runs.
+#   8 runs total, each ~23s of script time, ~5-6 minutes all in.
+#   Record the final n of every run, and paste every run in full.
+# @param part "A = log get_cpu() each line, B = control without it" default="A"
+
+var PART = get_param("part", "A")
+var c0 = get_cpu()
+sleep(3)
+log("KILLTRACE part=" + PART + " entry_cpu=" + str(c0) + " floor_cpu=" + str(get_cpu()))
+var n = 0
+var t0 = get_unix_time()
+if PART == "A":
+    while get_unix_time() - t0 < 20 and n < 400:
+        n = n + 1
+        log(str(n) + " " + str(get_unix_time() - t0) + " " + str(get_cpu()))
+else:
+    while get_unix_time() - t0 < 20 and n < 400:
+        n = n + 1
+        log(str(n) + " " + str(get_unix_time() - t0) + " " + str(n))
+sleep(5)
+log("SURVIVED n=" + str(n) + " t=" + str(get_unix_time() - t0) + " cpu=" + str(get_cpu()))

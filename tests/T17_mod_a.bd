@@ -1,0 +1,8 @@
+# T17_mod_a.bd - T17 module arm A (baseline). 8 lines TOTAL, 1 declaration.
+# Paired with T17_mod_b.bd (32 lines, 13 decls) and T17_mod_c.bd (32 lines,
+# 1 decl). This header is EXACTLY 6 lines in all three files, so fixed
+# per-file and per-header cost cancels when the import spans are subtracted.
+# Nothing here is ever called - declarations only. Never edit one file's
+# header or total length without editing the other two. See T17.bd.
+func d01():
+    return 1

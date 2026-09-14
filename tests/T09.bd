@@ -1,0 +1,334 @@
+# T09.bd - T09: the ceiling. Does work above 100% vanish,
+# or is there hidden tick debt?
+#
+# ---------------------------------------------------------------------
+# PURPOSE
+# ---------------------------------------------------------------------
+# get_cpu() returns 0-100. The question is what happens to work that
+# would have pushed it PAST 100.
+#
+#   CLAMP model .... the meter tops out at 100 and everything above it is
+#                    thrown away. A 48-line burst and a 10-line burst are
+#                    indistinguishable once both have saturated, and the
+#                    decay back down starts from the same place for both.
+#   DEBT model ..... an accumulator keeps counting past the ceiling and
+#                    get_cpu() only SHOWS min(100, v). A bigger burst then
+#                    leaves more residue behind and takes longer to drain.
+#
+# This matters far beyond bookkeeping. If the meter censors above the
+# ceiling, then every in-script CPU guard in this codebase - throttle(),
+# cpu_guard_fast(), every "while get_cpu() > threshold" loop - is reading
+# a variable that physically cannot distinguish "just barely saturated"
+# from "massively over". A guard would read a comfortable number right up
+# to the instant the killer fires.
+#
+# ---------------------------------------------------------------------
+# THE BURST IS THE EXPERIMENT
+# ---------------------------------------------------------------------
+# Normally an unpaced run of more than ~10 lines is treated as fatal and
+# never written on purpose. Here the unpaced burst IS the independent
+# variable, so it is deliberately unpaced and deliberately long. Four
+# phases run bursts of 10, 25, 40 and 48 straight-line "x = 1" statements
+# with no calls, no pacing, and nothing else between them.
+#
+# 48 is chosen on purpose. The documented kill rule is 100% for 5 straight
+# seconds; at the base tier's 10 ticks/sec that is 50 executed lines. With
+# the 2 instrument ticks that immediately precede each burst (see PHASE
+# SHAPE) the largest phase is exactly 50 executed ticks back to back - the
+# sharpest possible probe of the literal rule, sitting right on the line.
+#
+# A KILL IS A RESULT, NOT A FAILURE. Phases ascend 10 -> 25 -> 40 -> 48 so
+# the risky burst is last and every smaller phase's data is already banked
+# and printed before it runs.
+#
+# NOTE: nothing in the corpus has ever measured the lethal UNROLLED burst
+# size. The famous "fatal 50-line burst" (test_cpu_decay.bd) was 50 loop
+# ITERATIONS - condition + body + increment, roughly 150 executed lines.
+# The true straight-line threshold has never been bracketed.
+#
+# ---------------------------------------------------------------------
+# PHASE SHAPE (identical in all four phases; only burst length varies)
+# ---------------------------------------------------------------------
+#   log("T09 begin B=n")   <- marker, printed BEFORE the settle so its own
+#                             tick has drained away before the burst starts
+#   sleep(1) x3            <- settle back to the floor
+#   cb = get_cpu()         <- BASELINE, immediately pre-burst  [control]
+#   ta = get_unix_time()
+#   <n lines of x = 1>     <- THE BURST, unpaced, call-free
+#   tb = get_unix_time()
+#   c0 = get_cpu()         <- PEAK capture, delay 0
+#   sleep(1) x2
+#   c2 = get_cpu()         <- RESIDUE capture, delay 2s
+#   sleep(1)
+#   log(all four numbers)  <- logged only after a sleep, so the log's own
+#                             cost can never contaminate what it reports
+#
+# Three readings do three different jobs:
+#   cb  proves the four phases all START from the same state. If cb climbs
+#       phase to phase, the phases are not independent and any trend in c2
+#       is contaminated by carryover rather than caused by burst size.
+#       This is the control the whole test rests on.
+#   c0  answers the CEILING half: is the reading pinned at 100 regardless
+#       of burst size, or does it scale with burst size?
+#   c2  answers the DEBT half: does a bigger burst leave more behind?
+#
+# burst_s = tb - ta additionally gives four (lines, seconds) points. Those
+# calibrate this machine's real ticks/sec (no API exposes it) and, across
+# four different burst sizes, separate a flat per-burst overhead from the
+# per-line rate - exactly the unresolved "cost per line + flat ~10t"
+# question in field_notes.txt.
+#
+# ---------------------------------------------------------------------
+# PREDICTIONS - stated in advance
+# ---------------------------------------------------------------------
+# Observed float noise on get_cpu() is ~1e-7, so ANY difference above
+# ~0.001 between two readings is real, not noise.
+#
+# 1. CLAMP CONFIRMED - all four cb equal, all four c0 equal, all four c2
+#    equal. Work above the ceiling is destroyed; 2 seconds after the fact
+#    a 48-line burst is indistinguishable from a 10-line burst.
+# 2. DEBT CONFIRMED (clamp refuted) - cb flat but c2 rises monotonically
+#    with B (e.g. 10 / 25 / 55 / 70). Overshoot survives the ceiling.
+#    get_cpu() under-reports during saturation and every guard is blind.
+# 3. NOT SATURATING - c0 rises with B and is NOT pinned at 100 for the
+#    small bursts (e.g. 30 / 60 / 95 / 100). This refutes field_notes.txt's
+#    "almost any command pushes get_cpu() to 60-100" reframing and makes
+#    get_cpu() a usable gauge of recent burst size.
+# 4. CARRYOVER - cb itself climbs across phases. Debt survives a 3-second
+#    settle. Read result 2 as contaminated; this becomes the headline.
+# 5. LETHALITY - the script dies during a phase. The last printed line is
+#    "T09 begin B=K", naming the killer exactly. The lethal straight-line
+#    run is then bracketed in (previous B + 2, K + 2] executed ticks, and
+#    the already-printed burst_s values convert that bracket to seconds.
+# 6. FILE LENGTH - this file is 334 lines, far longer than any test script
+#    run so far (previous longest: 89 lines). Importing is known to cost ticks
+#    proportional to a file's WHOLE line count, function bodies included;
+#    whether a top-level script pays the same at launch has never been
+#    tested. Line 1 captures cl before anything else runs. cl near 0
+#    matches the known 47-line-file datum and dismisses the concern. A
+#    non-zero cl, or zero output at all, is a brand-new finding with large
+#    implications for menu.bd's ~11-module startup.
+#
+# ---------------------------------------------------------------------
+# HOW TO RUN
+# ---------------------------------------------------------------------
+# After T04 and T08. Fresh session, "ps" and "jobs" both empty.
+# Runtime is about 45 seconds per run.
+#
+# REPEATS: run it 3 times back to back. Two runs settle the ceiling
+# comparison; the third is free variance data, and variance is the whole
+# point of this programme. If B=48 kills one run and survives another with
+# nothing changed in between, that is the central run-to-run mystery
+# reproduced in the simplest system anyone has managed to build - by far
+# the most important possible outcome here. If a kill happens, run twice
+# more to check the SAME B kills each time.
+#
+# OPTIONAL BUT VALUABLE: watch the live in-game CPU meter during the B=10
+# and B=48 bursts and note the peak you see. The UI meter is the only
+# channel outside this script, unaffected by the script's own get_cpu()
+# calls. If the meter peaks the same for B=10 and B=48 while c0 differs
+# (or the reverse), the meter and get_cpu() are not the same quantity -
+# something no document states and no test has ever probed.
+#
+# PASTE BACK: every "T09" line, in order, plus any meter peaks you saw.
+# Truncated output is still useful - the last line always names the phase
+# that was running when it died.
+# ---------------------------------------------------------------------
+
+var cl = get_cpu()
+var t0 = get_unix_time()
+var x = 0
+var cb = 0
+sleep(1)
+var c0 = 0
+var c2 = 0
+var ta = 0
+var tb = 0
+log("T09 alive launch_cpu=" + str(cl) + " (file-length control; ~0 = launch is free)")
+sleep(1)
+sleep(1)
+
+# ---------------- PHASE B=10 ----------------
+log("T09 begin B=10")
+sleep(1)
+sleep(1)
+sleep(1)
+cb = get_cpu()
+ta = get_unix_time()
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+tb = get_unix_time()
+c0 = get_cpu()
+sleep(1)
+sleep(1)
+c2 = get_cpu()
+sleep(1)
+log("T09 B=10 base=" + str(cb) + " peak=" + str(c0) + " res=" + str(c2) + " burst_s=" + str(tb - ta) + " t=" + str(get_unix_time() - t0))
+
+# ---------------- PHASE B=25 ----------------
+log("T09 begin B=25")
+sleep(1)
+sleep(1)
+sleep(1)
+cb = get_cpu()
+ta = get_unix_time()
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+tb = get_unix_time()
+c0 = get_cpu()
+sleep(1)
+sleep(1)
+c2 = get_cpu()
+sleep(1)
+log("T09 B=25 base=" + str(cb) + " peak=" + str(c0) + " res=" + str(c2) + " burst_s=" + str(tb - ta) + " t=" + str(get_unix_time() - t0))
+
+# ---------------- PHASE B=40 ----------------
+log("T09 begin B=40")
+sleep(1)
+sleep(1)
+sleep(1)
+cb = get_cpu()
+ta = get_unix_time()
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+tb = get_unix_time()
+c0 = get_cpu()
+sleep(1)
+sleep(1)
+c2 = get_cpu()
+sleep(1)
+log("T09 B=40 base=" + str(cb) + " peak=" + str(c0) + " res=" + str(c2) + " burst_s=" + str(tb - ta) + " t=" + str(get_unix_time() - t0))
+
+# ---------------- PHASE B=48 ----------------
+log("T09 begin B=48")
+sleep(1)
+sleep(1)
+sleep(1)
+cb = get_cpu()
+ta = get_unix_time()
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+tb = get_unix_time()
+c0 = get_cpu()
+sleep(1)
+sleep(1)
+c2 = get_cpu()
+sleep(1)
+log("T09 B=48 base=" + str(cb) + " peak=" + str(c0) + " res=" + str(c2) + " burst_s=" + str(tb - ta) + " t=" + str(get_unix_time() - t0))
+
+log("T09 done - all four bursts survived; 50 straight executed ticks is NOT lethal")

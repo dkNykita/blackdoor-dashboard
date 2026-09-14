@@ -1,0 +1,462 @@
+# T07.bd - T07: meter memory I - window edge vs decay
+# REVISED after feasibility/redundancy review. Changes from the draft are
+# listed under "WHAT CHANGED AND WHY" at the bottom of this header.
+#
+# ONE QUESTION
+#   Does get_cpu() forget old ticks at a HARD AGE CUTOFF (a sliding window
+#   with a definite edge) or discount them CONTINUOUSLY (a decay)? Two
+#   geometries, one run, so they cross-check:
+#     ARM A  gap AFTER a fixed 6-line burst   (how ticks age out)
+#     ARM B  gap INSIDE a fixed 6-line burst  (is credit for old ticks
+#                                              partial, or all-or-nothing?)
+#   ARM B is the novel half: nothing in tests/ varies a gap INSIDE a burst.
+#   ARM A is a sub-second refinement of T08's whole-second sweep.
+#
+# PRECONDITIONS - DO NOT RUN UNTIL THESE ARE MET
+#   1. T01 (T01.bd) must have established that
+#      get_unix_time() resolves sub-second intervals. web_api.txt documents
+#      it as `get_unix_time() -> int`. If the clock is integer-valued, the
+#      CALSLEEP gate below cannot work and ARM A's ladder cannot be
+#      verified. (CALSLEEP self-diagnoses this: three integer or three zero
+#      readings mean an int clock - stop there.)
+#   2. T04 (T04.bd) must have run. Its PART B staircase
+#      (N = 0,1,3,5,8,11,14) already measures the instrument unit U and the
+#      linearity this test's draft re-measured with a redundant 3-point
+#      calibration block. That block is DELETED here; report T07 in T04's U.
+#   3. T08 (T08.bd) SHOULD have run. The draft claimed T07
+#      must precede T08; that ordering is inverted. T08 spans 0-8s and
+#      establishes the SCALE of the meter's memory. If that scale is ~3s
+#      (which the ~3.7s throttle constant positively suggests), ARM A's
+#      ladder is entirely inside the window and returns a flat line.
+#   4. CONFIRM THE CPU TIER before running: `neofetch` / `sysinfo`, and
+#      paste the output back. This test is NOT tier-independent (see below).
+#
+# TIER DEPENDENCE - THIS TEST IS CALIBRATED FOR BASE TIER (10 ticks/sec)
+#   ARM A discriminates only because the burst's 8 ticks are spread over a
+#   time comparable to the ladder's step size. At base tier they span ~0.8s
+#   and the 0.2s rungs age them out one or two at a time. At Mk.IV (80
+#   ticks/sec) the same 8 ticks span 0.1s: they all age out between two
+#   adjacent rungs, the ladder reads flat-cliff-flat, and the "constant
+#   successive differences" signature never appears even though the window
+#   model is true. If the tier is R ticks/sec and R != 10, MULTIPLY EVERY d
+#   AND g IN THIS SCRIPT BY 10/R before running.
+#
+# PREDICTIONS - stated in advance, in units of U (T04's meter unit; ~10 at
+# base tier)
+#   Take ARM A's readings, SORT THEM BY d, and take successive differences.
+#   That shape, not any single value, is the discriminator:
+#     RECTANGULAR WINDOW of length W: differences roughly CONSTANT
+#       (about -U per 0.1s of extra d) while fillers age out, then ZERO.
+#       W = the smallest d at which the reading stops changing.
+#     CONTINUOUS DECAY: differences SHRINK geometrically, never reach zero.
+#       d=4.00 strictly below d=2.20 strictly below d=1.40.
+#     WINDOW LONGER THAN THE LADDER: d=0.05 through d=2.20 all equal, and
+#       then d=4.00 DROPS. This is why the 4.00 rung exists - see below.
+#     LATCHED: all ten readings equal INCLUDING d=4.00, and ARM B flat too.
+#   ARM B, if W ~= 1.0s at base tier:
+#     B1 g=0.05 ~ 8U (must equal A d=0.05), B2 g=0.50 ~ 5-6U,
+#     B3 g=1.50 ~ 4U, B4 g=3.00 ~ 4U. B3 = B4 means a hard edge.
+#     B1 - B3 = 3U or 4U discriminates whether a sleep line's own tick is
+#     charged on ENTRY (4U lost) or on EXIT (3U lost) - a question no
+#     other test in the programme asks.
+#   CONSISTENCY CHECK (the reason both arms are one script):
+#     ARM A's edge gives W directly. ARM B's first three fillers drop out
+#     once g + 3 tick-periods >= W. Solve both for W; they must agree
+#     within one tick period, or the window model is wrong however clean
+#     each arm looked alone.
+#
+# THE d=4.00 RUNG IS NOT OPTIONAL
+#   Without it, a window longer than 2.2s and a latched meter produce the
+#   IDENTICAL ARM A signature (ten equal readings). The draft's decision
+#   table mapped that signature straight to "sub-second timing is invisible
+#   to the meter, every pacing intuition in the codebase is unfounded" -
+#   a dramatic and possibly false conclusion. The 4.00 rung breaks the tie
+#   inside ARM A for 4 seconds of runtime.
+#
+# SCRAMBLED ORDER (adopted from T08, which the draft omitted)
+#   ARM A's phases run d = 0.05, 1.00, 0.40, 2.20, 0.80, 0.20, 4.00, 1.40,
+#   0.60 - deliberately NOT ascending, then A-REP repeats d=0.05 at the end.
+#   A monotone downward drift over the run would, under an ascending ladder,
+#   produce exactly the "falls then plateaus" shape this test reads as a
+#   confirmed window. Scrambling separates them: if the readings fall
+#   monotonically when sorted BY d but scatter when sorted by phase order,
+#   the fall is caused by d. A-REP vs A1 is the direct drift measurement.
+#   The draft's only drift control was A1 vs B1, both first-in-arm and ~60s
+#   apart, which is blind to drift acting WITHIN an arm.
+#
+# PER-PHASE CONTAMINATION CHECK (adopted from T08)
+#   Every phase captures `pre = get_cpu()` immediately before its fillers.
+#   The draft gated the whole run on a single CAL n=0 reading matching a
+#   model-derived value (~2U) - circular, since the edge convention that
+#   sets that value is what the test is trying to discover, and blind to
+#   contamination arising later in the run. `pre` is one extra line,
+#   identical in every phase, so it cancels in all comparisons, and it
+#   turns one global gate into a per-phase measurement of whether the
+#   5-second settle actually cleared the previous phase.
+#
+# INSTRUMENT ACCOUNTING
+#   - Line-count parity holds WITHIN each arm, which is what the
+#     comparisons need: every ARM A phase executes 5 settle sleeps + pre +
+#     6 fillers + 1 gap sleep + 1 capture + 1 log; every ARM B phase the
+#     same 15 with the gap moved into the middle of the fillers. (The
+#     draft asserted all phases executed identical line counts; its own
+#     calibration phases had 0, 1 and 3 fillers, so that was never true.)
+#   - The pointless sleep(0.05) in the zero-gap phases is deliberate: it
+#     keeps the executed-line count identical to the long-gap phases.
+#   - ONE get_cpu() capture per phase, always the bare `c = get_cpu()`,
+#     never in a loop or a conditional, never compared to a threshold.
+#     This is what ruined the prior corpus: test_decode_pacing.bd read a
+#     flat 100 for 31 rounds and a flat 80 for 37 rounds, the 80 exactly
+#     its own throttle threshold - the polling loop was regulating the
+#     meter to its own setpoint. Nothing here can do that.
+#   - get_cpu()'s own cost (documented 0 ticks, player-observed nonzero)
+#     is incurred identically twice per phase, so it cancels.
+#   - Logging is IMMEDIATE, not deferred (T08's choice, against the
+#     draft's). The value is already frozen in `c`, so a later log cannot
+#     touch it; deferring behind 2x sleep(1) bought nothing and cost 2s
+#     per phase and risked losing a measurement already taken to a kill.
+#   - Straight-line code only. No loops, no function calls in any measured
+#     phase, so each phase's tick count is countable by eye.
+#
+# CRASH SAFETY
+#   Longest unpaced run is pre + 6 fillers + gap sleep + capture = 9 lines,
+#   ~0.9s at base tier. T04 runs 15 unpaced lines as its riskiest phase and
+#   T08 runs 15 in every phase. Nothing here is a burst experiment.
+#
+# RUNTIME
+#   ~95.5s of sleep + ~235 executed lines. At base tier, 1 tick/line, that
+#   is ~2.0 min. If charging is per-operation rather than per-line (T14/T18,
+#   open), the 16 log lines add ~10s. Ceiling ~2.2 min. Two runs plus
+#   paste-back is comfortably under 6 minutes.
+#
+# HOW TO RUN
+#   Fresh session, nothing else run yet. `ps` and `jobs` both empty, paste
+#   that back too, plus `neofetch`/`sysinfo` for the tier. Start it, TOUCH
+#   NOTHING for ~2 minutes, then paste back every line beginning "T07", in
+#   order, at FULL precision. Do not round - the test turns on whether two
+#   numbers are exactly equal (|delta| < 0.01; float noise is ~1e-7 and one
+#   unit is ~10) or merely close, and on whether a value is dyadic
+#   (93.75 = 15/16) or not (10.0000001798557), which is itself evidence
+#   about the underlying arithmetic. Run it TWICE.
+#
+# READING THE RESULT
+#   1. CALSLEEP first. m50 - m05 must be ~0.45 and m220 - m50 ~1.70. If
+#      not, sleep() does not resolve sub-second arguments (or the clock
+#      does not), ARM A is a sweep over nothing, and the run should be
+#      abandoned rather than interpreted. m05 also reveals the tick period.
+#   2. Every `pre` next. They must all agree within ~1U, and match FLOOR.
+#      A `pre` that climbs across the run means the settle is too short and
+#      load is accumulating between phases - re-run with 7 settle sleeps.
+#   3. A-REP vs A1. Differ by more than 0.5U = drift; ARM A's ladder is
+#      not trustworthy and the scramble is what tells you so.
+#   4. ARM A sorted BY d, as a row of successive differences.
+#   5. ARM B as three comparisons: B1 vs B3 (are old ticks discounted at
+#      all?), B3 vs B4 (hard edge or still decaying?), B2 (locates the
+#      edge between g=0.5 and g=1.5).
+#   6. Solve both arms for W independently and compare. Then compare the
+#      plateau against FLOOR to settle when a sleep line's tick is charged.
+#   7. A1 vs B1: identical tick counts, negligible gaps, ~50s apart. They
+#      must read the same. If not, either tick ORDER matters or the meter
+#      drifts within a run - and drift bears directly on the run-to-run
+#      variance mystery this programme serves.
+#
+# WHAT CHANGED AND WHY (review findings, in order of severity)
+#   1. ARM A was strictly ascending with no replicate -> scrambled, plus
+#      A-REP. Drift and decay were confounded; T08 already solved this.
+#   2. "All eight equal" was read as a verdict -> it is now an ambiguity
+#      resolved by the new d=4.00 rung and by ARM B.
+#   3. The CAL n=0/n=1/n=3 block duplicated T04 PART B N=0/1/3 -> deleted;
+#      one FLOOR phase kept. Saves 18s and three phases.
+#   4. The validity gate presupposed the edge convention under test ->
+#      replaced with per-phase `pre` plus a FLOOR replicate.
+#   5. Deferred logging -> immediate (T08's pattern). Saves 30s, and makes
+#      every phase kill-robust.
+#   6. Settle 4 -> 5 sleeps, paid for by 3 and 5 above.
+#   7. "Valid at any CPU tier" was false -> tier must be confirmed and the
+#      ladder rescaled by 10/R if not base tier.
+#   8. "No dependency on T01" was false -> CALSLEEP needs a sub-second
+#      clock, which is exactly T01's open question.
+
+var t0 = get_unix_time()
+var x = 0
+var c = 0
+var pre = 0
+var ta = 0
+var tb = 0
+var tc = 0
+var td = 0
+log("T07 start - meter memory: window edge vs decay, 16 phases, ~2 min")
+
+# === CALSLEEP: does sleep() (and the clock) resolve sub-second args? ===
+# Each get_unix_time() line is itself a tick, so each measured interval is
+# (requested + ~1 tick period). That overhead is identical in all three, so
+# it cancels in the DIFFERENCES. Three integer or three zero readings mean
+# an integer clock - stop and run T01.
+sleep(1)
+sleep(1)
+ta = get_unix_time()
+sleep(0.05)
+tb = get_unix_time()
+sleep(0.50)
+tc = get_unix_time()
+sleep(2.20)
+td = get_unix_time()
+log("T07 CALSLEEP m05=" + str(tb - ta) + " m50=" + str(tc - tb) + " m220=" + str(td - tc))
+
+# === FLOOR: the settled baseline, 0 fillers ===
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+sleep(0.05)
+c = get_cpu()
+log("T07 FLOOR pre=" + str(pre) + " cpu=" + str(c) + " t=" + str(get_unix_time() - t0))
+
+# ================= ARM A : gap AFTER the burst =================
+# 6 fillers, one sleep(d), one capture. d order is SCRAMBLED on purpose.
+
+# --- A d=0.05 ---
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+sleep(0.05)
+c = get_cpu()
+log("T07 A d=0.05 pre=" + str(pre) + " cpu=" + str(c) + " t=" + str(get_unix_time() - t0))
+
+# --- A d=1.00 ---
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+sleep(1.00)
+c = get_cpu()
+log("T07 A d=1.00 pre=" + str(pre) + " cpu=" + str(c) + " t=" + str(get_unix_time() - t0))
+
+# --- A d=0.40 ---
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+sleep(0.40)
+c = get_cpu()
+log("T07 A d=0.40 pre=" + str(pre) + " cpu=" + str(c) + " t=" + str(get_unix_time() - t0))
+
+# --- A d=2.20 ---
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+sleep(2.20)
+c = get_cpu()
+log("T07 A d=2.20 pre=" + str(pre) + " cpu=" + str(c) + " t=" + str(get_unix_time() - t0))
+
+# --- A d=0.80 ---
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+sleep(0.80)
+c = get_cpu()
+log("T07 A d=0.80 pre=" + str(pre) + " cpu=" + str(c) + " t=" + str(get_unix_time() - t0))
+
+# --- A d=0.20 ---
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+sleep(0.20)
+c = get_cpu()
+log("T07 A d=0.20 pre=" + str(pre) + " cpu=" + str(c) + " t=" + str(get_unix_time() - t0))
+
+# --- A d=4.00 (the tie-breaker: long window vs latched meter) ---
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+sleep(4.00)
+c = get_cpu()
+log("T07 A d=4.00 pre=" + str(pre) + " cpu=" + str(c) + " t=" + str(get_unix_time() - t0))
+
+# --- A d=1.40 ---
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+sleep(1.40)
+c = get_cpu()
+log("T07 A d=1.40 pre=" + str(pre) + " cpu=" + str(c) + " t=" + str(get_unix_time() - t0))
+
+# --- A d=0.60 ---
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+sleep(0.60)
+c = get_cpu()
+log("T07 A d=0.60 pre=" + str(pre) + " cpu=" + str(c) + " t=" + str(get_unix_time() - t0))
+
+# ================= ARM B : gap INSIDE the burst =================
+# 3 fillers, one sleep(g), 3 more fillers, one capture. Same executed-line
+# count as ARM A. Only the gap's position and length change.
+
+# --- B g=0.05 (control; must equal A d=0.05) ---
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+sleep(0.05)
+x = x + 1
+x = x + 1
+x = x + 1
+c = get_cpu()
+log("T07 B g=0.05 pre=" + str(pre) + " cpu=" + str(c) + " t=" + str(get_unix_time() - t0))
+
+# --- B g=0.50 ---
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+sleep(0.50)
+x = x + 1
+x = x + 1
+x = x + 1
+c = get_cpu()
+log("T07 B g=0.50 pre=" + str(pre) + " cpu=" + str(c) + " t=" + str(get_unix_time() - t0))
+
+# --- B g=1.50 ---
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+sleep(1.50)
+x = x + 1
+x = x + 1
+x = x + 1
+c = get_cpu()
+log("T07 B g=1.50 pre=" + str(pre) + " cpu=" + str(c) + " t=" + str(get_unix_time() - t0))
+
+# --- B g=3.00 ---
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+sleep(3.00)
+x = x + 1
+x = x + 1
+x = x + 1
+c = get_cpu()
+log("T07 B g=3.00 pre=" + str(pre) + " cpu=" + str(c) + " t=" + str(get_unix_time() - t0))
+
+# --- A-REP: d=0.05 again, ~50s after A d=0.05. Pure drift measurement. ---
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+pre = get_cpu()
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+x = x + 1
+sleep(0.05)
+c = get_cpu()
+log("T07 A-REP d=0.05 pre=" + str(pre) + " cpu=" + str(c) + " t=" + str(get_unix_time() - t0))
+
+log("T07 done - sort ARM A BY d, take successive differences. A-REP vs A d=0.05 = drift. B g=1.50 vs g=3.00: equal = edge.")

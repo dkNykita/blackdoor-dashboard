@@ -28,7 +28,7 @@ test_cpu_decay.bd
   not tied to function/API calls - refuted the "+10t needs a function
   call" hypothesis.
 
-test_cpu_ceiling.bd  (T09, CPU-load research programme - NOT a menu.bd test)
+T09.bd  (T09, CPU-load research programme - NOT a menu.bd test)
   Goal: does get_cpu() clamp at 100 and DISCARD everything above it, or
   does a hidden accumulator keep counting past the ceiling so a bigger
   burst leaves more residue behind? Four unpaced straight-line bursts
@@ -47,7 +47,7 @@ test_cpu_ceiling.bd  (T09, CPU-load research programme - NOT a menu.bd test)
   Progress: authored, not yet run. Depends on T04/T08 reference values.
   Result: pending.
 
-test_log_price.bd  (T18, CPU-load research programme - NOT a menu.bd test)
+T18.bd  (T18, CPU-load research programme - NOT a menu.bd test)
   Goal: price log() itself. Does it cost exactly one tick regardless of its
   argument, or does cost scale with STRING LENGTH, with the number of
   CONCATENATION OPERATIONS building the argument, or with the optional
@@ -291,7 +291,7 @@ directly to menu.bd + utils/dashboard.bd)
   (a secondary per-host credentials index, to reduce the FIRST-call
   cost itself - not yet attempted).
 
-test_session_age.bd  (T25, CPU-load research programme - NOT a menu.bd test)
+T25.bd  (T25, CPU-load research programme - NOT a menu.bd test)
   Goal: does something accumulate across a play session such that one
   fixed workload runs measurably slower the longer the game has been
   open - and does restarting the game reverse it? The manipulation is
@@ -322,7 +322,7 @@ test_session_age.bd  (T25, CPU-load research programme - NOT a menu.bd test)
   so schedule it around the rest of the programme.
   Result: pending.
 
-test_elif_price.bd  (T16, CPU-load research programme - NOT a menu.bd test)
+T16.bd  (T16, CPU-load research programme - NOT a menu.bd test)
   Goal: in an 8-branch if/elif chain, is the tick cost charged PER
   CONDITION EVALUATED, only for the BRANCH TAKEN, or for EVERY PHYSICAL
   LINE of the construct regardless? read_entries()'s per-token dispatch
@@ -346,7 +346,7 @@ test_elif_price.bd  (T16, CPU-load research programme - NOT a menu.bd test)
   sec_per_unit; its rider cross-checks T14's per-call verdict.
   Result: pending.
 
-test_t26_conn_floor.bd  (T26, CPU-load research programme - NOT a menu.bd test)
+T26.bd  (T26, CPU-load research programme - NOT a menu.bd test)
   Goal: does anything OTHER than this script's own executed lines feed the
   CPU meter? Specifically: is get_cpu()'s idle floor higher while a
   connection is open and its trace is counting down, and higher again while

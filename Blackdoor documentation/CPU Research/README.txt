@@ -226,8 +226,11 @@ running - it repeats the prediction and the run instructions.
 ===============================================================================
 ------------------------------------------------------------------------------
 T01  [P1]  Clock and external-instrument validation
-  file(s): test_external_clock.bd
-  depends: None.
+  file(s): T01.bd
+  NEEDS ON DISK:
+    Just T01.bd in ~/scripts/. Self-contained; also drives the terminal
+    commands `time`, `ps`, `jobs` from outside the script (no disk deps).
+  depends on (other tests first): None.
   Q:  Is get_unix_time() a true wall clock (agreeing with the terminal's
     `time` command and a physical stopwatch outside the game), at what
     granularity does it advance, does `time` measure a script from outside
@@ -249,8 +252,11 @@ T01  [P1]  Clock and external-instrument validation
     agree perfectly and prove only internal consistency.
 ------------------------------------------------------------------------------
 T02  [P1]  Tick ruler: seconds per executed statement, and the player's real tier
-  file(s): test_tick_ruler.bd
-  depends: T01 (external clock validation) should run first, since get_unix_time() is this test's only instrument.
+  file(s): T02.bd
+  NEEDS ON DISK:
+    Just this script alone in ~/scripts/. No imports, no file I/O, no
+    connection - fully self-contained (get_param has defaults).
+  depends on (other tests first): T01 (external clock validation) should run first, since get_unix_time() is this test's only instrument.
   Q:  Does the engine actually block a script when its per-second tick budget
     is spent — i.e. is elapsed wall-clock time a linear readout of executed-
     statement count — and what is the real seconds-per-statement (hence
@@ -269,8 +275,11 @@ T02  [P1]  Tick ruler: seconds per executed statement, and the player's real tie
     WHAT IT CANNOT TELL US. (1) Per-LINE vs per-OPERATION charging.
 ------------------------------------------------------------------------------
 T03  [P1]  Baseline noise floor: repeated runs of one fixed deterministic workload
-  file(s): test_var_probe.bd
-  depends: T02 (the tick-rate ruler), for interpretation and safety-sizing only — T02 supplies the ticks/sec figure that converts b
+  file(s): T03.bd
+  NEEDS ON DISK:
+    Just this script alone in ~/scripts/. No imports, no file I/O, no
+    connection - fully self-contained (get_param has defaults).
+  depends on (other tests first): T02 (the tick-rate ruler), for interpretation and safety-sizing only — T02 supplies the ticks/sec figure that 
   Q:  Does a minimal, imports-free, call-free, deterministic script doing
     exactly the same fixed arithmetic work take the same wall-clock time
     every run, or does run-to-run variance exist even in the simplest
@@ -293,8 +302,11 @@ T03  [P1]  Baseline noise floor: repeated runs of one fixed deterministic worklo
     WHAT IT CANNOT TELL US 1. SCOPE.
 ------------------------------------------------------------------------------
 T04  [P1]  Meter response function: points per executed line, and linear counter vs EMA
-  file(s): test_cpu_meter_response.bd
-  depends: T02 (wall-clock tick-rate ruler) — soft dependency, not blocking.
+  file(s): T04.bd
+  NEEDS ON DISK:
+    Just this script alone in ~/scripts/. No imports, no file I/O, no
+    connection - fully self-contained (get_param has defaults).
+  depends on (other tests first): T02 (wall-clock tick-rate ruler) — soft dependency, not blocking.
   Q:  How many meter points does one executed line add, is get_cpu()'s own
     line charged to the reading it returns, and is the reading a linear
     function of lines just executed or a geometric saturation curve?
@@ -314,8 +326,11 @@ T04  [P1]  Meter response function: points per executed line, and linear counter
     L1T2 stated that a slope S gives "tier = 1000/S ticks/sec".
 ------------------------------------------------------------------------------
 T05  [P1]  Call surcharge and the observer effect: what get_cpu(), get_unix_time(), str() and a user call really cost
-  file(s): test_call_price.bd
-  depends: T01 (tick-rate calibration: seconds per executed statement) — needed ONLY to convert the measured seconds-per-call into 
+  file(s): T05.bd
+  NEEDS ON DISK:
+    Just this script alone in ~/scripts/. No imports, no file I/O, no
+    connection - fully self-contained (get_param has defaults).
+  depends on (other tests first): T01 (tick-rate calibration: seconds per executed statement) — needed ONLY to convert the measured seconds-per-
   Q:  Does calling get_cpu() add measurable execution cost beyond the one tick
     its source line already costs — and what is the marginal per-call cost
     of get_unix_time(), str() and a user-defined function? Secondarily: is
@@ -334,8 +349,11 @@ T05  [P1]  Call surcharge and the observer effect: what get_cpu(), get_unix_time
     1. TIME AND TICKS ARE CONFLATED.
 ------------------------------------------------------------------------------
 T06  [P1]  Is the overload kill catchable by try/catch
-  file(s): test_kill_catch.bd
-  depends: none — no imports, no file I/O, no state, no dependency on any other experiment's result.
+  file(s): T06.bd
+  NEEDS ON DISK:
+    Just this script alone in ~/scripts/. No imports, no file I/O, no
+    connection - fully self-contained (get_param has defaults).
+  depends on (other tests first): none — no imports, no file I/O, no state, no dependency on any other experiment's result.
   Q:  Does try/catch intercept the CPU-overload kill, or is it an
     unconditional engine-level termination outside the language? And if it
     is catchable: does execution continue afterwards, does it work one call
@@ -359,8 +377,11 @@ T06  [P1]  Is the overload kill catchable by try/catch
     language observation of a handler that cannot speak is possible.
 ------------------------------------------------------------------------------
 T07  [P1]  Meter memory I: sub-second window edge and partial credit for aged lines
-  file(s): test_cpu_window.bd
-  depends: T04 (the instrument unit) — NOMINALLY, and deliberately made non-blocking.
+  file(s): T07.bd
+  NEEDS ON DISK:
+    Just this script alone in ~/scripts/. No imports, no file I/O, no
+    connection - fully self-contained (get_param has defaults).
+  depends on (other tests first): T04 (the instrument unit) — NOMINALLY, and deliberately made non-blocking.
   Q:  Does get_cpu() forget old ticks at a hard age cutoff (a sliding window
     with a definite edge) or discount them continuously (a decay) — and
     where is that edge? Measured two ways in one run: by varying the delay
@@ -386,8 +407,11 @@ T07  [P1]  Meter memory I: sub-second window edge and partial credit for aged li
     EDGE.
 ------------------------------------------------------------------------------
 T08  [P1]  Meter memory II: decay from saturation over seconds, and the ~3.7s throttle constant
-  file(s): test_t08_decay_curve.bd
-  depends: T04 (the unit: how many meter points one tick is worth, hence where the floor actually is — the (reading − floor) arithm
+  file(s): T08.bd
+  NEEDS ON DISK:
+    Just this script alone in ~/scripts/. No imports, no file I/O, no
+    connection - fully self-contained (get_param has defaults).
+  depends on (other tests first): T04 (the unit: how many meter points one tick is worth, hence where the floor actually is — the (reading − flo
   Q:  Starting from a saturated meter, what does get_cpu() read after exactly
     k whole seconds of sleeping (k = 0,1,2,3,5,8) — a step down to the
     floor, or a graded decay? And does the ~3.7s throttle constant fall out
@@ -404,13 +428,16 @@ T08  [P1]  Meter memory II: decay from saturation over seconds, and the ~3.7s th
     P1-vs-P7 replicate spread. This refutes decay-over-seconds entirely,
     confirms a sub-second window, and promotes the ~3.7s throttle constant
     to a genuine un…
-  runtime: ~100-115 seconds per run.  | repeats: 2 runs, back to back, in the same session — with a 3rd immediately if the two disagree on SHAPE (step vs graded), becaus
+  runtime: ~100-115 seconds per run.  | repeats: 2 runs, back to back, in the same session — with a 3rd immediately if the two disagree on SHAPE (step vs grade
   BLIND SPOTS:
     WHAT IT CANNOT TELL US 1. Sub-second structure is invisible.
 ------------------------------------------------------------------------------
 T09  [P2]  The ceiling: does work above 100% vanish, or is there hidden tick debt
-  file(s): test_cpu_ceiling.bd
-  depends: T04 (decay from saturation — one clean sample per delay) and T08 (the k=2 fixed-delay reference value).
+  file(s): T09.bd
+  NEEDS ON DISK:
+    Just this script alone in ~/scripts/. No imports, no file I/O, no
+    connection - fully self-contained (get_param has defaults).
+  depends on (other tests first): T04 (decay from saturation — one clean sample per delay) and T08 (the k=2 fixed-delay reference value).
   Q:  Does the meter clamp at 100 and discard everything above it, or does an
     accumulator keep counting past the ceiling so a bigger burst leaves more
     residue behind?
@@ -430,8 +457,11 @@ T09  [P2]  The ceiling: does work above 100% vanish, or is there hidden tick deb
     delay.
 ------------------------------------------------------------------------------
 T10  [P1]  Death trace: what the meter reads at the instant of the kill
-  file(s): test_kill_trace.bd
-  depends: No hard dependency: the script is fully standalone (no imports, no file I/O, no state) and can be run at any point in th
+  file(s): T10.bd
+  NEEDS ON DISK:
+    Just this script alone in ~/scripts/. No imports, no file I/O, no
+    connection - fully self-contained (get_param has defaults).
+  depends on (other tests first): No hard dependency: the script is fully standalone (no imports, no file I/O, no state) and can be run at any p
   Q:  What is get_cpu() reading at and immediately before the moment the
     overload kill fires, and for how many consecutive real seconds was it at
     the ceiling first? Secondary, from the same trace at zero extra cost:
@@ -451,8 +481,11 @@ T10  [P1]  Death trace: what the meter reads at the instant of the kill
     required: 1. Count-bounded loop replaced with a time-bounded one.
 ------------------------------------------------------------------------------
 T11  [P1]  Lethal burst boundary, per construct, with and without get_cpu() probing
-  file(s): test_kill_bound.bd
-  depends: No hard dependency — the script self-calibrates (the CALIB line derives this machine's seconds-per-iteration and prints 
+  file(s): T11.bd
+  NEEDS ON DISK:
+    Just this script alone in ~/scripts/. No imports, no file I/O, no
+    connection - fully self-contained (get_param has defaults).
+  depends on (other tests first): No hard dependency — the script self-calibrates (the CALIB line derives this machine's seconds-per-iteration a
   Q:  What is the smallest unpaced burst that kills — for pure arithmetic, for
     the cheapest log line, and for a log line with one extra concatenation —
     is that boundary sharp or stochastic, and does inserting get_cpu() calls
@@ -474,8 +507,11 @@ T11  [P1]  Lethal burst boundary, per construct, with and without get_cpu() prob
   (!) not yet adversarially reviewed - re-read the script before running.
 ------------------------------------------------------------------------------
 T12  [P1]  Yield semantics: does a sleep reset the kill timer, fully or partially, and how short can it be
-  file(s): test_yield_semantics.bd
-  depends: T11 (burst bisection: the exact lethal straight-line count n*) for the burst size — shipped at 30 lines from the documen
+  file(s): T12.bd
+  NEEDS ON DISK:
+    Just this script alone in ~/scripts/. No imports, no file I/O, no
+    connection - fully self-contained (get_param has defaults).
+  depends on (other tests first): T11 (burst bisection: the exact lethal straight-line count n*) for the burst size — shipped at 30 lines from t
   Q:  Does a single sleep between sub-lethal bursts reset the kill timer
     completely, does debt survive the sleep and accumulate across bursts
     until a stack of individually-safe bursts kills, or does the sleep drain
@@ -506,8 +542,11 @@ T12  [P1]  Yield semantics: does a sleep reset the kill timer, fully or partiall
   (!) not yet adversarially reviewed - re-read the script before running.
 ------------------------------------------------------------------------------
 T13  [P2]  Sustained plateau: is the kill threshold exactly 100% or some lower level
-  file(s): test_kill_plateau.bd
-  depends: T02 (the tick ruler) — HARD dependency, two ways.
+  file(s): T13.bd
+  NEEDS ON DISK:
+    Just this script alone in ~/scripts/. No imports, no file I/O, no
+    connection - fully self-contained (get_param has defaults).
+  depends on (other tests first): T02 (the tick ruler) — HARD dependency, two ways.
   Q:  Will a load held steadily below the ceiling (95 / 90 / 82 / 70 / 60 / 50
     percent) also kill if it is sustained long enough, or is the kill
     threshold literally 100%? Equivalently: is the killer watching the LEVEL
@@ -532,8 +571,11 @@ T13  [P2]  Sustained plateau: is the kill threshold exactly 100% or some lower l
   (!) not yet adversarially reviewed - re-read the script before running.
 ------------------------------------------------------------------------------
 T14  [P2]  Charging granularity: physical line vs statement vs evaluated operation, and the price of dead lines
-  file(s): test_charge_unit.bd
-  depends: T02 (test_tick_ruler.bd) — HARD dependency, twice over.
+  file(s): T14.bd
+  NEEDS ON DISK:
+    Just this script alone in ~/scripts/. No imports, no file I/O, no
+    connection - fully self-contained (get_param has defaults).
+  depends on (other tests first): T02 (T02.bd) — HARD dependency, twice over.
   Q:  Is tick cost charged per physical source line, per statement, or per
     evaluated operation — and do comment lines, blank lines and `pass`
     consume budget when they sit inside an executed block?
@@ -552,8 +594,11 @@ T14  [P2]  Charging granularity: physical line vs statement vs evaluated operati
   (!) not yet adversarially reviewed - re-read the script before running.
 ------------------------------------------------------------------------------
 T15  [P1]  Loop iteration cost: what one pass of a for/while costs beyond its body
-  file(s): test_loop_cost.bd
-  depends: Nothing hard-blocks running this: all three headline quantities are differences and ratios that are self-interpreting, a
+  file(s): T15.bd
+  NEEDS ON DISK:
+    Just this script alone in ~/scripts/. No imports, no file I/O, no
+    connection - fully self-contained (get_param has defaults).
+  depends on (other tests first): Nothing hard-blocks running this: all three headline quantities are differences and ratios that are self-inter
   Q:  How many ticks does a loop header cost per iteration, over and above the
     statements in its body, and does `for i in range(n)` differ from `for x
     in <list>` differ from an explicit `while`?
@@ -574,8 +619,11 @@ T15  [P1]  Loop iteration cost: what one pass of a for/while costs beyond its bo
   (!) not yet adversarially reviewed - re-read the script before running.
 ------------------------------------------------------------------------------
 T16  [P2]  if/elif chain: charged per condition tested, per branch taken, or per whole construct
-  file(s): test_elif_price.bd
-  depends: T02 (tests/test_tick_ruler.bd) — supplies sec_per_unit, needed to convert spans into absolute ticks_per_chain, and more 
+  file(s): T16.bd
+  NEEDS ON DISK:
+    Just this script alone in ~/scripts/. No imports, no file I/O, no
+    connection - fully self-contained (get_param has defaults).
+  depends on (other tests first): T02 (tests/T02.bd) — supplies sec_per_unit, needed to convert spans into absolute ticks_per_chain,
   Q:  In an 8-branch if/elif chain, is tick cost charged per condition
     evaluated, only for the branch actually taken, or for every physical
     line of the construct regardless? Secondary: what does one
@@ -601,9 +649,13 @@ T16  [P2]  if/elif chain: charged per condition tested, per branch taken, or per
   (!) not yet adversarially reviewed - re-read the script before running.
 ------------------------------------------------------------------------------
 T17  [P2]  Declaration cost: never-called funcs in a script vs in an imported module
-  file(s): T17/ folder - test_decl_cost.bd + t17_mod_a.bd + t17_mod_b.bd + t17_mod_c.bd
-           (at RUN time all four go flat in ~/scripts/ per the script's HOW TO RUN)
-  depends: STRICTLY: nothing.
+  file(s): T17.bd + T17_mod_a.bd + T17_mod_b.bd + T17_mod_c.bd
+  NEEDS ON DISK:
+    ALL FOUR files flat in ~/scripts/: T17.bd (driver) + T17_mod_a.bd +
+    T17_mod_b.bd + T17_mod_c.bd. The driver imports the three modules by
+    absolute path. Module line counts (8/32/32) and 6-line headers are load-
+    bearing - do NOT edit them.
+  depends on (other tests first): STRICTLY: nothing.
   Q:  Does a never-called `func` definition consume tick budget, and does it
     cost the same at a script's top level as inside an imported module?
     Specifically: is a declaration billed per physical source line it
@@ -628,8 +680,11 @@ T17  [P2]  Declaration cost: never-called funcs in a script vs in an imported mo
   (!) not yet adversarially reviewed - re-read the script before running.
 ------------------------------------------------------------------------------
 T18  [P2]  log() pricing: string length, concatenation depth, and the colour argument
-  file(s): test_log_price.bd
-  depends: HARD PREREQUISITES (this test is uninterpretable without them): - T02 (test_tick_ruler) — supplies seconds-per-tick, wit
+  file(s): T18.bd
+  NEEDS ON DISK:
+    Just this script alone in ~/scripts/. No imports, no file I/O, no
+    connection - fully self-contained (get_param has defaults).
+  depends on (other tests first): HARD PREREQUISITES (this test is uninterpretable without them): - T02 (T02) — supplies seconds-per
   Q:  Does log() cost exactly one tick regardless of its argument, or does
     cost scale with string length, with the number of concatenation
     operations, or with a second Color argument?
@@ -647,13 +702,16 @@ T18  [P2]  log() pricing: string length, concatenation depth, and the colour arg
   BLIND SPOTS:
     SUBSTANTIVE DISAGREEMENTS WITH THE SOURCE DRAFT (L5T3), and why this
     version departs: 1. The draft ran five SEPARATE parameterised executions
-    (`test_log_price none|short|long|concat|color`) and compared arms across
+    (`T18 none|short|long|concat|color`) and compared arms across
     runs.
   (!) not yet adversarially reviewed - re-read the script before running.
 ------------------------------------------------------------------------------
 T19  [P2]  Throttle poll cost: does watching the meter hold it up
-  file(s): test_poll_cost.bd
-  depends: T11 (meter-free kill boundary n*) - needed to size loadn safely;
+  file(s): T19.bd
+  NEEDS ON DISK:
+    Just this script alone in ~/scripts/. No imports, no file I/O, no
+    connection - fully self-contained (get_param has defaults).
+  depends on (other tests first): T11 (meter-free kill boundary n*) - needed to size loadn safely;
   Q:  How many times does throttle()'s `while get_cpu() > threshold: sleep(1)`
     loop actually iterate; does shortening the poll interval lengthen the
     wait (the instrument sustaining what it measures);
@@ -668,15 +726,18 @@ T19  [P2]  Throttle poll cost: does watching the meter hold it up
     decay, the instrument does not sustain the reading, and
     field_notes.txt's "polling more often does NOT help and can make things
     WORSE" is wrong a…
-  runtime: ~2.5 minutes typical, ~3.0 minutes worst case, at defaults (cycles=3, loadn=5, base tier).  | repeats: One run at defaults yields 5 PHASE P points and 3 within-run replicates of wait=/polls= per PHASE T condition - enough t
+  runtime: ~2.5 minutes typical, ~3.0 minutes worst case, at defaults (cycles=3, loadn=5, base tier).  | repeats: One run at defaults yields 5 PHASE P points and 3 within-run replicates of wait=/polls= per PHASE T condition 
   BLIND SPOTS:
     SUBSTANTIVE DISAGREEMENTS WITH THE SOURCE DRAFT, recorded as required.
     (a) The draft ran six separate executions, one per arm;
   (!) not yet adversarially reviewed - re-read the script before running.
 ------------------------------------------------------------------------------
 T20  [P1]  Cross-run carryover: the meter on line 1 after four different preludes
-  file(s): test_t20_carryover.bd
-  depends: Nominally T03 (the fresh-script baseline reference block and the run-to-run range R its post-kill medians would be compa
+  file(s): T20.bd
+  NEEDS ON DISK:
+    Just this script alone in ~/scripts/. No imports, no file I/O, no
+    connection - fully self-contained (get_param has defaults).
+  depends on (other tests first): Nominally T03 (the fresh-script baseline reference block and the run-to-run range R its post-kill medians woul
   Q:  Does the CPU meter reset between script runs? Specifically: does load
     left by a script that was just killed — or one that just finished
     normally — still read on the very first executable line of the next
@@ -701,8 +762,11 @@ T20  [P1]  Cross-run carryover: the meter on line 1 after four different prelude
   (!) not yet adversarially reviewed - re-read the script before running.
 ------------------------------------------------------------------------------
 T21  [P1]  Two processes: does the meter sum, and is the tick budget shared or per-process
-  file(s): T21/ folder - test_t21_watch.bd (foreground) + test_t21_ghost.bd (run with &)
-  depends: T04 (meter response function — what one executed line is worth in meter points) sharpens this test by saying whether a r
+  file(s): T21.bd + T21_ghost.bd
+  NEEDS ON DISK:
+    T21.bd + T21_ghost.bd both in ~/scripts/. Launch T21_ghost with & FIRST,
+    then run T21 in the foreground.
+  depends on (other tests first): T04 (meter response function — what one executed line is worth in meter points) sharpens this test by saying w
   Q:  When two of the player's scripts run at once, does get_cpu() return the
     sum of both processes' load, and do they share one ticks/sec budget or
     each get a full one?
@@ -724,8 +788,12 @@ T21  [P1]  Two processes: does the meter sum, and is the tick budget shared or p
   (!) not yet adversarially reviewed - re-read the script before running.
 ------------------------------------------------------------------------------
 T22  [P1]  Kill scope: does an overload take down a second, perfectly-paced process, and does the victim see it coming
-  file(s): T22/ folder - test_t22_bomb.bd (run with &) + test_t22_victim.bd (foreground)
-  depends: NOMINALLY T21 (two-process meter summation / budget sharing), T10 (solo death trace) and T06 (is the kill catchable) — b
+  file(s): T22.bd + T22_bomb.bd
+  NEEDS ON DISK:
+    T22.bd + T22_bomb.bd both in ~/scripts/, and /home/<you>/ must be
+    writable (both save() a status file there, since a backgrounded script`s
+    log is not visible). Launch order per the script header.
+  depends on (other tests first): NOMINALLY T21 (two-process meter summation / budget sharing), T10 (solo death trace) and T06 (is the kill catc
   Q:  When one process overloads, is the kill session-wide (it terminates a
     second, well-paced script) or per-process — and in the session-wide
     case, what does the victim's own last get_cpu() reading show?
@@ -744,8 +812,11 @@ T22  [P1]  Kill scope: does an overload take down a second, perfectly-paced proc
   (!) not yet adversarially reviewed - re-read the script before running.
 ------------------------------------------------------------------------------
 T23  [P3]  Terminal scrollback: does printing into a full terminal cost more than into a cleared one
-  file(s): test_scrollback.bd
-  depends: T03 (baseline noise floor R, from 8 back-to-back runs of one fixed deterministic workload) — hard dependency: the predic
+  file(s): T23.bd
+  NEEDS ON DISK:
+    Just this script alone in ~/scripts/. No imports, no file I/O, no
+    connection - fully self-contained (get_param has defaults).
+  depends on (other tests first): T03 (baseline noise floor R, from 8 back-to-back runs of one fixed deterministic workload) — hard dependency: 
   Q:  Does the volume of text already printed this session change how fast a
     script executes? Holding the printed payload exactly constant (the same
     six log() calls of the same two-character string every time), does the
@@ -759,7 +830,7 @@ T23  [P3]  Terminal scrollback: does printing into a full terminal cost more tha
     SCROLLBACK IS FREE. All four phase means agree within R of each other,
     the four PH-DONE span= values agree within 4R, and ARITH is likewise
     flat — no dose-response, no reversal to reverse.
-  runtime: ~2 min 45 s per run (16 measured rounds at ~5.6s, two fill blocks at ~20s, plus ~35s of header, phase boundaries, snapshot and summary).  | repeats: Two runs minimum, back to back in one session: RUN1 after a terminal `clear` (launches into an empty terminal) and RUN2 
+  runtime: ~2 min 45 s per run (16 measured rounds at ~5.6s, two fill blocks at ~20s, plus ~35s of header, phase boundaries, snapshot and summary).  | repeats: Two runs minimum, back to back in one session: RUN1 after a terminal `clear` (launches into an empty terminal)
   BLIND SPOTS:
     SUBSTANTIVE DISAGREEMENT BETWEEN THE SOURCE DRAFTS, and how it was
     resolved. L4T3 wanted the terminal filled by hand with non-script
@@ -768,8 +839,11 @@ T23  [P3]  Terminal scrollback: does printing into a full terminal cost more tha
   (!) not yet adversarially reviewed - re-read the script before running.
 ------------------------------------------------------------------------------
 T24  [P2]  Pulse hunt: an unaliased, controller-free time series looking for periodic engine-side events
-  file(s): test_t24_pulse.bd
-  depends: T03 (baseline noise floor — 8 back-to-back runs of one fixed deterministic workload) defines what a "slow sample" actual
+  file(s): T24.bd
+  NEEDS ON DISK:
+    Just this script alone in ~/scripts/. No imports, no file I/O, no
+    connection - fully self-contained (get_param has defaults).
+  depends on (other tests first): T03 (baseline noise floor — 8 back-to-back runs of one fixed deterministic workload) defines what a "slow samp
   Q:  Is there a periodic engine-side event (autosave, world simulation, a
     trace or IDS tick) that intermittently steals tick throughput from an
     already-running script — and if so, what is its period?
@@ -793,8 +867,11 @@ T24  [P2]  Pulse hunt: an unaliased, controller-free time series looking for per
   (!) not yet adversarially reviewed - re-read the script before running.
 ------------------------------------------------------------------------------
 T25  [P2]  Session age: fresh boot vs long-open session vs immediate restart
-  file(s): test_session_age.bd
-  depends: T03 (baseline noise floor — 8 back-to-back runs of one fixed deterministic workload) supplies R, the threshold every blo
+  file(s): T25.bd
+  NEEDS ON DISK:
+    Just this script alone in ~/scripts/. No imports, no file I/O, no
+    connection - fully self-contained (get_param has defaults).
+  depends on (other tests first): T03 (baseline noise floor — 8 back-to-back runs of one fixed deterministic workload) supplies R, the threshold
   Q:  Does something accumulate across a play session such that one fixed,
     byte-identical workload runs measurably slower the longer the game has
     been open — and does quitting and relaunching the game reverse it?
@@ -821,8 +898,12 @@ T25  [P2]  Session age: fresh boot vs long-open session vs immediate restart
   (!) not yet adversarially reviewed - re-read the script before running.
 ------------------------------------------------------------------------------
 T26  [P2]  Connected state: does an open connection, a live trace or a cooling trace feed the local meter
-  file(s): test_t26_conn_floor.bd
-  depends: T04 (test_cpu_meter_response.bd) for the meter-response unit — what one tick is worth in meter points, which turns "B re
+  file(s): T26.bd
+  NEEDS ON DISK:
+    T26.bd in ~/scripts/. The disconnected/null part needs nothing; the
+    CONNECTED phases need a REACHABLE target host passed as the `host`
+    param.
+  depends on (other tests first): T04 (T04.bd) for the meter-response unit — what one tick is worth in meter points, which t
   Q:  With the script doing the identical trivial work every second, does
     get_cpu()'s local idle floor read higher (a) while a connection is open
     and its trace is counting down, and (b) while a trace is merely COOLING
@@ -840,15 +921,19 @@ T26  [P2]  Connected state: does an open connection, a live trace or a cooling t
     are zero or equal across phases, in both connected runs. That closes "an
     open connection is intrinsically more expensive per line" and "a live or
     cooling trace eats the player's CPU budget" as explanations for the exi…
-  runtime: ~70 seconds per run (about 12 of them connected), and three runs back to back with no waiting between them: ~3.5 minutes of script time total, well un  | repeats: Three runs, in this order and with no waiting between them: one PART N null control first (while trace state is still cl
+  runtime: ~70 seconds per run (about 12 of them connected), and three runs back to back with no waiting between them: ~3.5 minutes of script time total, well un  | repeats: Three runs, in this order and with no waiting between them: one PART N null control first (while trace state i
   BLIND SPOTS:
     RESOLUTION FLOOR. The meter is quantised in what appears to be 10-point
     steps (one tick at base tier).
   (!) not yet adversarially reviewed - re-read the script before running.
 ------------------------------------------------------------------------------
 T27  [P3]  remote_run() billing: does a remote payload burn local or remote budget
-  file(s): test_t27_remote_billing.bd
-  depends: T26 (does an open connection, a live trace or IDS activity feed the local meter) and T21 (what a second LOCAL process do
+  file(s): T27.bd
+  NEEDS ON DISK:
+    T27.bd in ~/scripts/, PLUS: the Pivot Source tool (remote_run needs it),
+    a reachable+cracked remote host (`host` param), and a runnable .bd
+    already uploaded on that host at the `rpath` param.
+  depends on (other tests first): T26 (does an open connection, a live trace or IDS activity feed the local meter) and T21 (what a second LOCAL 
   Q:  When a script launched with remote_run() saturates the CPU it runs on,
     does the player's local get_cpu() rise and do local scripts get killed,
     or is the cost charged entirely to the remote box?
@@ -874,8 +959,11 @@ T27  [P3]  remote_run() billing: does a remote payload burn local or remote budg
   (!) not yet adversarially reviewed - re-read the script before running.
 ------------------------------------------------------------------------------
 T28  [P4]  Tier scaling card: is the meter tier-normalised and is the kill wall-clock or fixed-tick
-  file(s): test_scope_tiercard.bd
-  depends: Baseline reference values it cross-checks rather than re-derives: T02 (tick rate / seconds-per-unit — CALIB burst8 shoul
+  file(s): T28.bd
+  NEEDS ON DISK:
+    T28.bd in ~/scripts/. Optionally reads ~/.config/blackdoor.conf for the
+    tick rate; falls back to base tier (10 t/s) if that file is absent.
+  depends on (other tests first): Baseline reference values it cross-checks rather than re-derives: T02 (tick rate / seconds-per-unit — CALIB bu
   Q:  Is get_cpu() a tier-normalised percentage or an absolute tick count, and
     is the overload kill 5 wall-clock seconds or a fixed number of ticks —
     i.e. what exactly does buying a faster CPU change?
