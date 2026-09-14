@@ -601,7 +601,8 @@ T16  [P2]  if/elif chain: charged per condition tested, per branch taken, or per
   (!) not yet adversarially reviewed - re-read the script before running.
 ------------------------------------------------------------------------------
 T17  [P2]  Declaration cost: never-called funcs in a script vs in an imported module
-  file(s): test_decl_cost.bd (+t17_mod_a/b/c.bd)
+  file(s): T17/ folder - test_decl_cost.bd + t17_mod_a.bd + t17_mod_b.bd + t17_mod_c.bd
+           (at RUN time all four go flat in ~/scripts/ per the script's HOW TO RUN)
   depends: STRICTLY: nothing.
   Q:  Does a never-called `func` definition consume tick budget, and does it
     cost the same at a script's top level as inside an imported module?
@@ -700,7 +701,7 @@ T20  [P1]  Cross-run carryover: the meter on line 1 after four different prelude
   (!) not yet adversarially reviewed - re-read the script before running.
 ------------------------------------------------------------------------------
 T21  [P1]  Two processes: does the meter sum, and is the tick budget shared or per-process
-  file(s): test_t21_watch.bd (+test_t21_ghost.bd)
+  file(s): T21/ folder - test_t21_watch.bd (foreground) + test_t21_ghost.bd (run with &)
   depends: T04 (meter response function — what one executed line is worth in meter points) sharpens this test by saying whether a r
   Q:  When two of the player's scripts run at once, does get_cpu() return the
     sum of both processes' load, and do they share one ticks/sec budget or
@@ -723,7 +724,7 @@ T21  [P1]  Two processes: does the meter sum, and is the tick budget shared or p
   (!) not yet adversarially reviewed - re-read the script before running.
 ------------------------------------------------------------------------------
 T22  [P1]  Kill scope: does an overload take down a second, perfectly-paced process, and does the victim see it coming
-  file(s): test_t22_bomb.bd + test_t22_victim.bd
+  file(s): T22/ folder - test_t22_bomb.bd (run with &) + test_t22_victim.bd (foreground)
   depends: NOMINALLY T21 (two-process meter summation / budget sharing), T10 (solo death trace) and T06 (is the kill catchable) — b
   Q:  When one process overloads, is the kill session-wide (it terminates a
     second, well-paced script) or per-process — and in the session-wide
