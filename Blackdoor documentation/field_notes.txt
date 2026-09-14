@@ -1170,6 +1170,28 @@ CONFIRMED THIS SESSION (live testing of the refactored Active tree):
     something specific to menu.bd's own code path, most plausibly
     something size-dependent in get_entry()'s token-decode loop, as
     already suspected there.
+  - Concurrent processes have INDEPENDENT tick budgets - confirmed both
+    directions in one T01 run (STEPS 7-8): a foreground `T01 10 clock
+    FG` measured interval=27.407s while a background `T01 25 clock BG &`
+    was alive, matching the solo baseline (27.394-27.401s from earlier
+    runs) within 6-13ms; the background job's own interval (67.906s at
+    blocks=25) matched a linear model fit from two EARLIER solo runs
+    (predicted 67.9135s) within 7.5ms, despite the foreground script
+    running concurrently with it for part of its duration. Neither
+    process measurably slowed the other down. This DECISIVELY REFUTES
+    "concurrent processes share one tick budget" for this load shape,
+    and rules out a stray/leftover simple background script as an
+    explanation for the menu.bd run-to-run variance mystery - though it
+    does NOT rule out heavier concurrent contention (real file I/O or
+    network calls running at the same time), which would need its own
+    dedicated test. Separately: `ps`/`jobs` output has a STATUS column
+    beyond PID+NAME ("running (bg)"), but it's a running/bg state flag,
+    not a cpu/load/tick NUMBER - there is still no way to decompose
+    get_cpu()'s aggregate reading per-process; the single-contributor
+    assumption behind every get_cpu() reading in this investigation
+    still stands unconfirmed either way, just not falsified by this.
+    (T01 is now fully complete - all 8 steps done. Full run-by-run
+    detail: CPU Research/results.txt runs 1-10.)
 
 STILL UNRESOLVED / CONFIRMED ABSENT:
   - No real "-flag" command-line syntax exists via @param - it binds

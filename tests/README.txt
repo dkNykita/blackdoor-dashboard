@@ -42,7 +42,7 @@ resolve_raw_target(), which skips the str()). Lesson: get_param()'s
 return type is NOT guaranteed to match the inline fallback argument's
 type - always str() it before any string method.
 
-T01.bd  (T01, CPU-load research programme - NOT a menu.bd test)
+T01.bd  (T01, CPU-load research programme - NOT a menu.bd test)  [DONE]
   Goal: validate the ONLY instrument the whole programme depends on -
   get_unix_time() - against two independent clocks (a physical
   stopwatch, the `time` command) before trusting any interval this
@@ -51,11 +51,8 @@ T01.bd  (T01, CPU-load research programme - NOT a menu.bd test)
   that name; does it return an int (per web_api.txt) or a float; is
   line pacing really ~100ms/line at base tier or tick-quantised; does
   in-game elapsed time match real wall-clock time.
-  Progress: STEP 0 (ps/jobs baseline, clean), STEP 1 (2/2 repeats),
-  STEP 3 (`time run T01 10`), STEP 4 (`time run T01 20`), and STEPS
-  5-6 (fatal mode under `time`, 2/2 repeats) are all COMPLETE. Only
-  STEPS 7-8 (background/foreground concurrency) remain - T01 as a
-  whole is close but not finished yet.
+  Progress: ALL 8 STEPS COMPLETE. T01 is the first fully-finished test
+  in the programme.
   Result for STEP 1 (2/2 repeats in): raw_clock_t0 was a real Sept-2026
   Unix epoch value WITH a fractional part on both runs (1789377462.328,
   1789377693.794) - CONFIRMS get_unix_time() is genuinely epoch-based,
@@ -104,8 +101,28 @@ T01.bd  (T01, CPU-load research programme - NOT a menu.bd test)
   for the still-open menu.bd variance mystery: a data-free fixed tick
   sequence reproduces to ~1ms here, so that variance is NOT a general
   noise floor in the tick/clock system - it's specific to menu.bd's own
-  code path. See CPU Research/results.txt (runs 3-8) and field_notes.txt
-  for the promoted findings.
+  code path.
+  Result for STEPS 7-8 (bg/fg concurrency): ps/jobs show a STATUS column
+  beyond PID+NAME ("running (bg)"), but it's a state flag, not a cpu/
+  load/tick number - no per-process CPU accounting exists, aggregate
+  get_cpu() is still all we get. Concurrency itself: FG's interval while
+  a BG job (blocks=25) was alive (27.407s) matched the solo baseline
+  (27.394-27.401s) within 6-13ms; BG's own interval (67.906s) matched a
+  linear model fit from two EARLIER solo runs (predicted 67.9135s at
+  blocks=25) within 7.5ms, despite FG running concurrently with it for
+  part of its duration. Both directions DECISIVELY REFUTE "concurrent
+  processes share one tick budget" for this load shape - rules out a
+  stray simple background script as an explanation for the menu.bd
+  variance mystery (does not rule out heavier concurrent I/O).
+  T01 OVERALL VERDICT: the instrument is sound - get_unix_time() is
+  real-epoch, float-returning, ~100ms/line-accurate at base tier, not
+  scaled/simulated, and unaffected by ordinary concurrent processes.
+  `time` is usable for completed runs (constant +1.70s overhead to
+  subtract) but blind to killed ones. Every interval this investigation
+  has ever recorded stands as originally understood - the run-to-run
+  variance mystery is NOT an instrument artifact. See CPU
+  Research/results.txt (runs 1-10, full history) and field_notes.txt
+  for all promoted findings.
 
 test_cpu_decay.bd
   Goal: characterize get_cpu()'s actual behavior over time in isolation

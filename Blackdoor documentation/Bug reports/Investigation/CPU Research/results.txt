@@ -321,3 +321,78 @@ NOTES       : burst_start was +4.301s (run 7) and +4.300s (run 8) -
               get_entry()'s token-decode loop, as already suspected).
               STEP 5-6 COMPLETE. Only STEPS 7-8 (bg/fg concurrency)
               remain to close T01 entirely.
+
+RUN-ID      : T01 STEPS 7-8 (run 9-10/? - background/foreground
+              concurrency, the shared-tick-budget question. T01 COMPLETE
+              after this run - all 8 steps done.)
+WHEN        : 2026-09-14, same session as runs 1-8
+START-STATE : presumed fresh going in (STEP 0 not re-checked immediately
+              before this run, but nothing else was started since the
+              last confirmed-clean check)
+TIER        : base 10t/s assumed, not yet cross-checked against T02
+RAW         : Nykita@localhost ~/scripts/Jobs > run T01 25 clock BG &
+               [286] Started T01.bd &
+               Nykita@localhost ~/scripts/Jobs > ps
+                 PID  NAME         STATUS
+                 286    T01.bd    running (bg)
+               Nykita@localhost ~/scripts/Jobs > jobs
+                 PID  NAME         STATUS
+                 286    T01.bd    running (bg)
+               Nykita@localhost ~/scripts/Jobs > T01 10 clock FG
+               T01[FG] raw_clock_t0=1789378723.566 mode=clock blocks=10
+               T01[FG] gran d1=0.09800004959106
+               T01[FG] gran d2=0.09899997711182
+               T01[FG] gran d3=0.10099983215332
+               T01[FG] gran d4=0.10600018501282
+               T01[FG] INTERVAL START - START YOUR STOPWATCH NOW
+               T01[FG] INTERVAL END - STOP STOPWATCH NOW - interval=27.4070000648499s
+               T01[FG] DONE blocks=10 interval=27.4070000648499s (vs stopwatch) total_from_first_line=38.4059998989105s (vs `time`)
+               Nykita@localhost ~/scripts/Jobs > fg 286
+               [286] Foregrounded T01.bd
+               T01[BG] INTERVAL END - STOP STOPWATCH NOW - interval=67.9059998989105s
+               T01[BG] DONE blocks=25 interval=67.9059998989105s (vs stopwatch) total_from_first_line=78.9049999713898s (vs `time`)
+SCALAR      : FG interval (concurrent with BG alive) = 27.407s ; solo
+              baseline range from runs 3-5 = 27.394-27.401s ; diff =
+              +0.006 to +0.013s. BG interval (blocks=25, concurrent with
+              FG for part of its run) = 67.906s ; linear-model solo
+              prediction from runs 5+6 (blocks=10=27.394s,
+              blocks=20=54.407s -> slope=2.7013s/block,
+              intercept=0.381s) = 67.9135s at blocks=25 ; diff=0.0075s.
+KILLED?     : no (both ran to completion)
+VS PREDICT  : ps AND jobs show a third column beyond PID+NAME: STATUS
+              ("running (bg)"). This is a STATE value (running/bg), not
+              a CPU/LOAD/TICK NUMBER - it tells you a process is alive
+              and whether it's fg/bg, but gives no numeric measure of
+              its resource consumption. Reading the test's own bucket
+              literally ("state" was listed as one of the decomposability
+              indicators), this is borderline; reading it by intent (can
+              you decompose get_cpu()'s aggregate PER PROCESS from this
+              column), the answer is NO - there is no cpu/load/ticks/
+              runtime number anywhere in ps/jobs output. Landing this on
+              the "pid and name only [for accounting purposes] -> no
+              per-process accounting exists; aggregate is all we will
+              ever get" side, with the STATUS column noted as a real but
+              non-numeric exception.
+              Concurrency: FG's interval while BG was alive (27.407s) is
+              within 6-13ms of the solo baseline (27.394-27.401s) -
+              nowhere near the "1.5x slower" shared-budget signature,
+              solidly inside "within 10% of solo" (in fact within
+              0.05%). BG's own interval (67.906s, blocks=25, with FG
+              running concurrently for its final ~27s) came in within
+              7.5ms of the value a pure linear model fit from the two
+              EARLIER solo runs (blocks=10, blocks=20) predicts for
+              blocks=25 (67.9135s) - i.e. running concurrently with FG
+              did not measurably slow BG down either. Both directions
+              CONFIRM budgets are INDEPENDENT and DECISIVELY REFUTE
+              "concurrent processes share one tick budget."
+NOTES       : T01 IS NOW FULLY COMPLETE - all 8 steps done. This result
+              is significant beyond T01 itself: it rules out "a stray/
+              leftover background process silently competing for ticks"
+              as a candidate explanation for the still-unsolved menu.bd
+              run-to-run variance mystery, at least for a background
+              load of this shape (a simple, non-network, non-file-I/O
+              script). It does NOT rule out heavier concurrent
+              contention (e.g. a background script doing real file I/O
+              or network calls at the same time) - that would need its
+              own dedicated test if the variance mystery is ever
+              revisited with a live theory pointing at it.
