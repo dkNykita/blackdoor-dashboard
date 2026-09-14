@@ -281,6 +281,37 @@ directly to menu.bd + utils/dashboard.bd)
   (a secondary per-host credentials index, to reduce the FIRST-call
   cost itself - not yet attempted).
 
+test_session_age.bd  (T25, CPU-load research programme - NOT a menu.bd test)
+  Goal: does something accumulate across a play session such that one
+  fixed workload runs measurably slower the longer the game has been
+  open - and does restarting the game reverse it? The manipulation is
+  entirely OUTSIDE the script: one byte-identical probe (6 rounds of the
+  same 20-line unrolled burst T20 uses, each bracketed by sleep(2)) run
+  four times in each of three session states - A fresh boot, B after 15+
+  min of ordinary play including two or three menu.bd overload kills,
+  C immediately after a second relaunch. Headline scalar is work= (the
+  summed burst seconds, undiluted by the sleeps, carried as a running
+  total on every round line so a killed run still yields a partial).
+  Secondary: LINE1_cpu, get_cpu() on the very first executable line,
+  which on the FIRST script of a fresh boot also separates "the meter is
+  clean at game load" from "the meter looked clean because the player
+  idled first" - an assumption no test has ever isolated.
+  THE REVERSAL IS THE CLAIM: a rise in B without a fall in C is NOT
+  confirmation, it is the separate and bigger finding that something
+  survives a relaunch. Discriminates S1 no effect / S2 reversible
+  ageing / S3 durable ageing / S4 per-run-not-per-session (block B's own
+  four runs climbing among themselves). Matters because the 5-run
+  variance block (+40.7/+111.0/+40.3/+65.5/+64.3s) was collected late in
+  one long, heavily crashed session and has been treated throughout as
+  five independent samples.
+  Progress: authored, not yet run. Needs T03's noise-floor range R (or
+  falls back to its own block-A range, whichever is larger) and T20's
+  carryover verdict to attribute a block difference to session age
+  rather than to the runs immediately preceding it. Cannot be done in
+  one sitting - two game restarts and 15+ min of play between blocks -
+  so schedule it around the rest of the programme.
+  Result: pending.
+
 test_elif_price.bd  (T16, CPU-load research programme - NOT a menu.bd test)
   Goal: in an 8-branch if/elif chain, is the tick cost charged PER
   CONDITION EVALUATED, only for the BRANCH TAKEN, or for EVERY PHYSICAL
