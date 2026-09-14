@@ -151,3 +151,51 @@ NOTES       : STEP 1 is now COMPLETE (2/2 repeats). VERDICT for STEP 1
               should be captured on the next fresh run regardless of
               which step it's for. STEPS 3-4, 5-6, 7-8 remain
               outstanding.
+
+RUN-ID      : T01 STEP 0 baseline + STEP 3 (run 5/? - `time` instrument
+              opened for the first time this whole investigation)
+WHEN        : 2026-09-14, same session as runs 1-4
+START-STATE : fresh ; ps/jobs FINALLY captured and clean:
+              `ps` -> "No running processes." ; `jobs` -> "No running
+              processes." - closes the STEP 0 gap noted in runs 3-4.
+TIER        : base 10t/s assumed, not yet cross-checked against T02
+RAW         : Nykita@localhost ~/scripts/Jobs > time run T01 10
+               T01[A] raw_clock_t0=1789378102.676 mode=clock blocks=10
+               T01[A] gran d1=0.09999990463257
+               T01[A] gran d2=0.10000014305115
+               T01[A] gran d3=0.09999990463257
+               T01[A] gran d4=0.09999990463257
+               T01[A] INTERVAL START - START YOUR STOPWATCH NOW
+               T01[A] INTERVAL END - STOP STOPWATCH NOW - interval=27.3940000534058s
+               T01[A] DONE blocks=10 interval=27.3940000534058s (vs stopwatch) total_from_first_line=38.3939998149872s (vs `time`)
+               (time: 40.094s)
+SCALAR      : time=40.094s vs total_from_first_line=38.3939998149872s ;
+              diff=+1.700000185s (time reads higher)
+KILLED?     : no (mode=clock, ran to completion)
+VS PREDICT  : `time T01 10` (bare) failed 3x with "Unknown command:
+              t01" (lowercased) regardless of spacing/parens/comma
+              syntax - `time` only recognizes real builtin verbs, not a
+              bare script name. `time run T01 10` (the exact fallback
+              T01.bd's own header suggested) worked on the first try -
+              CONFIRMS `time` IS usable as an external instrument
+              (against `run`, not bare invocation) - the "no external
+              instrument exists" branch is REFUTED. diff=1.700s is
+              notably MORE than the test's own "~1s -> agree, usable
+              as-is" bucket, and lands instead near the "differ by a
+              fixed amount -> process start/teardown overhead" bucket -
+              but that can't be confirmed as FIXED (vs proportional,
+              i.e. `time` and get_unix_time() running on different
+              clocks - a major finding) from one data point. STEP 4
+              (`time run T01 20`) is required to tell those apart: same
+              ~1.7s at blocks=20 -> fixed overhead, subtract from now
+              on; a diff that grows with run length -> different
+              clocks entirely. raw_clock_t0/granularity again land in
+              the same real-epoch-float / ~0.10-jitter buckets as runs
+              3-4 (third confirmation of both, already promoted to
+              field_notes.txt - not re-promoting, just corroborating).
+NOTES       : `run <script> <args>` (not bare `<script> <args>`) is
+              confirmed as the syntax `time` needs to wrap a script -
+              worth using `run T01 ...` form generally when composing
+              with any other terminal command, not just `time`. STEP 4
+              is the next step; STEPS 5-6 (fatal mode under `time`) and
+              7-8 (bg/fg concurrency) still outstanding after that.

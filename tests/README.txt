@@ -51,11 +51,12 @@ T01.bd  (T01, CPU-load research programme - NOT a menu.bd test)
   that name; does it return an int (per web_api.txt) or a float; is
   line pacing really ~100ms/line at base tier or tick-quantised; does
   in-game elapsed time match real wall-clock time.
-  Progress: STEP 1 is now COMPLETE (2/2 repeats, both with a stopwatch).
-  STEP 0 (ps/jobs baseline - never captured in any of the 3 real runs
-  so far), STEPS 3-4 (`time` comparison), STEPS 5-6 (fatal-mode kill
-  delay under `time`), STEPS 7-8 (background/foreground concurrency)
-  all still outstanding - T01 as a whole is NOT a finished test yet.
+  Progress: STEP 0 (ps/jobs baseline, now clean), STEP 1 (2/2 repeats),
+  and STEP 3 (`time run T01 10`) are COMPLETE. STEP 4 (`time run T01
+  20`, needed to tell fixed overhead from a different-clocks finding),
+  STEPS 5-6 (fatal-mode kill delay under `time`), STEPS 7-8 (background/
+  foreground concurrency) still outstanding - T01 as a whole is NOT a
+  finished test yet.
   Result for STEP 1 (2/2 repeats in): raw_clock_t0 was a real Sept-2026
   Unix epoch value WITH a fractional part on both runs (1789377462.328,
   1789377693.794) - CONFIRMS get_unix_time() is genuinely epoch-based,
@@ -73,11 +74,20 @@ T01.bd  (T01, CPU-load research programme - NOT a menu.bd test)
   the test itself), NOT with the alternate "differ by >1.5s" scaled-time
   signature, which neither run comes remotely close to. VERDICT: no
   evidence in-game time is scaled/simulated, but the margin is tight
-  enough that STEPS 3-4 (`time` vs total_from_first_line, which don't
-  depend on human reaction time at all) are needed to close this
-  cleanly rather than resting on stopwatch precision. See CPU
-  Research/results.txt for the raw logs (runs 3-4) and field_notes.txt
-  for the promoted findings.
+  enough that STEP 3-4 data (below) is the tighter check.
+  Result for STEP 3: bare `time T01 10` fails ("Unknown command: t01",
+  lowercased) regardless of spacing/parens/comma syntax - `time` only
+  wraps real builtin verbs, not a bare script name. `time run T01 10`
+  (the exact fallback the script's own header suggests) worked first
+  try - CONFIRMS `time` is a usable external instrument (the "no
+  instrument exists" branch is refuted), and confirms `run <script>
+  <args>` as the general syntax for composing a script invocation with
+  another terminal command. time=40.094s vs total_from_first_line=
+  38.394s -> diff=+1.700s, notably more than the test's "~1s -> agree,
+  usable as-is" bucket - lands closer to "fixed overhead" but can't be
+  told apart from "different clocks" (a major finding) without STEP 4's
+  blocks=20 data point for comparison. See CPU Research/results.txt for
+  the raw logs (runs 3-5) and field_notes.txt for the promoted findings.
 
 test_cpu_decay.bd
   Goal: characterize get_cpu()'s actual behavior over time in isolation
