@@ -253,3 +253,27 @@ directly to menu.bd + utils/dashboard.bd)
   field_notes.txt for the full reasoning and the next-idea it points to
   (a secondary per-host credentials index, to reduce the FIRST-call
   cost itself - not yet attempted).
+
+test_elif_price.bd  (T16, CPU-load research programme - NOT a menu.bd test)
+  Goal: in an 8-branch if/elif chain, is the tick cost charged PER
+  CONDITION EVALUATED, only for the BRANCH TAKEN, or for EVERY PHYSICAL
+  LINE of the construct regardless? read_entries()'s per-token dispatch
+  is exactly this shape (7-deep starts_with() elif chain, no else), and
+  the real crash trace shows late-branch tokens costing more than early
+  ones - an observation never separated from the decode work each branch
+  does. Six arms share ONE measuring loop; only the bracketed window
+  differs: CTRL (empty - the floor), LAST (k=8), NOMATCH (k=99, the
+  pivot: eight failed tests and NO body line), FIRST (k=1), CTRL-B
+  (drift control), STRLAST (the real starts_with() shape, 8 deep, whose
+  delta over LAST prices one starts_with() condition). The three headline
+  arms are the SAME function called with a different argument, so the 16
+  source lines are provably identical and k cannot be constant-folded.
+  Arm order runs UPHILL on purpose (LAST before FIRST): drift can only
+  hide the predicted spread, never manufacture it. Wall clock only;
+  get_cpu() appears exactly twice per arm, outside every measured
+  bracket. Four models, four distinct signatures - see the header table.
+  NOMATCH is the verdict pivot: NOMATCH == CTRL means condition testing
+  is free; NOMATCH near LAST means testing is where the cost is.
+  Progress: authored, not yet run. Converts to absolute ticks via T02's
+  sec_per_unit; its rider cross-checks T14's per-call verdict.
+  Result: pending.

@@ -1,0 +1,276 @@
+# tests/test_elif_price.bd - T16: what an if/elif chain actually charges.
+#
+# ONE QUESTION: in an 8-branch if/elif chain, is the tick cost charged
+# PER CONDITION EVALUATED, only for the BRANCH TAKEN, or for EVERY
+# PHYSICAL LINE of the construct no matter what runs?
+#
+# WHY THIS ONE MATTERS
+#   utils/hostdata.bd's read_entries() per-token dispatch IS this shape:
+#   a starts_with() elif chain, 7 branches deep, no else, run once per
+#   token of every line of host_intel.txt. The real crash trace shows
+#   late-branch tokens costing more than early ones (token 1 fw= done at
+#   +15.5s, token 3 specs= at +35.6s) - but that has never been separated
+#   from the decode work each branch does. If cost is per condition
+#   evaluated, branch ORDER is a free optimisation worth ~6 ticks a token
+#   and the cheap fix is to move the common prefixes to the top. If the
+#   whole construct is charged regardless, reordering is worthless and the
+#   chain itself has to be replaced. Nobody has priced it.
+#
+# METHOD - six arms, one shared measuring loop, WALL CLOCK ONLY
+#   Every arm runs the IDENTICAL round body:
+#       sleep(2) / ts = get_unix_time() / <BRACKET> / el = ...- ts /
+#       sleep(1) / bookkeeping / log
+#   Only <BRACKET> differs. All sleeping, all logging, all string
+#   building happens OUTSIDE the bracket, so instrumentation cost can
+#   never enter the measurement, and the two bracket lines are identical
+#   in every arm so they cancel exactly in every delta.
+#
+#   The three headline arms are the SAME FUNCTION called three times with
+#   a different argument - not three copy-pasted blocks. That makes the
+#   16 source lines provably identical across arms and makes constant
+#   folding impossible (k is a parameter, unknown at parse time):
+#     CTRL     empty bracket            the floor: bracket overhead alone
+#     LAST     k=8  -> branch 8 matches 8 conditions tested, 1 body line
+#     NOMATCH  k=99 -> nothing matches  8 conditions tested, NO body line
+#     FIRST    k=1  -> branch 1 matches 1 condition tested, 1 body line
+#     CTRL-B   empty bracket again      drift control, must match CTRL
+#     STRLAST  real shape, 8x starts_with(), branch 8 matches  (rider)
+#   Every branch body is the same single statement (a = a + 1), so body
+#   cost is identical whichever branch wins.
+#
+#   ARM ORDER IS DELIBERATE AND RUNS UPHILL. LAST executes BEFORE FIRST.
+#   The hypothesis predicts LAST > FIRST; any monotone warm-up or drift
+#   inside a run pushes later arms UP, i.e. pushes FIRST up towards LAST.
+#   So a confirmed spread cannot be drift - drift can only hide the
+#   effect, never manufacture it. CTRL runs first as a live instrument
+#   check (its burst must be ~one line); CTRL-B repeats it at the end.
+#
+# HOW TO READ THE RESULT - four models, four distinct signatures
+#   Work in 5-round SUMS minus the CTRL sum (d_first / d_last /
+#   d_nomatch, printed for you on the SUM2 line). One chain = 8 condition
+#   lines + at most 1 body line. Seconds below assume base tier
+#   (0.1 s/tick); scale by sec_per_unit from T02 test_tick_ruler.bd on
+#   any other tier - the PATTERN, not the absolute value, is the verdict.
+#
+#     model                  d_first  d_last  d_nomatch   ticks/chain
+#     PER CONDITION (s-c)     1.0s     4.5s     4.0s       2 / 9 / 8
+#     NO SHORT-CIRCUIT        4.5s     4.5s     4.0s       9 / 9 / 8
+#     ONLY BRANCH TAKEN       0.5s     0.5s     0.0s       1 / 1 / 0
+#     WHOLE CONSTRUCT         8.0s     8.0s     8.0s      16 /16 /16
+#
+#   DECIDE IN THIS ORDER:
+#     d_last - d_first >= 2.5s          -> PER CONDITION EVALUATED.
+#         Short-circuiting is real, branch order is worth ~1 tick per
+#         position, reorder read_entries()' chain by token frequency.
+#     d_last - d_first < 1.5s AND all three >= 3.0s but < 6.0s
+#                                       -> NO SHORT-CIRCUIT: every
+#         condition runs even after one matched. Order is worthless;
+#         the chain costs its full depth every time.
+#     all three < 1.5s AND d_nomatch <= 0.5s (NOMATCH lands ON CTRL)
+#                                       -> ONLY THE TAKEN BRANCH is
+#         charged. Conditions are free; the chain is not the problem and
+#         this whole line of optimisation is dead.
+#     all three >= 6.5s and within 1.5s of each other
+#                                       -> WHOLE CONSTRUCT CHARGED. Every
+#         elif chain in utils/ pays full freight on every pass; reordering
+#         buys nothing and long chains must be replaced outright.
+#     d_last - d_first lands in 1.5-2.5s -> AMBIGUOUS, third run needed.
+#     d_nomatch > d_last + 1.5s -> something charges for the absent else.
+#         Unexpected under every model: report the numbers verbatim.
+#
+#   THE PIVOT IS NOMATCH. It is the only arm where NO branch body runs at
+#   all, so it is the one reading that separates "charged for testing" from
+#   "charged for doing": NOMATCH == CTRL means testing is free; NOMATCH
+#   near LAST means testing is where the money goes.
+#
+#   RIDER (SUM5): STRLAST is the real read_entries() shape - the same 8
+#   branches, but each condition is tok.starts_with("...") instead of an
+#   integer compare (the 7 real prefixes in their real order plus a
+#   synthetic 8th, "trace=", so the depth matches LAST exactly and the
+#   delta is a clean 8-vs-8).
+#       (strlast - last) / 5 / 8 = seconds per starts_with() condition
+#   Multiply by 7 for the real chain's worst case and that is what one
+#   miss-all token dispatch costs in hostdata.bd today. If that delta is
+#   ~0, conditions are charged per LINE and the call rides along free
+#   (cross-check against T14's per-call verdict - the two must agree; if
+#   they disagree, trust the one whose CTRL arm behaved).
+#
+#   INTEGRITY - check before reading any number. a= at each arm's last
+#   round must be exactly: CTRL 0, LAST 5, NOMATCH 0, FIRST 5, CTRL-B 0,
+#   STRLAST 5. NOMATCH ending at a=0 is the direct proof that no branch
+#   body executed, which is what makes its burst a clean price for eight
+#   FAILED condition tests. Any other a= invalidates that arm.
+#   DRIFT - SUM4 prints ctrl_per_round and ctrlB_per_round. They must
+#   agree within ~0.3s. If they do not, the run drifted and only the
+#   uphill direction of the LAST-before-FIRST ordering can be trusted.
+#   COARSE CLOCK - if every burst= prints as a whole number (0 or 1),
+#   get_unix_time() is 1-second-resolution on this build: ignore the
+#   per-round burst= values and read only the 5-round sums on SUM1/SUM2,
+#   which aggregate five samples and survive the quantization.
+#   INVALID RUN - if CTRL is not the smallest sum, something drifted and
+#   no delta from that run is usable. Re-run.
+#
+# SAFETY - the burst is NOT the experiment here
+#   Unlike T02/T09, this script does not want a kill; it wants a clean
+#   measurement, so every bracket is deliberately sub-lethal. Worst case
+#   is STRLAST under the pessimistic model: 16 lines + 8 calls = 24 ticks
+#   = ~2.4s of continuous load at base tier, against a documented kill at
+#   5 SUSTAINED seconds and a known-lethal burst of ~50 straight lines
+#   (test_cpu_decay.bd). Every bracket is bracketed by sleep(2) before and
+#   sleep(1) after: at least 3s idle per at most 2.4s of burn, so load can
+#   never stay pinned across rounds. get_cpu() is called exactly twice per
+#   arm, on the ARM-START/ARM-DONE lines only - never inside a bracket,
+#   never inside a round - so even if T14 proves get_cpu() adds load, it
+#   adds the same amount to every arm and cancels in every delta. It is
+#   there only to prove each arm started from the same meter state.
+#
+# IF IT DIES MID-RUN, PASTE WHAT PRINTED ANYWAY. Every R line carries its
+# arm, its k, its burst, its running sum and its absolute time, and every
+# ARM-DONE carries that arm's finished sum - so a partial paste still
+# prices every arm that completed. A paste ending on an "ARM-START arm=X"
+# line localizes the kill to X's first bracket, which is itself a datum.
+#
+# HOW TO RUN
+#   1) Save as ~/scripts/test_elif_price.bd. Run `ps` and `jobs` first,
+#      confirm nothing else is running, paste that output too.
+#   2) `test_elif_price` - no parameters, ~2.5 minutes.
+#   3) Paste back EVERY line: ELIFPRICE, ARM-START, ARM-DONE, R..., SUM...
+#   4) REPEATS: 2 runs, back to back, same session. A third only if the
+#      two runs put d_last - d_first on opposite sides of the 1.5s/2.5s
+#      decision band - and if so, run that third one with the six arm
+#      blocks in reversed order to break any drift confound outright.
+
+func arm_ctrl(n, tag, t0):
+    var s = 0
+    var r = 0
+    var a = 0
+    var ts = 0
+    var el = 0
+    while r < n:
+        sleep(2)
+        ts = get_unix_time()
+        el = get_unix_time() - ts
+        sleep(1)
+        s = s + el
+        r = r + 1
+        log("R" + str(r) + " arm=" + tag + " burst=" + str(el) + " a=" + str(a) + " sum=" + str(s) + " at=+" + str(get_unix_time() - t0))
+    return s
+
+sleep(1)
+
+func arm_int(k, n, tag, t0):
+    var s = 0
+    var r = 0
+    var a = 0
+    var ts = 0
+    var el = 0
+    while r < n:
+        sleep(2)
+        ts = get_unix_time()
+        if k == 1:
+            a = a + 1
+        elif k == 2:
+            a = a + 1
+        elif k == 3:
+            a = a + 1
+        elif k == 4:
+            a = a + 1
+        elif k == 5:
+            a = a + 1
+        elif k == 6:
+            a = a + 1
+        elif k == 7:
+            a = a + 1
+        elif k == 8:
+            a = a + 1
+        el = get_unix_time() - ts
+        sleep(1)
+        s = s + el
+        r = r + 1
+        log("R" + str(r) + " arm=" + tag + " k=" + str(k) + " burst=" + str(el) + " a=" + str(a) + " sum=" + str(s) + " at=+" + str(get_unix_time() - t0))
+    return s
+
+sleep(1)
+
+func arm_str(tok, n, tag, t0):
+    var s = 0
+    var r = 0
+    var a = 0
+    var ts = 0
+    var el = 0
+    while r < n:
+        sleep(2)
+        ts = get_unix_time()
+        if tok.starts_with("ports="):
+            a = a + 1
+        elif tok.starts_with("fw="):
+            a = a + 1
+        elif tok.starts_with("users="):
+            a = a + 1
+        elif tok.starts_with("specs="):
+            a = a + 1
+        elif tok.starts_with("jobs="):
+            a = a + 1
+        elif tok.starts_with("nmap="):
+            a = a + 1
+        elif tok.starts_with("sqli="):
+            a = a + 1
+        elif tok.starts_with("trace="):
+            a = a + 1
+        el = get_unix_time() - ts
+        sleep(1)
+        s = s + el
+        r = r + 1
+        log("R" + str(r) + " arm=" + tag + " tok=" + tok + " burst=" + str(el) + " a=" + str(a) + " sum=" + str(s) + " at=+" + str(get_unix_time() - t0))
+    return s
+
+sleep(1)
+
+# --- driver: six arms, uphill order (LAST before FIRST on purpose).
+
+var t0 = get_unix_time()
+sleep(2)
+log("ELIFPRICE start arms=6 branches=8 body='a = a + 1' rounds=5,5,5,5,3,5 cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+
+sleep(2)
+log("ARM-START arm=CTRL n=5 bracket=empty cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+var sCTRL = arm_ctrl(5, "CTRL", t0)
+log("ARM-DONE arm=CTRL sum=" + str(sCTRL) + " cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+
+sleep(2)
+log("ARM-START arm=LAST n=5 k=8 expect=8conds+1body cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+var sLAST = arm_int(8, 5, "LAST", t0)
+log("ARM-DONE arm=LAST sum=" + str(sLAST) + " cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+
+sleep(2)
+log("ARM-START arm=NOMATCH n=5 k=99 expect=8conds+0body cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+var sNOMA = arm_int(99, 5, "NOMATCH", t0)
+log("ARM-DONE arm=NOMATCH sum=" + str(sNOMA) + " cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+
+sleep(2)
+log("ARM-START arm=FIRST n=5 k=1 expect=1cond+1body cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+var sFIRS = arm_int(1, 5, "FIRST", t0)
+log("ARM-DONE arm=FIRST sum=" + str(sFIRS) + " cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+
+sleep(2)
+log("ARM-START arm=CTRL-B n=3 bracket=empty drift-control cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+var sCTLB = arm_ctrl(3, "CTRL-B", t0)
+log("ARM-DONE arm=CTRL-B sum=" + str(sCTLB) + " cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+
+sleep(2)
+log("ARM-START arm=STRLAST n=5 tok=trace= real-shape-rider cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+var sSTRL = arm_str("trace=1:2", 5, "STRLAST", t0)
+log("ARM-DONE arm=STRLAST sum=" + str(sSTRL) + " cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+
+sleep(2)
+log("SUM1 5-round sums (s): ctrl=" + str(sCTRL) + " last=" + str(sLAST) + " nomatch=" + str(sNOMA) + " first=" + str(sFIRS) + " strlast=" + str(sSTRL))
+sleep(1)
+log("SUM2 d_first=" + str(sFIRS - sCTRL) + " d_last=" + str(sLAST - sCTRL) + " d_nomatch=" + str(sNOMA - sCTRL) + " (minus-CTRL, read the model table)")
+sleep(1)
+log("SUM3 spread=" + str(sLAST - sFIRS) + " (>=2.5s per-condition; <1.5s per-construct or per-branch - which one depends on d_first)")
+sleep(1)
+log("SUM4 drift ctrl_per_round=" + str(sCTRL / 5) + " ctrlB_per_round=" + str(sCTLB / 3) + " (must agree within ~0.3s)")
+sleep(1)
+log("SUM5 rider d_strlast_over_last=" + str(sSTRL - sLAST) + " per_starts_with=" + str((sSTRL - sLAST) / 5 / 8) + "s")
+sleep(1)
+log("ELIFPRICE DONE 6/6 arms total=+" + str(get_unix_time() - t0) + "s - paste EVERY ELIFPRICE/ARM/R/SUM line")
