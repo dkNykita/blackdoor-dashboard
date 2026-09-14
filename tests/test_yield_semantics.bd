@@ -1,0 +1,342 @@
+# tests/test_yield_semantics.bd - T12 "Yield semantics: does a sleep reset
+# the kill timer, fully or partially, and how short can it be".
+#
+# =====================================================================
+# ONE QUESTION
+# =====================================================================
+#   A burst that is safe on its own is repeated 20 times with exactly ONE
+#   sleep between repetitions. Does the kill timer come back to zero every
+#   time (full reset), does debt survive the sleep and pile up until a
+#   stack of individually-safe bursts kills (accumulator), or does the
+#   sleep drain only PART of it (partial drain)? And does the answer
+#   depend on how long the sleep is - is sleep(0.1) as protective as
+#   sleep(1)?
+#
+#   One script answers both, because they are one axis. The rep index is
+#   the first sweep (run it at one yield and read how many bursts the
+#   timer tolerated); the ms argument is the second (run the same harness
+#   at 1000 / 500 / 250 / 100 / 50 ms). Neither half is interpretable
+#   alone: if debt accumulates at sleep(1) the yield ladder is moot, and
+#   if sleep(1) fully resets then the ladder is the only question left.
+#
+# =====================================================================
+# WHY IT MATTERS
+# =====================================================================
+#   1. utils/net.bd:120 log_pace() is the single most load-bearing
+#      unverified comment in the codebase - "resets the sustained-100%-
+#      load clock" - stated as fact, with no experiment anywhere behind
+#      it. Every pacing decision in Active/ inherits that assumption.
+#   2. field_notes.txt CPU LOAD says polling more often "does NOT help and
+#      can make things WORSE". The game's OWN official reference pastes
+#      `while not crack(conn, "root"): sleep(0.1)` as idiomatic, twice,
+#      and two working community scripts pace whole-file loops on
+#      sleep(0.1) / sleep(0.0125). Both cannot be right at this tier.
+#      No fair A/B of yield DURATION has ever been run.
+#   3. A partial-drain result would be the first mechanism ever offered
+#      for the one unexplained real-world number in this investigation:
+#      adding ONE extra throttle() per item moved the real crash 70s
+#      EARLIER (+122.5s -> +53s), not later. Under full reset that is
+#      impossible; under partial drain each added call is net debt.
+#
+# =====================================================================
+# THE THREE MODELS, WITH NUMBERS (base tier: 10 ticks/s, kill = 100% for
+# 5 straight seconds = 50 contiguous executed ticks)
+# =====================================================================
+#   One repetition of PHASE-B executes ~35 contiguous ticks:
+#       while-condition + r=r+1 + c0=get_cpu() + 30 burst lines
+#       + c1=get_cpu() + log()  ->  ~35 ticks ~= 3.5s ~= 70% of lethal.
+#   Then, and only then, the yield.
+#
+#   FULL RESET .......... debt returns to 0 at every yield. 20 reps print,
+#                         PHASE-B SURVIVED prints, at EVERY ms rung.
+#   PURE ACCUMULATOR .... the yield stops the clock but banks nothing.
+#                         35 + 35 = 70 > 50, so death lands INSIDE rep 2:
+#                         the last line printed is "T12 B r=1".
+#   PARTIAL DRAIN, LINEAR (d points/second drained while asleep)
+#                         debt after k reps ~= k*(35 - d*Y) + 35; death at
+#                         the first k with k >= 1 + 15/(35 - d*Y).
+#                         d*Y = 30 -> dies at rep 4;  32 -> rep 6;
+#                         34 -> rep 16;  >=35 -> never.
+#                         Two rungs that both die give two equations and
+#                         therefore d AND the lethal constant, measured.
+#   PARTIAL DRAIN, GEOMETRIC (debt multiplied by f^Y each yield - the
+#                         model the dyadic readings 93.75 = 100*15/16 and
+#                         99.9984741210938 = 100*(1-2^-16) point at)
+#                         debt converges to 35*f^Y/(1-f^Y). Survives iff
+#                         that is under 15, i.e. iff f^Y < 0.3. Signature:
+#                         a SHARP threshold in Y with survival on one side,
+#                         and on the surviving side the floor= column
+#                         climbs for a few reps and then FLATTENS at the
+#                         fixed point. A flattening floor is a positive
+#                         measurement even in a run that survives.
+#
+# =====================================================================
+# HOW TO READ THE PASTED OUTPUT
+# =====================================================================
+#   * r is incremented at the top of a rep and logged at the END of it, so
+#     a printed "r=k" means rep k COMPLETED. Death therefore happened
+#     during rep k+1. Last line "T12 B r=1" = died in rep 2 = pure
+#     accumulator. Last line "T12 B r=20" without the SURVIVED line after
+#     it = died in the final yield, which is a different finding again.
+#   * floor= is get_cpu() at the START of a rep, i.e. what the yield just
+#     before it left behind. THIS COLUMN IS THE QUANTITATIVE RESULT.
+#       flat across all 20 reps ....... full reset, nothing carries over
+#       climbs then flattens .......... equilibrium: read the plateau, it
+#                                       is the fixed point of the model
+#       climbs without flattening ..... accumulation; death follows
+#   * peak= is get_cpu() immediately after the burst. If peak is pinned at
+#     the same value every rep while floor climbs, the meter is clamped
+#     (T09's finding) and floor is the only usable channel.
+#   * t= is cumulative seconds. Its per-rep DIFFERENCE must be
+#     (burst time + Y). Across 20 reps the arms must separate by
+#     20*(1.0 - Y) seconds in total - that aggregate survives even if
+#     get_unix_time() turns out to have 1-second resolution (the official
+#     reference declares it "-> int"; T01/T02 settle it).
+#   * a= must be 30*r exactly. Any other value means the burst did not
+#     execute the line count the source shows, and the rep is void.
+#   * ABSENCE of the "PHASE-B SURVIVED" line is the only proof of death.
+#     Paste the "[SYSTEM] CPU overloaded" banner too.
+#
+# =====================================================================
+# PHASE-C - THE POSITIVE CONTROL (new; no prior test in this programme
+# has had one, and every prior "it survived" conclusion is weaker for it)
+# =====================================================================
+#   PHASE-C is PHASE-B with the yield line DELETED and nothing else
+#   changed at all. Same burst, same two get_cpu() calls, same log. It
+#   MUST die, and quickly - at base tier by rep 2. That is what proves
+#   the burst is genuinely lethal when concatenated, and therefore that a
+#   surviving PHASE-B means "the yield saved it" rather than "the burst
+#   was never dangerous". A run where PHASE-B survives 20 reps and
+#   PHASE-C also survives 12 is NOT evidence for full reset - it is
+#   evidence the harness is mis-sized for this tier (see TIER below) or
+#   that the documented kill rule is wrong. Either is a headline.
+#   PHASE-C runs LAST, after PHASE-B's verdict has already printed, so it
+#   can never contaminate the measurement. Expect every run to end in the
+#   overload banner; the banner after a "PHASE-C begin" line is the
+#   EXPECTED outcome, not a failed run.
+#   Free bonus: PHASE-C's death rep is an independent probe of the
+#   central run-to-run variance mystery, sampled once per run at no extra
+#   cost. If it dies at rep 2 six times running and then at rep 5, that is
+#   the +40.7/+111.0/+40.3/+65.5/+64.3 spread reproduced in the simplest
+#   system anyone has built.
+#
+# =====================================================================
+# YIELDCHECK - validating the independent variable
+# =====================================================================
+#   Before anything else, four bare sleep(Y) lines are timed. If the
+#   engine floors sub-second sleeps to 1s (or drops them to 0), the whole
+#   ladder is comparing five identical arms and every conclusion from it
+#   is void. four_yields_s must be ~4.0 / 2.0 / 1.0 / 0.4 / 0.2 for the
+#   five rungs. If it reads ~4 at EVERY rung, STOP - report that alone;
+#   it means sub-second pacing does not exist in this engine, which
+#   settles the field_notes-vs-community dispute by itself.
+#
+# =====================================================================
+# OBSERVER EFFECT - how it is handled
+# =====================================================================
+#   * Instrumentation cannot be removed (get_cpu() is the only meter and
+#     log() is the only output channel), so it is made CONSTANT instead:
+#     every rep of every arm and of the control executes byte-identical
+#     instrument lines. All five ms rungs differ by exactly one float.
+#     Any constant instrument cost cancels from every comparison made.
+#   * The instrument sits at the END of the rep, between the burst and the
+#     yield - deliberately NOT after the yield. Both source drafts put it
+#     after the sleep, reasoning that it then cannot affect the burst
+#     being tested. That is backwards under any window/decay model: ticks
+#     spent right after a yield are contiguous with the NEXT burst and
+#     would silently inflate it. Here the yield is the LAST thing in a
+#     rep, so each burst starts on the cleanest state the model allows.
+#   * The two get_cpu() calls per rep are counted as part of the ~35-tick
+#     burst, not pretended to be free - field_notes' correction says
+#     get_cpu() adds load, and the burst is sized with them included.
+#     T10's A/B is what quantifies that cost; this test only needs it
+#     constant, which it is.
+#   * The burst is 30 unrolled `a = a + 1` lines, not a loop: a loop body
+#     costs 2-3 ticks per iteration of unknown split, and `a = a + 1`
+#     rather than `a = 1` so a dead-store optimiser cannot elide it.
+#   * THE BURST IS PART OF THE EXPERIMENT. 30 unpaced lines violates the
+#     "sleep every 5-8 lines" house rule on purpose: an individually
+#     sub-lethal burst is the independent variable. Everything outside
+#     the rep loops is paced normally.
+#
+# =====================================================================
+# TIER CALIBRATION (read this before the first run)
+# =====================================================================
+#   Sized for BASE TIER, 10 ticks/s, lethal = 50 contiguous ticks. If T02
+#   measured a faster tier, the burst is no longer 70% of lethal and the
+#   test loses its edge. Fix by duplicating the marked burst block:
+#       10 ticks/s (base) .. 30 lines  (as shipped)
+#       20 ticks/s (Mk.II) . 65 lines
+#       40 ticks/s (Mk.III)  135 lines
+#   Same edit in BOTH loops, and update the `a must be 30*r` arithmetic in
+#   your reading of the output. If T11 bisected a lethal straight-line
+#   count n* materially different from 50, set the burst to (0.7 * n*) - 5
+#   lines; the -5 is this rep's own instrument and loop overhead.
+#
+# =====================================================================
+# HOW TO RUN  (@param binds POSITIONALLY - no -flag= syntax)
+# =====================================================================
+#   Fresh session if convenient. `ps` and `jobs` empty, paste them once.
+#   ALWAYS pass the argument explicitly, never rely on the default:
+#
+#     1) test_yield_semantics 1000     <- twice. THIS IS THE WHOLE FIRST
+#                                         QUESTION: reset vs accumulator.
+#        If the two runs disagree on the death rep by more than 1, run a
+#        third - disagreement here is itself the headline result.
+#     2) test_yield_semantics 50       <- twice. The far end of the ladder.
+#     3) BISECT, do not walk. Only if 1000 and 50 disagree:
+#          test_yield_semantics 250    <- twice
+#          then 500 (if 250 died) or 100 (if 250 survived), twice.
+#        If 1000 and 50 behave identically, the ladder is finished in four
+#        runs and the middle rungs are unnecessary.
+#     4) If ms=1000 itself dies in PHASE-B: STOP and report immediately.
+#        sleep() does not reset the timer at all and every pacing
+#        decision in Active/ rests on a false premise.
+#
+#   ~115s per run at ms=1000, ~95s at ms=50, less when a run dies early.
+#   4 runs minimum (~10 min), 8 runs maximum with the full bisection.
+#   Leave ~30-60s idle between runs; launch_cpu= in the header line is the
+#   carryover check - it should read the same cold or hot.
+#
+#   ESCALATION (only if every rung survives 20 reps AND the floor= column
+#   is still visibly climbing at rep 20): edit `while r < 20` in PHASE-B
+#   to `while r < 60` and re-run ms=50 once, ~3.5 minutes. Do not do this
+#   if floor= has plateaued - a plateau already settles it.
+#
+#   PASTE BACK: every T12 line in order, from every run, plus the overload
+#   banner. A truncated paste is still a complete result - the last
+#   "T12 B r=k" line names the exact rep the timer could not tolerate.
+# =====================================================================
+# @param ms "yield between bursts, milliseconds: 1000 | 500 | 250 | 100 | 50" default="1000"
+
+var cl = get_cpu()
+var MS = get_param("ms")
+var Y = 1.0
+var LBL = "1000"
+var a = 0
+var r = 0
+sleep(1)
+if MS == "500":
+    Y = 0.5
+    LBL = "500"
+elif MS == "250":
+    Y = 0.25
+    LBL = "250"
+elif MS == "100":
+    Y = 0.1
+    LBL = "100"
+elif MS == "50":
+    Y = 0.05
+    LBL = "50"
+sleep(1)
+var c0 = 0
+var c1 = 0
+var ya = 0
+var yb = 0
+var t0 = get_unix_time()
+sleep(1)
+log("T12 START ms=" + LBL + " yield_s=" + str(Y) + " reps=20 burst=30 launch_cpu=" + str(cl))
+sleep(1)
+sleep(1)
+sleep(1)
+
+# ---- YIELDCHECK: is the requested yield actually honoured? ----
+ya = get_unix_time()
+sleep(Y)
+sleep(Y)
+sleep(Y)
+sleep(Y)
+yb = get_unix_time()
+log("T12 YIELDCHECK ms=" + LBL + " four_yields_s=" + str(yb - ya) + " expect=" + str(4 * Y) + " (all rungs ~4 => sub-second sleep ignored, run VOID)")
+sleep(1)
+sleep(1)
+sleep(1)
+
+# ---- PHASE-B: sub-lethal burst, one yield between reps ----
+log("T12 PHASE-B begin ms=" + LBL + " floor=" + str(get_cpu()))
+sleep(1)
+sleep(1)
+while r < 20:
+    r = r + 1
+    c0 = get_cpu()
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    c1 = get_cpu()
+    log("T12 B r=" + str(r) + " ms=" + LBL + " floor=" + str(c0) + " peak=" + str(c1) + " t=" + str(get_unix_time() - t0) + " a=" + str(a))
+    sleep(Y)
+log("T12 PHASE-B SURVIVED ms=" + LBL + " reps=20 t=" + str(get_unix_time() - t0) + " a=" + str(a) + " (a must be 600)")
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+
+# ---- PHASE-C: positive control - identical rep, yield DELETED ----
+log("T12 PHASE-C begin ms=" + LBL + " floor=" + str(get_cpu()) + " (control: same rep, NO yield - it MUST die, base tier by r=2)")
+sleep(1)
+sleep(1)
+r = 0
+while r < 12:
+    r = r + 1
+    c0 = get_cpu()
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    c1 = get_cpu()
+    log("T12 C r=" + str(r) + " ms=" + LBL + " floor=" + str(c0) + " peak=" + str(c1) + " t=" + str(get_unix_time() - t0) + " a=" + str(a))
+log("T12 PHASE-C SURVIVED 12 unpaced reps - control FAILED: burst not lethal even concatenated. PHASE-B's survival proves nothing this run; re-size the burst (see TIER CALIBRATION).")
