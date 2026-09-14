@@ -9,13 +9,151 @@ CPU LOAD RESEARCH PROGRAMME (T01-T28): the authoritative plan, ordering,
 methodology, recording protocol and per-experiment reference lives in
 ../Blackdoor documentation/Bug Reports/Investigation/CPU Research/README.txt
 - read that first (it lives under the bug report it serves,
-Investigation/01_get_cpu_run_to_run_inconsistency.txt). The T01-T28
+Investigation/01_cpu_load_instability_investigation.txt). The T01-T28
 scripts in this folder implement it. This file tracks their per-script
 Result: as they are run; the programme file is the campaign. Run results
 get appended to that same folder's results.txt (one record per run).
 The four test_cpu_decay/decode_pacing/token_dispatch/dispatch_after_imports
 scripts predate the programme (they came out of the frozen menu.bd
 investigation) and are NOT part of T01-T28.
+
+SHORT TEST INDEX
+================
+At-a-glance: test, whether it's been run, whether the result was
+conclusive, and a 1-3 line summary. Full detail for every entry below
+this table.
+
+PROGRAMME TESTS (T01-T28)
+==========================
+TEST  RAN     CONCLUSIVE CONCLUSION
+---------------------------------------------------------------------------------------
+T01   Yes     Yes        Instrument validated: get_unix_time() is a real, float-
+                         returning Unix-epoch clock (not the documented int); pacing
+                         matches base tier exactly; concurrent processes have
+                         independent tick budgets.
+
+T02   Yes     Yes        Engine genuinely blocks on tick exhaustion; base tier (10
+                         ticks/sec) confirmed directly with a get_cpu()-free
+                         instrument, validating the core tick model from first
+                         principles.
+
+T03   Yes     Yes        Bare-script tick delivery is deterministic to under 1% noise
+                         across 8 runs - rules out ambient engine noise as the cause of
+                         the real crash variance; points at get_cpu()/throttle/I-O
+                         specifically.
+
+T04   Yes     Partial    get_cpu() quantizes to multiples of 10; deterministic when
+                         polled after a settle, unstable when polled rapidly. One non-
+                         monotonic dip (N=8) remains unexplained.
+
+T05   No      N/A        Not yet run. Would measure the marginal wall-clock cost of
+                         get_cpu(), get_unix_time(), str() and a user call - the direct
+                         counterpart to T11's kill-currency verdict.
+
+T06   Yes     Yes        The CPU-overload kill is confirmed NOT catchable via
+                         try/catch, identically across 3 runs - a genuine
+                         external/engine-level termination.
+
+T07   Yes     Partial    get_cpu()'s reading depends on absolute history/timing in a
+                         complex but fully deterministic way (reproduced exactly twice)
+                         - reframes the mystery as history-sensitivity, not randomness.
+
+T08   Yes     Partial    Meter's decay window is ~2-2.5s, not the ~3.7s real throttle
+                         cost; an isolated throttle-shaped poll loop only accounts for
+                         about half of that - the rest is unexplained.
+
+T09   Yes     Yes        get_cpu() is a genuine clamp at 100 - no hidden tick debt
+                         above the ceiling, confirmed across every burst size with zero
+                         deviation over 3 runs.
+
+T10   Yes     Partial    Reproduces the central variance mystery directly (~19% of
+                         identical bursts survive far longer); surfaces a likely major
+                         log() cost bug; finds a persistent post-kill floor elevation.
+
+T11   Yes     Yes        Single most important test: an isolated burst at the boundary
+                         is reliable, but REPEATED bursts in one run are not, even with
+                         generous settling - a complete mechanism for the central
+                         mystery. Also confirms log() carries a real per-operation
+                         surcharge.
+
+T12   No      N/A        Not yet run. Would test whether a sleep resets the kill timer
+                         fully or partially, and how short a sleep can be and still
+                         help.
+
+T13   No      N/A        Not yet run. Would test whether the kill threshold is exactly
+                         100% or some lower sustained level.
+
+T14   No      N/A        Not yet run. Would test charging granularity - physical line
+                         vs statement vs evaluated operation, and the price of
+                         dead/unreachable lines.
+
+T15   No      N/A        Not yet run. Would test what one loop pass costs beyond its
+                         own body (the condition check overhead).
+
+T16   No      N/A        Not yet run, prediction written. Would test whether an if/elif
+                         chain is charged per condition tested, per branch taken, or
+                         per whole construct.
+
+T17   No      N/A        Not yet run. Would test declaration cost - a never-called
+                         function's cost sitting in a script vs an imported module.
+
+T18   No      N/A        Not yet run, prediction written. Would decompose log()'s real
+                         cost - string length, concatenation depth, the colour argument
+                         - the direct follow-up to T10's unplanned finding.
+
+T19   No      N/A        Not yet run. Would test whether merely watching (polling) the
+                         meter holds its reading up.
+
+T20   No      N/A        Not yet run. Would test cross-run carryover - the meter's
+                         line-1 reading after four different preludes.
+
+T21   No      N/A        Not yet run. Would test whether the meter sums across two
+                         concurrent processes, and whether the tick budget is shared or
+                         per-process.
+
+T22   No      N/A        Not yet run. Would test kill scope - does an overload take
+                         down a second, perfectly-paced process too, and does that
+                         victim see it coming.
+
+T23   No      N/A        Not yet run. Would test whether printing into a full terminal
+                         costs more than into a cleared one.
+
+T24   No      N/A        Not yet run. Would run an unaliased, controller-free time
+                         series hunting for periodic engine-side events.
+
+T25   No      N/A        Not yet run, prediction written. Would test whether something
+                         accumulates across a play session so a fixed workload runs
+                         measurably slower the longer the game has been open.
+
+T26   No      N/A        Not yet run, prediction written. Would test whether an open
+                         connection, a live trace, or a cooling trace feeds the LOCAL
+                         meter.
+
+T27   No      N/A        Not yet run. Would test whether remote_run() billing burns
+                         local or remote tick budget.
+
+T28   No      N/A        Not yet run. Would test whether the meter is tier-normalised
+                         and whether the kill is wall-clock-based or fixed-tick-based.
+
+LEGACY / PRE-PROGRAMME TESTS (predate T01-T28)
+===============================================
+TEST                            RAN     CONCLUSIVE CONCLUSION
+-----------------------------------------------------------------------------------------------------------------
+test_cpu_decay.bd               Yes     Yes        Idle floor holds rock-steady at 10; a 50-line unpaced
+                                                   arithmetic burst is lethal with zero API calls - overload is
+                                                   universal per-line, not tied to function calls.
+
+test_decode_pacing.bd           Partial No         PART A sat at a logged cpu=100 for ~840s without dying - key
+                                                   early evidence the kill trigger doesn't simply integrate
+                                                   get_cpu()'s own output. Both parts interrupted before a full
+                                                   verdict.
+
+test_token_dispatch.bd          Partial No         Real per-token dispatch hammering run twice at different round
+                                                   counts; no clean crash-boundary result recorded.
+
+test_dispatch_after_imports.bd  Partial No         Same hammering as test_token_dispatch.bd behind the full
+                                                   11-module import chain; interrupted early, before a result was
+                                                   reached.
 
 2026-09-14 CROSS-CUTTING FIX (before any test but T01 was run in-game):
 T01's first real run crashed immediately - "Line 163: Cannot convert
