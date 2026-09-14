@@ -1,0 +1,286 @@
+# tests/test_t21_watch.bd - T21: TWO PROCESSES. Does the meter SUM, and is
+# the tick budget SHARED or PER-PROCESS?   (FILE 1 of 2 - run in FOREGROUND)
+# Companion: tests/test_t21_ghost.bd (FILE 2 of 2 - ALWAYS launched with &)
+#
+# ===========================================================================
+# ONE QUESTION
+#   When two of your scripts run at the same time, does get_cpu() return the
+#   SUM of both processes' load, and do the two processes SHARE one ticks/sec
+#   budget or does each get a full one?
+#
+# WHY IT MATTERS
+#   web_api.txt, help_api.txt and editor_documentation.txt all define
+#   get_cpu() as the "aggregate CPU load across all your running processes
+#   (0-100)". No test in this entire investigation has ever had two processes
+#   running at once, so the word "aggregate" has never been exercised. Every
+#   `ps`/`jobs` check in the corpus established only that nothing WAS running
+#   - never what happens when something is. The outcome this test exists to
+#   catch is the dangerous one: the meter still reading ~10 while the budget
+#   is really being split. That is load that is REAL, SLOWS YOU DOWN, and is
+#   INVISIBLE to every get_cpu() guard in menu.bd - which is exactly the
+#   shape the central run-to-run variance mystery keeps taking.
+#
+# ===========================================================================
+# THE TWO SIGNALS (this script measures both, independently)
+#
+#   SIGNAL 1 - THE METER (does it aggregate?)
+#     PHASE M is a 3-line poll loop BYTE-IDENTICAL to test_cpu_decay.bd's
+#     idle loop (sleep(1) / log(...get_cpu()) / n = n + 1). That loop, run
+#     SOLO, read a rock-steady cpu = 10.0000001798557 / 10.0000002467157 /
+#     10.0000004642391 / 10.0000001311148 for 16+ seconds. That number is
+#     the anchor. test_t21_ghost.bd runs the SAME loop. So:
+#        one copy  = 10.0  (already measured, historical fact)
+#        two copies = 20.0 if the meter aggregates, still 10.0 if it does not
+#
+#   SIGNAL 2 - THE BUDGET (is it shared?)
+#     PHASE R times three identical UNPACED bursts of 15 `x = 1` lines with
+#     get_unix_time() brackets. 16 charged lines per burst (15 filler + the
+#     closing clock line). At a full base-tier budget of 10 ticks/sec that is
+#     ~1.6s. At a HALVED budget (5 ticks/sec) it is ~3.2s. Wall-clock timing
+#     of a known line count is a far sharper rate readout than poll spacing,
+#     because it contains no sleep() and no unknown loop-header cost.
+#     PHASE M's own poll spacing (~2.0s solo, historical) is the redundant
+#     second readout of the same thing.
+#
+#   Either signal alone gives an AMBIGUOUS answer. Together they separate all
+#   four outcomes cleanly - see the table.
+#
+# ===========================================================================
+# HOW TO READ THE OUTPUT - decision table
+#   (cpu = PHASE M steady reading; burst = PHASE R median burst_s)
+#
+#   cpu_B ~= cpu_A (~10)  AND  burst_B ~= burst_A (~1.6s)
+#       -> NO INTERACTION. A second process neither registers in the meter
+#          nor steals ticks. This REFUTES the official "aggregate across all
+#          your running processes" wording in three files at once, and is a
+#          documentation bug to file alongside bug report 01.
+#
+#   cpu_B ~= 2 x cpu_A (~20)  AND  burst_B ~= burst_A (~1.6s)
+#       -> METER AGGREGATES, BUDGET IS PER-PROCESS. The docs are literally
+#          right and RAM "concurrent script slots" really do run in parallel.
+#          Consequence for menu.bd: a get_cpu() guard can be tripped by load
+#          that is not yours and not slowing you down at all - guards should
+#          arguably not be reading an aggregate meter at all.
+#
+#   cpu_B ~= 2 x cpu_A (~20)  AND  burst_B >= 1.7 x burst_A (>=2.7s)
+#       -> METER AGGREGATES AND THE BUDGET IS SHARED. Honest instrument,
+#          halved throughput. Every "ticks/sec" number in this programme is
+#          then conditional on process count, and the tier rate is a POOL.
+#
+#   cpu_B ~= cpu_A (~10)  BUT  burst_B >= 1.7 x burst_A (>=2.7s)
+#       -> INVISIBLE CONTENTION. The worst case and the headline result.
+#          The budget is shared but the meter is BLIND to the other process:
+#          every get_cpu() guard in menu.bd cannot see half the load that is
+#          actually slowing it down. If this is what prints, T22 and the
+#          whole variance investigation reorient onto it immediately.
+#
+#   cpu_B is neither ~10 nor ~20 (a steady 13, 15, 30, 100...)
+#       -> the clean "one idle process = one unit" model is wrong outright.
+#          Report the value VERBATIM at full precision; the exact number
+#          (dyadic? multiple of 10?) localizes the mechanism.
+#
+#   The watcher is KILLED in arm B but never in arm A
+#       -> confirming evidence for SHARED BUDGET all on its own: the same
+#          15-line burst that is safe solo stretched past the kill window.
+#          Report which "T21 R b=" line printed last, then run `ps` - if the
+#          ghost died too, that also confirms the documented all-processes
+#          kill scope across process boundaries (never directly observed).
+#
+# ===========================================================================
+# HOW TO RUN
+#   0. FIRST, before any script: run `neofetch` (or `sysinfo`) and paste the
+#      WHOLE output. Nothing in this investigation has ever recorded the
+#      player's actual CPU tier or RAM slot count, and every number above is
+#      read against an ASSUMED base 10 ticks/sec. Then `ps` and `jobs` to
+#      confirm nothing is running; paste those too.
+#
+#   1. ARM A (solo):    run test_t21_watch          (~60s, let it finish)
+#
+#   2. ARM B (paired):  run test_t21_ghost &
+#                       ps          <- MUST show it listed. PASTE THIS.
+#                                      If it is not listed the arm is VOID.
+#                       run test_t21_watch          (immediately)
+#                       ps          <- after the watcher finishes, confirm
+#                                      the ghost is STILL alive. PASTE THIS.
+#                       kill <pid>  <- then `ps` to confirm it is gone
+#      The ghost's log() goes to the background process log, not the
+#      terminal, so expect to see NO ghost lines. If ghost lines DO appear
+#      interleaved in the terminal, say so - that is undocumented and useful.
+#
+#   3. Run the arms ALTERNATING: A, B, A, B. Any session drift then shows up
+#      as A-to-A disagreement rather than masquerading as an arm effect.
+#      If the two A runs' median burst_s differ by more than 15%, the whole
+#      comparison is void - that is T03's spread swamping the signal, and a
+#      third pair is needed.
+#
+#   4. ARM C (optional, only if arm B showed aggregation): launch the ghost
+#      TWICE, then the watcher. Linear summation predicts ~30. If the second
+#      `&` is REFUSED for lack of a RAM slot, SAY SO and skip arm C - that
+#      refusal is itself a clean measurement of the slot cap.
+#
+#   REPEATS: 2 runs of arm A and 2 of arm B, alternated. This regime has
+#   near-zero run-to-run variance (8 rock-steady samples in test_cpu_decay,
+#   ~1.6% pacing reproducibility across 3 runs of test_token_dispatch), and
+#   the predicted effects (2x meter, 1.7x+ burst) are enormous next to it.
+#   Add a third pair only if the two A runs disagree by >1 CPU point or >15%
+#   on burst_s.
+#
+#   PASTE BACK every line starting with "T21", in order, at FULL float
+#   precision. Do not round. The trailing digits are signal: 20.0000001 is a
+#   counter plus float noise; 19.9998474121094 is an EMA fingerprint.
+#
+# ===========================================================================
+# PACING DISCIPLINE (every line costs a tick; unpaced bursts kill)
+#   Outside PHASE R the longest unpaced stretch in this file is THREE lines.
+#   PHASE R's 15-line bursts ARE THE EXPERIMENT - they are deliberate and
+#   they are the measurement. They are sized to be safe under BOTH budget
+#   models: ~1.6s at full rate, ~3.2s at half rate, both under the ~5s
+#   sustained-100% kill window, and each is preceded by four sleep(1)s so the
+#   meter starts each burst from a settled floor. PHASE M (the meter answer)
+#   runs and prints BEFORE any burst, so a kill in PHASE R can never cost us
+#   signal 1. No loop is used inside a burst: a `while` header costs an
+#   unknown number of ticks per iteration (T15, pending) which would corrupt
+#   the very line count being timed. Filler is `x = 1` on a pre-declared var,
+#   not `var x = 1` and not `x = i * 2`.
+#
+# OBSERVER EFFECT
+#   The prediction is a RATIO between two arms running a BYTE-IDENTICAL file,
+#   not an absolute level, so it is insensitive to what get_cpu() and log()
+#   themselves cost - whatever they cost, they cost it in both arms. Arm A
+#   re-validates the instrument against test_cpu_decay.bd's historical 10.0
+#   before arm B is interpreted. The ghost runs the SAME loop with the SAME
+#   log()/get_cpu() cost precisely so that "two processes" means "exactly 2x
+#   one process" - a cheaper silent ghost would have made the expected sum
+#   something other than a clean 2x. The launch reading cpu0 is taken on
+#   line 1 before anything else runs; file length is a known confound on that
+#   reading (T09), but it is the SAME file in both arms, so it cancels.
+#
+# IF IT IS KILLED MID-RUN
+#   Every phase prints before the next begins and every line carries a
+#   cumulative t=+Ns, so the last printed line names exactly where it died
+#   and when. Killed before "T21 M done" -> the paced 3-line loop that is
+#   safe solo is lethal with a second process running, which would be a
+#   headline result on its own.
+# ===========================================================================
+
+var c0 = get_cpu()
+var t0 = get_unix_time()
+log("T21 watch start cpu0=" + str(c0))
+sleep(1)
+var n = 0
+var m = 0
+var x = 0
+sleep(1)
+var ta = 0
+var tb = 0
+sleep(1)
+sleep(1)
+sleep(1)
+
+# ===========================================================================
+# PHASE M - SIGNAL 1. Eight polls of the loop that read a steady 10.0 solo.
+# Runs FIRST so the meter answer is printed before any burst can kill us.
+# ===========================================================================
+while n < 8:
+    sleep(1)
+    log("T21 M n=" + str(n) + " t=+" + str(get_unix_time() - t0) + "s cpu=" + str(get_cpu()))
+    n = n + 1
+
+log("T21 M done - 8 polls, not killed")
+sleep(1)
+sleep(1)
+sleep(1)
+
+# ===========================================================================
+# PHASE R - SIGNAL 2. Three identical timed 15-line unpaced bursts.
+# THE BURST IS THE EXPERIMENT. 16 charged lines each: ~1.6s at 10 ticks/sec,
+# ~3.2s at 5 ticks/sec. Each result is logged immediately, so a kill during
+# a later burst still leaves the earlier ones on screen.
+# ===========================================================================
+
+# --- burst 1 ---
+ta = get_unix_time()
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+tb = get_unix_time()
+sleep(1)
+log("T21 R b=1 burst_s=" + str(tb - ta) + " t=+" + str(get_unix_time() - t0) + "s")
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+
+# --- burst 2 ---
+ta = get_unix_time()
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+tb = get_unix_time()
+sleep(1)
+log("T21 R b=2 burst_s=" + str(tb - ta) + " t=+" + str(get_unix_time() - t0) + "s")
+sleep(1)
+sleep(1)
+sleep(1)
+sleep(1)
+
+# --- burst 3 ---
+ta = get_unix_time()
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+x = 1
+tb = get_unix_time()
+sleep(1)
+log("T21 R b=3 burst_s=" + str(tb - ta) + " t=+" + str(get_unix_time() - t0) + "s")
+sleep(1)
+sleep(1)
+sleep(1)
+
+# ===========================================================================
+# PHASE M2 - the meter re-read after the bursts. Confirms the arm B reading
+# is a steady property of "two processes running", not a launch transient,
+# and doubles as a decay probe from the last burst.
+# ===========================================================================
+while m < 4:
+    sleep(1)
+    log("T21 M2 m=" + str(m) + " t=+" + str(get_unix_time() - t0) + "s cpu=" + str(get_cpu()))
+    m = m + 1
+
+sleep(1)
+log("T21 done t=+" + str(get_unix_time() - t0) + "s - paste every T21 line, full precision, do not round")

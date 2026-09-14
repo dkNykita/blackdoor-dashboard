@@ -5,6 +5,16 @@ result. Kept in sync whenever a test is added, re-run, or its result
 changes - see field_notes.txt for the full narrative/reasoning behind
 each one; this file is just the compact status view.
 
+CPU LOAD RESEARCH PROGRAMME (T01-T28): the authoritative plan, ordering,
+methodology, recording protocol and per-experiment reference lives in
+../Blackdoor documentation/CPU Research/README.txt - read that first.
+The T01-T28 scripts in this folder implement it. This file tracks their
+per-script Result: as they are run; the programme file is the campaign.
+Run results get appended to ../Blackdoor documentation/CPU Research/
+results.txt (one record per run). The four test_cpu_decay/decode_pacing/
+token_dispatch/dispatch_after_imports scripts predate the programme (they
+came out of the frozen menu.bd investigation) and are NOT part of T01-T28.
+
 test_cpu_decay.bd
   Goal: characterize get_cpu()'s actual behavior over time in isolation
   (does it decay to near-zero at rest, or plateau at a nonzero floor?),
@@ -334,4 +344,45 @@ test_elif_price.bd  (T16, CPU-load research programme - NOT a menu.bd test)
   is free; NOMATCH near LAST means testing is where the cost is.
   Progress: authored, not yet run. Converts to absolute ticks via T02's
   sec_per_unit; its rider cross-checks T14's per-call verdict.
+  Result: pending.
+
+test_t26_conn_floor.bd  (T26, CPU-load research programme - NOT a menu.bd test)
+  Goal: does anything OTHER than this script's own executed lines feed the
+  CPU meter? Specifically: is get_cpu()'s idle floor higher while a
+  connection is open and its trace is counting down, and higher again while
+  a trace is merely COOLING after disconnect, than it is with nothing
+  connected? No official document lists a trace, an IDS sweep or an open
+  socket as a CPU contributor, and none lists them as non-contributors; no
+  prior script in tests/ has opened a connection at all.
+  Three phases measured by ONE poll() function called with a one-character
+  label, so the 3-line instrument is provably identical across phases and
+  the whole comparison lives inside one run: A 10 polls disconnected /
+  B 10 polls connected, trace live / C 12 polls disconnected, trace cooling.
+  poll()'s body is the same shape as test_cpu_decay.bd's idle loop, so
+  PHASE A is directly comparable to that test's replicated 10.0 floor.
+  get_trace_time()/traces()/ids_status()/server_specs() are called ONLY on
+  the bracketing MARK lines, never inside a poll loop - the B-IN/B-OUT
+  countdown readings prove the trace was live without touching the
+  instrument. PART N is the null control: same phases, same sleeps, no
+  connection ever opened, isolating meter drift over elapsed runtime.
+  PRIMARY STATISTIC IS NOT THE MEDIAN: the meter is quantised in 10-point
+  steps (1 tick at base tier), so a sub-tick environmental cost cannot move
+  the modal value - report per phase both the modal value AND the count of
+  samples reading above PHASE A's mode. Six discriminated outcomes: inert /
+  standing connection cost / trace-not-socket (the jackpot) / sub-tick /
+  connect() transient only / drift artefact - see the header table.
+  Why the cooling phase is the sleeper: a cooling trace is the only known
+  game state that persists ACROSS script runs and decays on real wall-clock
+  time. If it costs even 1 tick/sec, five back-to-back runs against a host
+  start at five different points on that curve - the exact shape of the
+  +40.7/+111.0/+40.3/+65.5/+64.3s spread. Run order is N first (clean), then
+  two connected runs back to back with NO wait between them, so run 3's
+  PHASE A is deliberately a cooling-trace baseline and run 2 vs run 3 PHASE A
+  is a free cross-run carryover measurement. Rider: the SPECS line records a
+  real remote cpu_tier/cpu_ticks - the first anywhere in this investigation.
+  ~70s per run, 3 runs, no waiting between them.
+  Progress: authored, not yet run. Reads against T04's meter-response unit
+  and T08's decay curve (to tell a standing cost from connect()'s own 5-tick
+  transient decaying away); sibling of T21 (does the meter sum across
+  PROCESSES) asking the same question about non-process engine state.
   Result: pending.

@@ -1,0 +1,434 @@
+# tests/test_charge_unit.bd - T14: THE CHARGING UNIT.
+#
+# ONE QUESTION: is tick cost charged per PHYSICAL SOURCE LINE, per
+# STATEMENT, or per EVALUATED OPERATION - and do comment lines, blank
+# lines and `pass` consume budget when they sit inside an executed block?
+#
+# WHY IT MATTERS
+#   editor_documentation.txt says flatly "Scripts run line by line. Each
+#   line costs one tick." Against that, the v1.1.0 changelog admits a bug
+#   where "the same function call, wrapped in identical arithmetic, could
+#   cost wildly different amounts of tick budget depending only on which
+#   side of the expression it sat on" - impossible unless the accounting
+#   walks the expression tree. Both statements are still live.
+#   The practical stake is the import phase. field_notes.txt asserts
+#   import cost is "proportional to the imported file's line count (not
+#   just its top-level statements - the whole file, function bodies
+#   included)". utils/*.bd is 2,036 RAW lines against 945 executable ones.
+#   If comments and blanks are free, that claim is wrong by 2.2x and every
+#   import-debt number in field_notes is inflated by the codebase's own
+#   documentation. If they are charged, this project pays double on every
+#   import for its comments, and stripping them is a real, free fix.
+#
+# WHAT THIS TEST DOES THAT ITS NEIGHBOURS DO NOT
+#   T05 (test_call_price.bd) varies operations at a FIXED line count.
+#   This one varies LINE COUNT at fixed operations - the exact complement.
+#   Neither can name the unit alone; together they close it.
+#
+# THE DESIGN - nine arms, identical scaffolding, only the payload differs.
+# The payload sits alone inside a get_unix_time() bracket; every sleep and
+# every log is OUTSIDE that bracket, so instrumentation never enters the
+# measurement and cancels exactly in arm-to-arm differences.
+#
+#   arm      physical  stmts  adds  calls   what it isolates
+#   BASE        0        0      0     0     zero point
+#   LINE24     24       24     24     0     \ same 24 additions,
+#   OPS24       2        2     24     0     / 12x different line count
+#   CALL        3        3     24     3     \ same 3 calls, same 8 args,
+#   WRAP       24        3     24     3     / only the newlines differ
+#   CMNT       25        1      1     0     24 comment lines + 1 sentinel
+#   BLNK       25        1      1     0     24 blank lines + 1 sentinel
+#   PASS       25       25      1     0     24 `pass` + 1 sentinel
+#   BASEB       0        0      0     0     drift control, must match BASE
+#
+#   LINE24 / OPS24 / CALL / WRAP each add EXACTLY 24 to `a` per round.
+#   Four different source shapes, byte-identical arithmetic result. That is
+#   the integrity guarantee: if a= steps by 24 in all four, they really did
+#   the same work and only the layout differed.
+#
+# HOW TO READ IT  (U = sec_per_unit from T02/test_tick_ruler.bd;
+#                  U ~ 0.10s at base tier. Deltas are per-round block=,
+#                  always against the SAME run's BASE, never another run.)
+#
+#   HEADLINE 1 - the ratio  R = (OPS24 - BASE) / (LINE24 - BASE)
+#     R ~ 0.08  -> cost tracks LINES or STATEMENTS, not arithmetic.
+#     R ~ 0.5   -> cost tracks expression NODES (leaves counted too).
+#     R ~ 1.0   -> cost tracks OPERATORS - 24 adds cost 24 either way.
+#     R > 1.5   -> operators cost MORE than the lines holding them; the
+#                  "each line costs one tick" doc line is simply false.
+#
+#   HEADLINE 2 - the difference  D = WRAP - CALL
+#     D ~ +21U (+2.1s at base tier) -> RAW PHYSICAL lines are charged:
+#         a call split over 8 lines costs 8. Wrapping long calls for
+#         readability is silently expensive, everywhere in this codebase.
+#     D ~ 0    -> continuation lines are free; the unit is at least a
+#         logical line / statement.
+#
+#   HEADLINE 3 - the dead lines  (subtract 1U for each arm's sentinel)
+#     CMNT - BASE - U ~ +24U -> comments are charged. Then the unit is the
+#         RAW LINE and nothing else, because a comment has zero statements
+#         and zero operations. field_notes' 2,036-line import claim stands,
+#         and deleting comments from utils/*.bd is an immediate real fix.
+#     CMNT - BASE - U ~ 0    -> comments are free (stripped at tokenise).
+#         The import-cost model must be re-based on 945 executable lines.
+#     BLNK behaves like CMNT unless the tokeniser treats them differently -
+#         a split verdict (one free, one charged) is a genuine finding.
+#     PASS - BASE - U ~ +24U -> `pass` is a real charged statement.
+#     PASS - BASE - U ~ 0    -> `pass` is compiled out.
+#
+#   THE COMBINATION IS THE ANSWER:
+#     CMNT charged                      -> PER RAW PHYSICAL LINE
+#     CMNT free, PASS charged, R ~ 0.08 -> PER STATEMENT
+#     CMNT free, PASS free,    R >= 0.5 -> PER EVALUATED OPERATION
+#     Any other combination is new and must be reported as-is, not forced
+#     into one of these three boxes.
+#
+#   INVALID RUN: if BASE is not the smallest mean block=, or if BASEB
+#   differs from BASE by more than the spread WITHIN either phase, the run
+#   drifted - report it and re-run. Late arms (CMNT/BLNK/PASS) should then
+#   be read against BASEB, which sits next to them, not against BASE.
+#
+#   INTEGER CLOCK: if every block= prints as a whole number, get_unix_time()
+#   has 1-second resolution. Then IGNORE block= and read sum= instead: it
+#   aggregates 3 rounds, so every prediction above triples (24U per round
+#   becomes 7.2s per phase) and survives the quantisation.
+#
+#   INTEGRITY - a= at each phase end must read exactly:
+#     BASE 0 / LINE24 72 / OPS24 144 / CALL 216 / WRAP 288 /
+#     CMNT 291 / BLNK 294 / PASS 297 / BASEB 297.
+#   BLOCK TRUNCATION: if a dead line ENDS the loop block, that phase prints
+#   exactly ONE round line instead of three, with round=3 and a= up only 1.
+#   That is a real language finding - report it - and that phase's block=
+#   must be discarded. `r` is incremented FIRST inside every loop precisely
+#   so this failure cannot hang the script.
+#
+# SAFETY - THE PAYLOADS ARE DELIBERATE UNPACED BURSTS; that is the
+# measurement. Every one is sized to stay inside the ~5s-at-100% kill:
+# worst case 25 charged lines + the bracket line = ~2.6s at base tier,
+# with sleep(2) before and sleep(1) after every single one. No get_cpu()
+# anywhere in this file.
+#   GATE - DO NOT RUN THIS UNTIL T02 HAS REPORTED. This file's burst sizes
+#   are calibrated against base tier (24 charged lines ~ 2.4s, half the
+#   kill window). If T02 measured sec_per_unit > 0.16 s/unit, or if T02's
+#   30-unit burst KILLED the script, do NOT run this as written and do NOT
+#   hand-trim it in-game: every a= value below is computed for 24-unit
+#   payloads and a hand-trim silently voids the integrity check. Report
+#   T02's number back instead and take a re-cut 12-unit version of this
+#   file, with its own a= table.
+#
+# HOW TO RUN
+#   1) Run `ps` and `jobs` first, confirm nothing else is running, paste
+#      that too.
+#   2) Save as ~/scripts/test_charge_unit.bd. BEFORE RUNNING, open it in
+#      the editor and confirm the file is 434 lines long (37 of those are
+#      blank: 24 in PHASE-BLNK, 13 between phases). If it is short by
+#      ~24 or ~37, the PHASE-BLNK blank lines were eaten by the paste - blanks
+#      that silently vanish look exactly like blanks that are free, which
+#      is the one false negative this test cannot detect on its own. Fix
+#      the paste before running.
+#   3) Run `test_charge_unit`. Paste back EVERY line printed, verbatim.
+#   4) Run it TWICE, back to back, same session.
+#   5) A third run only if the two disagree on a verdict, not merely on
+#      the numbers.
+#   RECOVERY - a parse error means NOTHING runs, so read the error first:
+#     - error naming the multi-line call -> v1.1.1's "function calls can
+#       span multiple lines" is FALSE. Paste it verbatim (that is a
+#       headline result), delete the whole PHASE-WRAP section, re-run.
+#       Every a= printed after that point drops by 72; the per-round
+#       steps, which is what integrity rests on, are unchanged.
+#     - error naming `pass` -> paste it verbatim (that answers the pass
+#       question outright: `pass` is documented in editor_documentation.txt
+#       but may not be implemented), delete the whole PHASE-PASS section,
+#       re-run. a= then ends at 294, not 297.
+#   ~2 to 2.5 minutes per run at base tier.
+
+var t0 = get_unix_time()
+var a = 0
+var r = 0
+var ts = 0
+var te = 0
+var bl = 0
+var acc = 0
+var m0 = 0
+var span = 0
+
+func s8(p1, p2, p3, p4, p5, p6, p7, p8):
+    return p1 + p2 + p3 + p4 + p5 + p6 + p7 + p8
+
+log("T14-CLOCK raw=" + str(t0) + " (decimals => float clock, read block=; whole number => 1s clock, read sum=)")
+log("T14-START arms=BASE,LINE24,OPS24,CALL,WRAP,CMNT,BLNK,PASS,BASEB rounds=3 get_cpu_calls=0 a_final_must_be=297")
+sleep(2)
+
+log("T14-BEGIN arm=BASE shape=0lines_0adds_0calls")
+m0 = get_unix_time()
+r = 0
+acc = 0
+while r < 3:
+    r = r + 1
+    sleep(2)
+    ts = get_unix_time()
+    te = get_unix_time()
+    sleep(1)
+    bl = te - ts
+    acc = acc + bl
+    log("T14 arm=BASE round=" + str(r) + " block=" + str(bl) + " a=" + str(a) + " at=+" + str(get_unix_time() - t0))
+span = get_unix_time() - m0
+log("T14-END arm=BASE rounds=" + str(r) + " sum=" + str(acc) + " span=" + str(span) + " a=" + str(a) + " (a must be 0)")
+
+log("T14-BEGIN arm=LINE24 shape=24lines_24adds_0calls")
+m0 = get_unix_time()
+r = 0
+acc = 0
+while r < 3:
+    r = r + 1
+    sleep(2)
+    ts = get_unix_time()
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    a = a + 1
+    te = get_unix_time()
+    sleep(1)
+    bl = te - ts
+    acc = acc + bl
+    log("T14 arm=LINE24 round=" + str(r) + " block=" + str(bl) + " a=" + str(a) + " at=+" + str(get_unix_time() - t0))
+span = get_unix_time() - m0
+log("T14-END arm=LINE24 rounds=" + str(r) + " sum=" + str(acc) + " span=" + str(span) + " a=" + str(a) + " (a must be 72)")
+
+log("T14-BEGIN arm=OPS24 shape=2lines_24adds_0calls")
+m0 = get_unix_time()
+r = 0
+acc = 0
+while r < 3:
+    r = r + 1
+    sleep(2)
+    ts = get_unix_time()
+    a = a + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1
+    a = a + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1
+    te = get_unix_time()
+    sleep(1)
+    bl = te - ts
+    acc = acc + bl
+    log("T14 arm=OPS24 round=" + str(r) + " block=" + str(bl) + " a=" + str(a) + " at=+" + str(get_unix_time() - t0))
+span = get_unix_time() - m0
+log("T14-END arm=OPS24 rounds=" + str(r) + " sum=" + str(acc) + " span=" + str(span) + " a=" + str(a) + " (a must be 144)")
+
+log("T14-BEGIN arm=CALL shape=3lines_3calls_8args")
+m0 = get_unix_time()
+r = 0
+acc = 0
+while r < 3:
+    r = r + 1
+    sleep(2)
+    ts = get_unix_time()
+    a = a + s8(1, 1, 1, 1, 1, 1, 1, 1)
+    a = a + s8(1, 1, 1, 1, 1, 1, 1, 1)
+    a = a + s8(1, 1, 1, 1, 1, 1, 1, 1)
+    te = get_unix_time()
+    sleep(1)
+    bl = te - ts
+    acc = acc + bl
+    log("T14 arm=CALL round=" + str(r) + " block=" + str(bl) + " a=" + str(a) + " at=+" + str(get_unix_time() - t0))
+span = get_unix_time() - m0
+log("T14-END arm=CALL rounds=" + str(r) + " sum=" + str(acc) + " span=" + str(span) + " a=" + str(a) + " (a must be 216)")
+
+log("T14-BEGIN arm=WRAP shape=24lines_3calls_8args")
+m0 = get_unix_time()
+r = 0
+acc = 0
+while r < 3:
+    r = r + 1
+    sleep(2)
+    ts = get_unix_time()
+    a = a + s8(1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1)
+    a = a + s8(1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1)
+    a = a + s8(1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1)
+    te = get_unix_time()
+    sleep(1)
+    bl = te - ts
+    acc = acc + bl
+    log("T14 arm=WRAP round=" + str(r) + " block=" + str(bl) + " a=" + str(a) + " at=+" + str(get_unix_time() - t0))
+span = get_unix_time() - m0
+log("T14-END arm=WRAP rounds=" + str(r) + " sum=" + str(acc) + " span=" + str(span) + " a=" + str(a) + " (a must be 288)")
+
+log("T14-BEGIN arm=CMNT shape=24commentlines_1sentinel")
+m0 = get_unix_time()
+r = 0
+acc = 0
+while r < 3:
+    r = r + 1
+    sleep(2)
+    ts = get_unix_time()
+    # dead 01
+    # dead 02
+    # dead 03
+    # dead 04
+    # dead 05
+    # dead 06
+    # dead 07
+    # dead 08
+    # dead 09
+    # dead 10
+    # dead 11
+    # dead 12
+    # dead 13
+    # dead 14
+    # dead 15
+    # dead 16
+    # dead 17
+    # dead 18
+    # dead 19
+    # dead 20
+    # dead 21
+    # dead 22
+    # dead 23
+    # dead 24
+    a = a + 1
+    te = get_unix_time()
+    sleep(1)
+    bl = te - ts
+    acc = acc + bl
+    log("T14 arm=CMNT round=" + str(r) + " block=" + str(bl) + " a=" + str(a) + " at=+" + str(get_unix_time() - t0))
+span = get_unix_time() - m0
+log("T14-END arm=CMNT rounds=" + str(r) + " sum=" + str(acc) + " span=" + str(span) + " a=" + str(a) + " (a must be 291)")
+
+log("T14-BEGIN arm=BLNK shape=24blanklines_1sentinel")
+m0 = get_unix_time()
+r = 0
+acc = 0
+while r < 3:
+    r = r + 1
+    sleep(2)
+    ts = get_unix_time()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    a = a + 1
+    te = get_unix_time()
+    sleep(1)
+    bl = te - ts
+    acc = acc + bl
+    log("T14 arm=BLNK round=" + str(r) + " block=" + str(bl) + " a=" + str(a) + " at=+" + str(get_unix_time() - t0))
+span = get_unix_time() - m0
+log("T14-END arm=BLNK rounds=" + str(r) + " sum=" + str(acc) + " span=" + str(span) + " a=" + str(a) + " (a must be 294)")
+
+log("T14-BEGIN arm=PASS shape=24passlines_1sentinel")
+m0 = get_unix_time()
+r = 0
+acc = 0
+while r < 3:
+    r = r + 1
+    sleep(2)
+    ts = get_unix_time()
+    pass
+    pass
+    pass
+    pass
+    pass
+    pass
+    pass
+    pass
+    pass
+    pass
+    pass
+    pass
+    pass
+    pass
+    pass
+    pass
+    pass
+    pass
+    pass
+    pass
+    pass
+    pass
+    pass
+    pass
+    a = a + 1
+    te = get_unix_time()
+    sleep(1)
+    bl = te - ts
+    acc = acc + bl
+    log("T14 arm=PASS round=" + str(r) + " block=" + str(bl) + " a=" + str(a) + " at=+" + str(get_unix_time() - t0))
+span = get_unix_time() - m0
+log("T14-END arm=PASS rounds=" + str(r) + " sum=" + str(acc) + " span=" + str(span) + " a=" + str(a) + " (a must be 297)")
+
+log("T14-BEGIN arm=BASEB shape=0lines_0adds_0calls_driftcontrol")
+m0 = get_unix_time()
+r = 0
+acc = 0
+while r < 3:
+    r = r + 1
+    sleep(2)
+    ts = get_unix_time()
+    te = get_unix_time()
+    sleep(1)
+    bl = te - ts
+    acc = acc + bl
+    log("T14 arm=BASEB round=" + str(r) + " block=" + str(bl) + " a=" + str(a) + " at=+" + str(get_unix_time() - t0))
+span = get_unix_time() - m0
+log("T14-END arm=BASEB rounds=" + str(r) + " sum=" + str(acc) + " span=" + str(span) + " a=" + str(a) + " (a must still be 297)")
+
+log("T14-DONE total=+" + str(get_unix_time() - t0) + "s a=" + str(a) + " (a must be 297; BASEB sum must match BASE sum or the run drifted)")

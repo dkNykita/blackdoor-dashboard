@@ -1,0 +1,362 @@
+# tests/test_scrollback.bd - T23: DOES A FULL TERMINAL COST MORE THAN AN
+# EMPTY ONE?
+#
+# ONE QUESTION: does the volume of text already printed to the terminal this
+# session change how fast a script executes?
+#
+# WHY THIS ONE EXISTS
+#   The five back-to-back runs that produced this investigation's central
+#   mystery (+40.7 / +111.0 / +40.3 / +65.5 / +64.3s - identical code,
+#   identical data, same session, nothing else running) each started in
+#   whatever state the previous CRASHED run left the terminal in. Run 1 began
+#   against a near-empty screen; run 5 began against roughly four runs' worth
+#   of accumulated output. That is a monotonically growing environmental load
+#   that nobody recorded, nobody controlled and nobody has ever measured -
+#   exactly the shape needed to produce a walking crash point out of unchanged
+#   code.
+#   The debug-logging A/B this project treats as conclusive does NOT cover it:
+#   that A/B removed the nu.debug_time() calls only, kept the round-level log()
+#   lines both arms shared, and - decisively - both arms started from the same
+#   scrollback state. It priced instrumentation, not terminal history.
+#
+# WHAT IS DELIBERATELY NOT BEING ASKED HERE
+#   "Does printing more lines cost more ticks" is T18's question (it does - at
+#   least one tick per log() line, possibly more). T23 asks the different
+#   question underneath it: holding the printed payload EXACTLY constant - the
+#   same six log() calls of the same two-character string, every single time -
+#   does the cost of printing them depend on how much is already on screen?
+#   T18 prices the payload. T23 prices the environment the payload lands in.
+#
+# THE MEASURED UNIT IS T05's AND T18's UNIT: six measured source lines inside
+#   a timed bracket, so a delta converts identically in all three tests
+#   (delta / 6 = per-line cost in seconds; divide by T02's seconds-per-tick for
+#   ticks). At base tier 0.1s per line is exactly one extra tick.
+#
+# THE DESIGN - FOUR PHASES, ONE RUN, AND A REVERSAL
+#   Every phase is the SAME function, four rounds, and each round times two
+#   bracketed six-line blocks that never change:
+#       ARITH = six `b = 1` assignments      <- the non-print control channel
+#       LOGB  = six log(S) calls, S = "zz"   <- the print path, the subject
+#   Only the terminal underneath them differs:
+#
+#     PHASE A   buf   4 ->  32 lines    baseline, empty screen
+#     FILL-1    +48 lines emitted       (never timed, never measured)
+#     PHASE B   buf  80 -> 108 lines    mid dose
+#     FILL-2    +48 lines emitted
+#     PHASE C   buf 156 -> 184 lines    full dose, deepest this run goes
+#     clear()                           THE REVERSAL
+#     PHASE D   buf   6 ->  34 lines    empty screen again, END of the run
+#
+#   Phases ascend in dose ON PURPOSE, so any monotone drift (warm-up, leak,
+#   time-in-run) mimics a positive result. PHASE D is the only thing in this
+#   script that tells those two apart, and it is the entire reason the clear()
+#   sits inside the run rather than between runs: this corpus has not earned
+#   the right to compare absolute timings across runs (5 identical runs, 2.7x
+#   spread), so the dose, the reversal and the control all have to live inside
+#   one execution. PHASE D has almost exactly PHASE A's buffer depth (34 vs 32)
+#   and maximally different time-in-run; PHASE C has almost exactly PHASE D's
+#   time-in-run and maximally different buffer depth. Between them the two
+#   explanations cannot both survive.
+#
+# HOW TO READ THE RESULT  (R = T03's per-round noise floor, about +/-0.10s;
+# every comparison is against THIS run's own phases, never another run's.
+# mA/mB/mC/mD = phase mean LOGB, i.e. seconds for six log() lines.)
+#
+#   1. SCROLLBACK COSTS - confirms:
+#        mC - mA > 2R, with mA < mB < mC (dose-response), AND |mD - mA| < R
+#        (clearing the screen puts the cost back). ARITH flat within R across
+#        all four phases, so the cost lives specifically in the print path.
+#        -> Terminal history is a real, uncontrolled per-run variable. Every
+#           back-to-back comparison this investigation has ever made is
+#           confounded, and from here on every timed run must be preceded by a
+#           `clear`. SUM5 gives the price per printed line per 100 buffered
+#           lines; multiply by a real menu.bd run's output volume for the bill.
+#
+#   2. GLOBAL SLOWDOWN, NOT A PRINT COST:
+#        as (1), but ARITH rises in step with LOGB (d_CA_arith within 0.3x of
+#        d_CA_log).
+#        -> It is not the printer. The whole interpreter slows as the terminal
+#           fills, which is a far bigger finding: every per-call cost in
+#           field_notes becomes a function of WHEN in the session it was
+#           measured.
+#
+#   3. MONOTONE DRIFT, NOT SCROLLBACK - refutes the scrollback reading, but is
+#      NOT a null result:
+#        mC - mA > 2R but mD stays up with mC (|mD - mC| < R and mD - mA > 2R).
+#        -> Something ramps with TIME IN RUN irrespective of what is on screen.
+#           Report this loudly. A cost that grows the longer a script has been
+#           alive is a first-class candidate for the crash-point walk and no
+#           test in this programme has looked for it directly.
+#
+#   4. SCROLLBACK IS FREE - refutes:
+#        all four phase means agree within R, and the four PH-DONE span= values
+#        agree within 4R. ARITH likewise flat.
+#        -> Closes scrollback, terminal rendering and "how much has been
+#           printed this session" as variance sources in one shot, up to a dose
+#           of ~184 buffered lines - more than the entire five-run sequence
+#           that produced the mystery ever accumulated. The parent
+#           investigation can stop worrying about output volume as an
+#           ENVIRONMENT. It must still worry about it as TICKS - that is T18,
+#           a different question with a different answer.
+#
+#   5. INVALID RUN - report and re-run; no delta from it means anything:
+#        ARITH is erratic (any ARITH phase mean more than 3R from any other
+#        while LOGB is flat), or the player reports clear() visibly failed to
+#        empty the screen, or PHASE D was not the last thing that ran.
+#
+#   6. INTEGER-CLOCK FALLBACK: if every logb= and arith= prints as a whole
+#        number, get_unix_time() has 1-second resolution and the per-round
+#        numbers are unusable. Use the PH-DONE span= values instead: every
+#        phase has identical structure, identical sleeps and identical line
+#        counts, so span differences ARE the effect, aggregated over four
+#        rounds and both brackets, and they survive 1-second quantization.
+#        (Prior traces print differences like +98.6020s, so sub-second
+#        resolution is expected; this is cheap insurance.)
+#
+# WHAT buf= MEANS: an approximate count of lines this script has emitted since
+#   the last clear, maintained by hand (+/-5). It counts EMITTED LINES, not
+#   display rows and not characters. The FILL lines are ~118 characters on
+#   purpose - if the terminal wraps, each buys more than one display row, so
+#   the true dose in rows may be up to ~2x buf. That asymmetry can only make a
+#   real effect easier to see; it cannot manufacture one.
+#
+# IS THE BURST THE EXPERIMENT? NO - and it is deliberately kept small.
+#   The longest unpaced stretch anywhere in this file is EIGHT executed lines
+#   (a timestamp, six payload lines, a timestamp), ~0.8s of load at base tier.
+#   Known-lethal reference points: ~13 unpaced log() calls in a tight loop
+#   (field_notes) and 50 unpaced arithmetic lines (test_cpu_decay.bd). Six
+#   payload lines is comfortably under both, by design - a kill here would
+#   destroy the measurement rather than being the measurement. Every bracket is
+#   fenced by sleep(1) on both sides; every piece of bookkeeping, concatenation
+#   and reporting happens outside the fence. run_phase() also opens with an
+#   unconditional sleep(1) and splits its declarations around a second one, so
+#   that entering a phase is never itself a burst (the field_notes
+#   "transition point" rule, applied to this script's own hot path).
+#
+# OBSERVER EFFECT
+#   - EXACTLY TWO get_cpu() calls in the whole run, at fixed positions, both
+#     outside every timed bracket: one as the first executed line (cpu0) and
+#     one immediately after PHASE C (cpu_full, the deepest-buffer reading).
+#     Both are identical in every run, so they are a constant offset that
+#     cancels in every comparison this test makes. cpu0 is also the cross-run
+#     cross-check: if a buried terminal registers on the aggregate meter at
+#     all, RUN 2 (launched into RUN 1's leftovers) should read a higher cpu0
+#     than RUN 1 (launched after a terminal `clear`). NOTE cpu0 is confounded
+#     with THIS FILE'S OWN LENGTH (T09 flagged launch-time readings scaling
+#     with file line count) - which is why cpu0 is only ever compared between
+#     runs of this same unchanged file, never against another script.
+#   - The measured payload is a FIXED two-character string with zero
+#     concatenation and zero calls, so T18's length / argument-complexity
+#     effects are held constant and cannot contribute to a trend.
+#   - The per-round accumulator is LOCAL TO EACH PHASE and never holds more
+#     than four values, so its concatenation cost is bounded and identical in
+#     all four phases - it cannot produce the monotone ramp this test hunts
+#     for. (A whole-run accumulator would have grown across phases and done
+#     exactly that. That is why this one is per-phase.)
+#   - The fill is emitted by this same script, so it costs real ticks - but it
+#     is never inside a bracket and its cost lands entirely between phases.
+#     An alternative design fills the terminal by hand with terminal commands
+#     (free to the script) before each of ten separate runs; that version is
+#     cleaner per sample but readable only across runs, which this corpus
+#     cannot do. See known_weaknesses.
+#
+# HOW TO RUN
+#   1) Have T03's noise floor R to hand. Without it a 0.3s spread is
+#      uninterpretable. Have T18's log() verdict to hand too - it says what a
+#      single log() line costs, which is what turns a delta here into a
+#      percentage.
+#   2) `ps` and `jobs`, confirm both empty, paste that output too.
+#   3) Type `clear`. Then run `test_scrollback`. This is RUN 1, launched into
+#      an empty terminal. No parameters. ~2 min 45 s.
+#   4) WITHOUT clearing, immediately run `test_scrollback` again. This is
+#      RUN 2, launched into ~220 lines of RUN 1's leftovers. Its PHASE A is
+#      the between-run version of the same manipulation, and its cpu0 is the
+#      meter-side cross-check.
+#   5) PASTE BACK: every line that does NOT begin with a lowercase z. Every
+#      payload and fill line begins with "z" and carries no information - it IS
+#      the thing being measured, not a result. Everything worth pasting begins
+#      with T23, PH-START, PH-DONE, FILL, R, CPU-FULL, SNAP or SUM. Label the
+#      two runs RUN1 and RUN2.
+#   6) ABOUT THE clear() IN THE MIDDLE: it wipes phases A/B/C off the screen.
+#      That is intentional and nothing is lost - the SNAP lines printed
+#      immediately afterwards reproduce every phase mean AND every individual
+#      round value from A, B and C. Pasting only what is on screen at the end
+#      is a complete result. If your terminal lets you copy mid-run, copy at
+#      the CPU-FULL line as a bonus, but do not interrupt the script to do it.
+#   7) REPEATS: TWO runs as above. A THIRD run only if RUN2's PHASE A mean
+#      differs from RUN1's PHASE A mean by more than R - in that case type
+#      `clear`, run once more as RUN3, and check RUN3's PHASE A comes back down
+#      to RUN1's. That third run is what proves a between-run effect is the
+#      terminal's own buffer and not something else two consecutive runs share.
+#   8) IF IT DIES: paste everything that printed anyway. The last PH-START or
+#      FILL line names exactly where, and every PH-DONE already banked is a
+#      complete phase result. A kill in this script is itself a finding - it
+#      would mean six paced log() lines became lethal at a buffer depth where
+#      they were not lethal twenty seconds earlier, confirming hypothesis (1)
+#      in the hardest currency available.
+#
+# IF IT DIES WITH ZERO OUTPUT: this file is long and mostly header, and
+#   whether comment lines cost ticks at load time is T09's question, not this
+#   one. Strip the header to its first ten lines and re-run; if the stripped
+#   copy runs, that is a T09 result, not a T23 one.
+
+var C0 = get_cpu()
+var t0 = get_unix_time()
+var S = "zz"
+var FILL = "z0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567"
+var buf = 0
+var cfull = 0
+
+sleep(1)
+
+# --- the fill: emits n*6 long lines, paced six per sleep(1). Never timed,
+# --- never measured. Its only job is to put text on the screen.
+
+func do_fill(n, txt):
+    var i = 0
+    while i < n:
+        sleep(1)
+        log(txt)
+        log(txt)
+        log(txt)
+        log(txt)
+        log(txt)
+        log(txt)
+        i = i + 1
+    return n * 6
+
+sleep(1)
+
+# --- one phase: four rounds, each timing an ARITH block and a LOGB block of
+# --- six lines each. Returns [mean_logb, mean_arith, buf_end, raw_logb_string].
+# --- Identical work in every phase - only the screen underneath differs.
+
+func run_phase(tz, ph, s1, b0):
+    sleep(1)
+    var r = 0
+    var sl = 0
+    var sa = 0
+    var bf = b0
+    var acc = ""
+    sleep(1)
+    var ta = 0
+    var ea = 0
+    var tl = 0
+    var el = 0
+    var b = 0
+    while r < 4:
+        sleep(1)
+        ta = get_unix_time()
+        b = 1
+        b = 1
+        b = 1
+        b = 1
+        b = 1
+        b = 1
+        ea = get_unix_time() - ta
+        sleep(1)
+        tl = get_unix_time()
+        log(s1)
+        log(s1)
+        log(s1)
+        log(s1)
+        log(s1)
+        log(s1)
+        el = get_unix_time() - tl
+        sleep(1)
+        bf = bf + 7
+        sl = sl + el
+        sa = sa + ea
+        acc = acc + " " + str(el)
+        r = r + 1
+        log("R" + str(r) + " ph=" + ph + " logb=" + str(el) + " arith=" + str(ea) + " buf=" + str(bf) + " at=+" + str(get_unix_time() - tz))
+    return [sl / 4, sa / 4, bf, acc]
+
+sleep(1)
+
+# --- driver -----------------------------------------------------------------
+
+log("T23 SCROLLBACK start cpu0=" + str(C0) + " clock=" + str(t0) + " phases=A,B,C,clear,D rounds=4 block=6lines")
+sleep(1)
+log("T23 note - paste every line NOT starting with z. A=empty B=mid C=full D=empty-again.")
+sleep(1)
+buf = 4
+
+# PHASE A - empty terminal, start of run.
+
+log("PH-START ph=A buf=" + str(buf) + " at=+" + str(get_unix_time() - t0))
+var rA = run_phase(t0, "A", S, buf)
+buf = rA[2]
+log("PH-DONE ph=A logb=" + str(rA[0]) + " arith=" + str(rA[1]) + " buf=" + str(buf) + " span=" + str(get_unix_time() - t0))
+sleep(1)
+
+log("FILL-1 start buf=" + str(buf) + " at=+" + str(get_unix_time() - t0))
+buf = buf + do_fill(8, FILL)
+sleep(1)
+log("FILL-1 done buf=" + str(buf) + " at=+" + str(get_unix_time() - t0))
+
+# PHASE B - mid dose.
+
+log("PH-START ph=B buf=" + str(buf) + " at=+" + str(get_unix_time() - t0))
+var rB = run_phase(t0, "B", S, buf)
+buf = rB[2]
+log("PH-DONE ph=B logb=" + str(rB[0]) + " arith=" + str(rB[1]) + " buf=" + str(buf) + " span=" + str(get_unix_time() - t0))
+sleep(1)
+
+log("FILL-2 start buf=" + str(buf) + " at=+" + str(get_unix_time() - t0))
+buf = buf + do_fill(8, FILL)
+sleep(1)
+log("FILL-2 done buf=" + str(buf) + " at=+" + str(get_unix_time() - t0))
+
+# PHASE C - full dose, deepest buffer this run reaches.
+
+log("PH-START ph=C buf=" + str(buf) + " at=+" + str(get_unix_time() - t0))
+var rC = run_phase(t0, "C", S, buf)
+buf = rC[2]
+log("PH-DONE ph=C logb=" + str(rC[0]) + " arith=" + str(rC[1]) + " buf=" + str(buf) + " span=" + str(get_unix_time() - t0))
+sleep(1)
+
+cfull = get_cpu()
+log("CPU-FULL cpu=" + str(cfull) + " buf=" + str(buf) + " at=+" + str(get_unix_time() - t0) + " - clearing the screen NOW, every number so far is reprinted below")
+sleep(1)
+
+# --- THE REVERSAL. Everything above is wiped; the SNAP lines below carry it
+# --- all forward onto the fresh screen, so the final screen is self-contained.
+# --- buf is set to 6 to pre-count the five SNAP lines plus PHASE D's PH-START.
+
+clear()
+buf = 6
+log("SNAP T23 cleared - dose reset to 0. cpu0=" + str(C0) + " cpu_full=" + str(cfull))
+sleep(1)
+log("SNAP means A logb=" + str(rA[0]) + " arith=" + str(rA[1]) + " buf_end=" + str(rA[2]))
+sleep(1)
+log("SNAP means B logb=" + str(rB[0]) + " arith=" + str(rB[1]) + " buf_end=" + str(rB[2]))
+sleep(1)
+log("SNAP means C logb=" + str(rC[0]) + " arith=" + str(rC[1]) + " buf_end=" + str(rC[2]))
+sleep(1)
+log("SNAP raw logb A:" + rA[3] + " | B:" + rB[3] + " | C:" + rC[3])
+sleep(1)
+
+# PHASE D - same six lines, empty screen again, latest point in the run.
+
+log("PH-START ph=D buf=" + str(buf) + " POST-CLEAR REVERSAL at=+" + str(get_unix_time() - t0))
+var rD = run_phase(t0, "D", S, buf)
+buf = rD[2]
+log("PH-DONE ph=D logb=" + str(rD[0]) + " arith=" + str(rD[1]) + " buf=" + str(buf) + " span=" + str(get_unix_time() - t0))
+sleep(1)
+
+# --- summary: one line per sleep, so a kill here loses at most one line -----
+
+log("SUM1 LOGB means A=" + str(rA[0]) + " B=" + str(rB[0]) + " C=" + str(rC[0]) + " D=" + str(rD[0]))
+sleep(1)
+log("SUM2 DOSE d_BA=" + str(rB[0] - rA[0]) + " d_CA=" + str(rC[0] - rA[0]) + " (both >2R with A<B<C => dose-response)")
+sleep(1)
+log("SUM3 REVERSAL d_DA=" + str(rD[0] - rA[0]) + " d_DC=" + str(rD[0] - rC[0]) + " (|d_DA|<R => SCROLLBACK; |d_DC|<R while d_CA>2R => TIME-IN-RUN DRIFT, not scrollback)")
+sleep(1)
+log("SUM4 ARITH means A=" + str(rA[1]) + " B=" + str(rB[1]) + " C=" + str(rC[1]) + " D=" + str(rD[1]) + " d_CA_arith=" + str(rC[1] - rA[1]) + " (rises with LOGB => global slowdown, not the printer)")
+sleep(1)
+log("SUM5 PRICE per_line=" + str((rC[0] - rA[0]) / 6) + " per_line_per_100buf=" + str((rC[0] - rA[0]) / 6 / ((rC[2] - rA[2]) / 100)) + " dose_span_lines=" + str(rC[2] - rA[2]))
+sleep(1)
+log("SUM6 VERDICT all four within R => scrollback FREE up to ~184 lines; C>A and D==A => scrollback COSTS; C>A and D==C => TIME-IN-RUN drift, report loudly")
+sleep(1)
+log("T23 SCROLLBACK DONE 4 phases x 4 rounds total=+" + str(get_unix_time() - t0) + "s cpu0=" + str(C0) + " cpu_full=" + str(cfull) + " - paste every non-z line, label this run RUN1 or RUN2")

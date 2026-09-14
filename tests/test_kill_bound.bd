@@ -1,0 +1,416 @@
+# tests/test_kill_bound.bd - T11: THE LETHAL BURST BOUNDARY.
+# Second test of the KILL-TRIGGER block (T10 was the first).
+#
+# ---------------------------------------------------------------------------
+# ONE QUESTION
+# ---------------------------------------------------------------------------
+#   What is the SMALLEST unpaced burst that kills - for pure arithmetic, for
+#   the cheapest log line, and for a log line with one extra concatenation -
+#   is that boundary SHARP or STOCHASTIC, and does inserting get_cpu() calls
+#   into the burst move it?
+#
+# ---------------------------------------------------------------------------
+# WHY THIS IS THE MOST IMPORTANT TEST IN THE PROGRAMME
+# ---------------------------------------------------------------------------
+#   Everything the corpus knows about the lethal burst size is two loose
+#   anecdotes from single uninstrumented runs: "50 plain arithmetic lines"
+#   (test_cpu_decay.bd) and "~13 unpaced log() iterations" (field_notes.txt).
+#   tests/README.txt bounds it only as "at most 50, likely well under". It has
+#   NEVER been bisected, and - far more important - NOBODY HAS EVER RUN THE
+#   SAME BURST SIZE TWICE. So nobody knows whether the kill line is a fixed
+#   number at all.
+#
+#   That second half is the whole ballgame. The central unexplained finding of
+#   this investigation is that identical runs of identical code over identical
+#   data died at +40.7s, +111.0s, +40.3s, +65.5s and +64.3s. Every hypothesis
+#   tried so far has looked for the variance inside menu.bd, and every one has
+#   failed. If a fixed burst of n lines sometimes survives and sometimes dies,
+#   the variance is in the ENGINE'S KILL TRIGGER and menu.bd was never the
+#   subject. That single binary would explain the entire 2.7x spread, and this
+#   script is the cheapest possible way to ask it.
+#
+#   Note also what T10 and test_decode_pacing already imply: PART A of
+#   test_decode_pacing sat at a LOGGED cpu=100 for ~840 real seconds and never
+#   died. So the killer is NOT integrating get_cpu()'s own output - whatever it
+#   counts, the meter is not it. That is exactly why this test is meter-free:
+#   the observable is kill / no-kill, a binary the meter cannot perturb, alias
+#   or smooth.
+#
+# ---------------------------------------------------------------------------
+# THE BURST IS THE EXPERIMENT (deliberate, not an oversight)
+# ---------------------------------------------------------------------------
+#   Like T10, this script is allowed to violate the "sleep() every 5-8 lines"
+#   rule INSIDE the burst functions. Measuring an unpaced burst is the point.
+#   Everything outside the burst is paced normally: every burst has sleep(S)
+#   immediately before it (the burst function's own first line) and sleep(S)
+#   immediately after it, so no announcement line can ever be mistaken for the
+#   thing that did the killing.
+#
+#   Every burst function's FIRST line is its own sleep(s). That is deliberate:
+#   it means the mode-dispatch if/elif chain, the RUNG announcement and the
+#   loop bookkeeping all land on the far side of a sleep from the burst, so
+#   the differing chain depth per arm (1 test for arith, 6 for concatlog)
+#   cannot leak into the measured window. Inside the window every arm is
+#   identical except for its loop body. A mistyped mode falls through to
+#   arith while the header echoes the string you typed, so a typo shows up as
+#   a mode= label that does not match the output shape.
+#
+# ---------------------------------------------------------------------------
+# THE SIX ARMS - one harness, five orthogonal deltas
+# ---------------------------------------------------------------------------
+#   Every arm has an IDENTICAL 4-line preamble (t, j, x, c) inside the unpaced
+#   window and an identical `return` line closing it, so that constant offset
+#   cancels exactly out of every comparison below. In the log arms x and c are
+#   unused on purpose - they are structural padding, not dead code.
+#
+#     arm        loop body                             lines  extra ops
+#     arith      x = x + 1 / j = j + 1                   2     none
+#     zero       x = x + 1 / c = 0        / j = j + 1    3     none
+#     cpu        x = x + 1 / c = get_cpu()/ j = j + 1    3     get_cpu()
+#     time       x = x + 1 / c = get_unix_time()/j=j+1   3     get_unix_time()
+#     intlog     j = j + 1 / log(str(j))                 2     str() + log()
+#     concatlog  j = j + 1 / log("x" + str(j))           2     str()+ "+" +log()
+#
+#   The five deltas those arms buy:
+#     arith  vs zero       +1 LINE, no new operation  -> price of a bare line
+#     zero   vs cpu        same lines, +get_cpu()     -> THE OBSERVER EFFECT
+#     zero   vs time       same lines, +get_unix_time() -> "any call" control
+#     arith  vs intlog     same lines, log()+str()    -> price of logging
+#     intlog vs concatlog  same lines, +1 concat      -> price of ONE operation
+#
+#   zero/cpu/time are the hard three: same line count, same loop shape, same
+#   call depth, differing ONLY in the right-hand side of one assignment. If
+#   cpu's boundary drops and time's does not, the surcharge belongs to
+#   get_cpu() specifically. If both drop equally, it belongs to "making a
+#   call". If neither drops, calls are free in kill currency and T05's
+#   wall-clock verdict has to be reconciled with that.
+#
+# ---------------------------------------------------------------------------
+# HOW THE HARNESS WORKS - one loop, two experiments, chosen by `step`
+# ---------------------------------------------------------------------------
+#   step > 0  LADDER MODE. Rungs of n, n+step, n+2*step ... each separated by
+#             2*S seconds of sleep. Finds the boundary IN ONE RUN instead of
+#             one run per candidate value. The last "RUNG" line with no "OK"
+#             line after it names the size that killed it; the last "OK" line
+#             names the largest survivor.
+#   step = 0  HOLD MODE. The SAME n, over and over, `rungs` times, in one run.
+#             This is the sharpness test, and it is why this script exists.
+#             If rungs 0,1,2 print OK and rung 3 does not, the same burst size
+#             both survived and died WITHIN ONE RUN - the headline result.
+#   rungs = 1 SINGLE SHOT. One burst at exactly n. Used for fresh-run repeats,
+#             which is the sharpness test done the slow, unimpeachable way
+#             (see KNOWN CONFOUND below for why both forms are needed).
+#
+# ---------------------------------------------------------------------------
+# THE CALIB LINE - the script states its own prediction before testing it
+# ---------------------------------------------------------------------------
+#   Before the ladder starts, every run times one fixed 8-iteration arith
+#   burst (24-28 ticks: comfortably under T02's proven-survivable 30-line
+#   window, and it never changes, in any arm, in any run - so it biases
+#   nothing that is compared against anything else).
+#     CALIB arith8=<cal>s pred_n=<p>
+#   cal / 8 is seconds per arith iteration on THIS machine's actual tier.
+#   pred_n = round(40 / cal) is what the documented rule - "100% CPU for 5
+#   straight seconds kills" - predicts the lethal arith n must be. The script
+#   prints its own falsifiable prediction, in-band, before producing the
+#   number that confirms or refutes it. At base tier expect cal ~2.8s and
+#   pred_n ~14.
+#   If pred_n comes back far from the ladder you ran, re-run the ladder
+#   centred on pred_n. If cal prints as a whole number or 0, get_unix_time()
+#   is 1-second-resolution on this build (see T01/T02) - pred_n is then coarse
+#   but still usable; ignore any burst= value under ~2s.
+#
+# ---------------------------------------------------------------------------
+# OUTPUT FORMAT - every line is a complete datum on its own
+# ---------------------------------------------------------------------------
+#   KILLBOUND mode=<m> n=<N> step=<S> rungs=<R> settle=<s> entry_cpu=<c>
+#       Printed before anything else runs. entry_cpu is read on the script's
+#       VERY FIRST executable line, above even the function definitions, so it
+#       is a true carryover probe: ~0 on a cold run (test_cpu_decay saw exactly
+#       0), materially above 0 on a run started seconds after a kill. It is the
+#       ONLY get_cpu() call anywhere in this script outside the cpu arm itself.
+#   CALIB arith8=<cal>s pred_n=<p>                    see above
+#   RUNG r=<r> mode=<m> n=<k>    printed BEFORE the burst. If this is the last
+#       line in the paste, burst size k is what killed the script. This line
+#       alone is a complete result.
+#   OK r=<r> n=<k> burst=<el>s   printed only AFTER the post-burst sleep, so it
+#       proves the burst itself survived. burst= is the meter-free ruler:
+#       el / k = seconds per iteration, and el at the boundary converts the
+#       kill line into SECONDS, which is what tests the documented 5s rule.
+#   DONE mode=<m> top_n=<k>      nothing died at any rung. Raise n/step, re-run.
+#   In the intlog/concatlog arms the burst prints a rising integer (bare `13`)
+#   or a prefixed one (`x13`) per iteration - so those arms SELF-REPORT: the
+#   largest number printed before the overload banner IS the boundary, no
+#   sweep needed, and the bare-vs-prefixed format tells the two arms apart at
+#   a glance in a paste.
+#
+# ---------------------------------------------------------------------------
+# PRE-REGISTERED PREDICTIONS - written before any run, base tier assumed
+# ---------------------------------------------------------------------------
+#   P1 SHARP: some n survives all trials and n+step dies on all trials.
+#   P2 n*_arith lands within +/-2 rungs of the CALIB line's pred_n, and the
+#      burst= at the largest survivor is 4.0-5.5s. (Base tier: n* ~15 if the
+#      `while` condition costs a tick, ~23 if it is free. burst= at n*
+#      discriminates the two without needing T02.)
+#   P3 PER-LINE CHARGING: n*_zero / n*_arith ~= 2/3 (3 ticks/iter vs 2), i.e.
+#      the two boundaries COINCIDE IN SECONDS even though they differ in n.
+#   P4 OBSERVER EFFECT: n*_cpu < n*_zero if get_cpu() is not free. One extra
+#      tick per call predicts n*_cpu ~= (3/4) * n*_zero.
+#   P5 SPECIFICITY: n*_time == n*_zero. get_unix_time() is the confirmed-free
+#      control; if it moves too, the cost is "a call", not "the meter".
+#   P6 n*_intlog ~= n*_arith under per-line charging; below it if log() carries
+#      a per-operation surcharge. The anecdote ("~13 log iterations") predicts
+#      roughly the same neighbourhood, which is itself suspicious and worth
+#      pinning down.
+#   P7 n*_concatlog == n*_intlog under per-line charging; strictly lower under
+#      per-operation charging.
+#
+# ---------------------------------------------------------------------------
+# WHAT EACH OUTCOME MEANS
+# ---------------------------------------------------------------------------
+#   SHARP AND REPEATABLE (P1 holds, every arm)
+#       The kill is a deterministic count of consecutive unpaced ticks.
+#       Convert n* to seconds via burst=; if it lands on ~5.0s the documented
+#       rule is literally implemented and the load model is finally settled.
+#       The run-to-run variance then does NOT live in the kill trigger and the
+#       search goes back upstream - but now with a calibrated budget: any
+#       stretch of menu.bd longer than n* consecutive lines is a live bomb,
+#       and that is directly actionable.
+#   NOT SHARP (same n both survives and dies)
+#       THE HEADLINE. The kill line is phase-dependent - where the burst
+#       starts relative to the engine's own tick/second boundary decides
+#       whether it dies. That is a complete, sufficient mechanism for
+#       +40.7 / +111.0 / +40.3 / +65.5 / +64.3s, and it means no amount of
+#       pacing work on menu.bd could ever have produced a stable result.
+#       Everything downstream (T12's 70%-of-lethal bursts, T13) has to be
+#       re-cut around a probabilistic threshold instead of a fixed one.
+#   n*_cpu < n*_zero, n*_time == n*_zero
+#       get_cpu() adds real load, proven WITHOUT ever trusting get_cpu()'s own
+#       output. field_notes' unquantified CORRECTION is upheld and now has a
+#       magnitude. throttle()'s `while get_cpu() > t: sleep(1)` is provably
+#       feeding the meter it is waiting on.
+#   n*_cpu == n*_zero == n*_time
+#       get_cpu() is free in kill currency. If T05's wall clock said otherwise,
+#       the two currencies disagree and THAT disagreement is the result: the
+#       thing the killer counts is not the thing that costs wall-clock time.
+#       Do not average them; report both.
+#   intlog == concatlog, arith == intlog
+#       Charging is strictly per executed LINE. What a line DOES is irrelevant.
+#       Pacing rules can be written purely in line counts, which is a large
+#       simplification for every script in this project.
+#   concatlog < intlog (or intlog < arith)
+#       Charging is per OPERATION. Line counting is not a safe budget and
+#       every "throttle every N lines" rule in the codebase is mis-calibrated.
+#
+# ---------------------------------------------------------------------------
+# KNOWN CONFOUND - ladder carryover, and how the protocol controls it
+# ---------------------------------------------------------------------------
+#   A ladder and a hold run put several bursts inside ONE script run. If load
+#   does not fully clear across settle seconds, rung 3 starts hotter than rung
+#   0 and dies for the wrong reason. That is why STAGE 3 repeats the boundary
+#   as FRESH single-shot runs. Compare:
+#     ladder n* == fresh-run n*   -> settle is sufficient, no carryover.
+#     ladder n* <  fresh-run n*   -> LOAD SURVIVES THE SLEEP. That is not a
+#         spoiled experiment, it is a second mechanism for the central
+#         mystery, and it is measurable: re-run the ladder with settle=8 and
+#         see where the boundary moves. (T08 measured the decay curve from
+#         saturation; settle=3 is chosen against it. If T08 showed saturation
+#         persisting past 3s, run everything here at settle=8 instead.)
+#   Be honest about the ordering: whether a sleep resets the kill timer at all
+#   is T12's question, and T12 runs AFTER this one. So the ladder and hold
+#   forms rest on an assumption this programme has not yet tested. That is
+#   exactly why STAGE 3 exists and why no boundary is reported from a ladder
+#   alone. If T12 later shows a sleep does NOT fully reset the timer, every
+#   ladder n* here has to be re-read as a lower bound, while the STAGE 3
+#   fresh-run numbers stand unaffected.
+#
+# ---------------------------------------------------------------------------
+# HOW TO RUN - @param binds POSITIONALLY, no -flag= syntax
+#   test_kill_bound <mode> <n> <step> <rungs> <settle>
+# ---------------------------------------------------------------------------
+#   Run FIRST THING in a fresh session. Confirm with `ps` and `jobs` that
+#   nothing else is running, and paste that too. Paste EVERY line of EVERY
+#   run verbatim, including the "[SYSTEM] CPU overloaded..." banner and
+#   including runs that printed only a header - those ARE the data. Leave
+#   ~20s idle between runs unless a stage says otherwise.
+#
+#   STAGE 1 - locate the boundary          (1 run, ~45-130s)
+#       test_kill_bound arith
+#     Defaults ladder 6,9,12,...,33. Record pred_n from CALIB, the largest
+#     n with an OK line (call it nS) and the smallest n without one (nL).
+#     If it prints DONE, re-run as: test_kill_bound arith 36 3 10
+#
+#   STAGE 2 - sharpness, survivor side     (1 run, ~70s)
+#       test_kill_bound arith <nS> 0 8
+#     Eight identical bursts at the largest survivor. ANY missing OK line
+#     after an earlier OK line is the headline result.
+#
+#   STAGE 3 - sharpness, lethal side       (3 runs, ~15s each)
+#       test_kill_bound arith <nL> 0 1
+#     Run it three times, ~20s apart. Any single SURVIVED/OK is the headline
+#     result. Three repeats is the minimum that can tell a deterministic
+#     boundary from a stochastic one; if ANY flip appears anywhere, go to five.
+#     STAGES 1-3 together are under 4 minutes and answer the main question.
+#
+#   STAGE 4 - the observer arms            (3 runs, ~45-130s each)
+#       test_kill_bound zero <a> <b> 10
+#       test_kill_bound cpu  <a> <b> 10
+#       test_kill_bound time <a> <b> 10
+#     Use IDENTICAL <a> and <b> for all three - boundaries measured on
+#     different grids are not comparable. Start them ~1/3 lower than arith's
+#     ladder, since these arms cost 3 body lines per iteration instead of 2:
+#     if arith gave nL=15, use  4 2 10  (4,6,8,...,22).
+#
+#   STAGE 5 - the log arms                 (2 runs, ~20s each)
+#       test_kill_bound intlog 200 0 1
+#       test_kill_bound concatlog 200 0 1
+#     These self-report: the last integer printed before the banner IS the
+#     boundary. n=200 is just a ceiling it is not expected to reach.
+#
+#   TOTAL: ~10 runs, ~7 minutes, no single run over ~2.2 minutes, and the
+#   protocol yields a usable result if stopped after ANY stage.
+#
+# NOTE ON try/catch: deliberately not used. If T06 established that the
+# overload kill is catchable, this script can be upgraded to report its own
+# death and collapse stages 2/3 into one run - but as written it assumes
+# nothing about catchability, and a catch that silently swallowed the kill
+# would destroy the only observable this test has.
+#
+# NOTE ON CURRENCY: T14 (charging unit), T15 (loop cost) and T18 (log price)
+# ask overlapping per-construct questions in WALL-CLOCK currency, and all run
+# after this one. T11 asks them in KILL currency, early and coarsely. The two
+# currencies are not guaranteed to agree - test_decode_pacing sat at a logged
+# cpu=100 for ~840s without dying, which already shows the killer counts
+# something other than the meter. Where T11 and T14/T15/T18 disagree, report
+# both and treat the disagreement as the finding; do not average them.
+# @param mode "arith | zero | cpu | time | intlog | concatlog" default="arith"
+# @param n "first rung size, in loop iterations" default="6"
+# @param step "rung increment; 0 = repeat the same n (sharpness test)" default="3"
+# @param rungs "how many rungs before giving up" default="10"
+# @param settle "seconds of sleep before AND after every burst" default="3"
+
+var c0 = get_cpu()
+
+func b_arith(n, s):
+    sleep(s)
+    var t = get_unix_time()
+    var j = 0
+    var x = 0
+    var c = 0
+    while j < n:
+        x = x + 1
+        j = j + 1
+    return get_unix_time() - t
+
+sleep(1)
+
+func b_zero(n, s):
+    sleep(s)
+    var t = get_unix_time()
+    var j = 0
+    var x = 0
+    var c = 0
+    while j < n:
+        x = x + 1
+        c = 0
+        j = j + 1
+    return get_unix_time() - t
+
+sleep(1)
+
+func b_cpu(n, s):
+    sleep(s)
+    var t = get_unix_time()
+    var j = 0
+    var x = 0
+    var c = 0
+    while j < n:
+        x = x + 1
+        c = get_cpu()
+        j = j + 1
+    return get_unix_time() - t
+
+sleep(1)
+
+func b_time(n, s):
+    sleep(s)
+    var t = get_unix_time()
+    var j = 0
+    var x = 0
+    var c = 0
+    while j < n:
+        x = x + 1
+        c = get_unix_time()
+        j = j + 1
+    return get_unix_time() - t
+
+sleep(1)
+
+func b_intlog(n, s):
+    sleep(s)
+    var t = get_unix_time()
+    var j = 0
+    var x = 0
+    var c = 0
+    while j < n:
+        j = j + 1
+        log(str(j))
+    return get_unix_time() - t
+
+sleep(1)
+
+func b_concatlog(n, s):
+    sleep(s)
+    var t = get_unix_time()
+    var j = 0
+    var x = 0
+    var c = 0
+    while j < n:
+        j = j + 1
+        log("x" + str(j))
+    return get_unix_time() - t
+
+sleep(1)
+
+var MODE = get_param("mode", "arith")
+var N = int(get_param("n", "6"))
+var STEP = int(get_param("step", "3"))
+var RUNGS = int(get_param("rungs", "10"))
+var S = int(get_param("settle", "3"))
+sleep(1)
+var k = 0
+var r = 0
+var el = 0
+var cal = 0
+var pred = 0
+log("KILLBOUND mode=" + MODE + " n=" + str(N) + " step=" + str(STEP) + " rungs=" + str(RUNGS) + " settle=" + str(S) + " entry_cpu=" + str(c0))
+
+cal = b_arith(8, S)
+sleep(S)
+if cal > 0:
+    pred = round(40 / cal)
+log("CALIB arith8=" + str(cal) + "s pred_n=" + str(pred) + " (0 = clock too coarse)")
+
+k = N
+while r < RUNGS:
+    log("RUNG r=" + str(r) + " mode=" + MODE + " n=" + str(k))
+    if MODE == "arith":
+        el = b_arith(k, S)
+    elif MODE == "zero":
+        el = b_zero(k, S)
+    elif MODE == "cpu":
+        el = b_cpu(k, S)
+    elif MODE == "time":
+        el = b_time(k, S)
+    elif MODE == "intlog":
+        el = b_intlog(k, S)
+    elif MODE == "concatlog":
+        el = b_concatlog(k, S)
+    else:
+        el = b_arith(k, S)
+    sleep(S)
+    log("OK r=" + str(r) + " n=" + str(k) + " burst=" + str(el) + "s")
+    k = k + STEP
+    r = r + 1
+
+log("DONE mode=" + MODE + " top_n=" + str(k - STEP) + " nothing died - raise n or step and re-run")

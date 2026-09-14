@@ -1,0 +1,8 @@
+CPU LOAD RESEARCH - RESULTS LOG
+===============================
+Append one record per run, never overwrite. Fields per the RECORDING
+PROTOCOL in README.txt. Newest at the bottom. When a test's repeats are
+all in, also write its one-paragraph VERDICT into ../../tests/README.txt
+(Result:) and, if it changes the model, into ../field_notes.txt.
+
+(no runs recorded yet - programme authored 2026-09-14)
