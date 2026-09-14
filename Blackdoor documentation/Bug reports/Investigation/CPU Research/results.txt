@@ -1769,3 +1769,75 @@ NOTES       : This significantly WEAKENS (though with n=1, does not
               "no improvement" reading as unreliable (confounded), while
               the core NOT-SHARP / hold-mode-instability conclusion from
               STAGE 2 stands, now on firmer ground.
+
+RUN-ID      : T11 STAGE 4/5 (the observer arms - zero/cpu/time, 3 runs
+              each = 9 total, ladder 4,6,8,...,22 identical for all
+              three arms per the protocol)
+WHEN        : 2026-09-14, continued session after the fresh-session
+              re-test above
+START-STATE : continued session, not independently re-confirmed clean
+TIER        : base 10t/s
+RAW         : Nykita@localhost ~/scripts > T11 zero 4 2 10
+               [zero run1: OK through n=14 (burst=6.197s), died n=16]
+               [zero run2: OK through n=12 (burst=5.397s), died n=14]
+               [zero run3: OK through n=14 (burst=6.203s), died n=16]
+               Nykita@localhost ~/scripts > T11 cpu 4 2 10
+               [cpu run1: OK through n=14 (6.197s), died n=16]
+               [cpu run2: OK through n=14 (6.203s), died n=16]
+               [cpu run3: OK through n=12 (5.403s), died n=14]
+               Nykita@localhost ~/scripts > T11 time 4 2 10
+               [time run1: OK through n=12 (5.397s), died n=14]
+               [time run2: OK through n=14 (6.196s), died n=16]
+               [time run3: OK through n=14 (6.202s), died n=16]
+SCALAR      : nS (largest survivor) per run: zero={14,12,14},
+              cpu={14,14,12}, time={12,14,14} - the EXACT SAME
+              distribution {12,14,14} in all three arms, just assigned
+              to different specific runs. Mean burst= at every matching
+              n (4,6,8,10,12) across all three arms agrees to within
+              2-7 milliseconds - e.g. n=10: zero=4.60000s, cpu=4.60433s,
+              time=4.59800s (max spread 6.3ms).
+KILLED?     : yes, all 9 runs (2 rungs past their listed survivor each)
+VS PREDICT  : P4 (OBSERVER EFFECT: n*_cpu < n*_zero) is REFUTED - cpu's
+              boundary distribution is statistically indistinguishable
+              from zero's. P5 (SPECIFICITY: n*_time == n*_zero) is
+              CONFIRMED cleanly. Landing on the test's own "n*_cpu ==
+              n*_zero == n*_time: get_cpu() is free in kill currency"
+              branch: NEITHER get_cpu() NOR get_unix_time() shows any
+              detectable extra wall-clock/kill-currency cost beyond a
+              trivial "c = 0" assignment, at millisecond precision -
+              far tighter than would be needed to detect even a single
+              extra tick (~100ms). Since get_unix_time() is ALREADY
+              independently confirmed elsewhere in field_notes.txt as
+              genuinely 0 EXTRA ticks (beyond the assignment statement's
+              own baseline cost), and get_cpu() now measures identically
+              to it here, the correct reading is: get_cpu() adds NO
+              EXTRA tick on top of the cost every statement already
+              pays - not that get_cpu() is somehow more expensive than
+              a bare line, and not that it is literally free (nothing
+              is - every statement costs its 1 baseline tick). This is
+              a DIFFERENT question from T04/T07/T08/T10's findings
+              about get_cpu()'s own RETURN VALUE behaving unstably or
+              history-dependently when polled - STAGE 4 only asks
+              whether CALLING it costs extra wall-clock time, and the
+              answer is no.
+NOTES       : Per the test's own explicit instruction, T05 (call
+              surcharge, wall-clock currency) has NOT been run yet in
+              this investigation - when it is, its verdict on get_cpu()
+              should be compared against THIS kill-currency finding; if
+              T05 finds get_cpu() DOES cost measurably more wall-clock
+              time than a bare statement, the two currencies disagree,
+              and per the test's header that disagreement is itself the
+              finding to report, not something to average away.
+              SEPARATELY, IMPORTANT CORROBORATION: all 9 of these runs
+              (zero/cpu/time, 3 each) independently reproduce the exact
+              same "not sharp, +/-1 rung" boundary instability already
+              established for arith in STAGE 1-3 - this generalizes the
+              NOT-SHARP finding beyond arithmetic-only bursts to every
+              arm tested so far, strengthening it as a general property
+              of the kill trigger rather than something specific to
+              plain arithmetic. P3 (n*_zero/n*_arith ~= 2/3) is roughly
+              consistent: zero's central tendency (~13, between the
+              12/14 split) vs arith's (~18-19 from STAGE 1-3) gives a
+              ratio of ~0.68-0.72, close to the predicted 2/3, though
+              both boundaries are themselves fuzzy by +/-1-2 rungs so
+              this is not a precise confirmation.

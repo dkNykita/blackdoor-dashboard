@@ -1311,6 +1311,35 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   (confounded), but the core NOT-SHARP finding from STAGE 2 now stands
   on firmer ground, confirmed under the cleanest possible condition.
 
+  STAGE 4 (the observer arms - zero/cpu/time, 3 runs each on an
+  identical ladder) answers whether get_cpu() specifically carries an
+  extra cost in kill/wall-clock currency, distinct from everything
+  above about its RETURN VALUE's behavior. Result: ALL NINE runs
+  (three arms x three repeats) land on the exact same {12,14,14}
+  boundary distribution regardless of which arm ran, and mean burst=
+  time at every matching n agrees across all three arms to within 2-7
+  milliseconds - far tighter than the ~100ms one tick would cost.
+  get_cpu() and get_unix_time() are INDISTINGUISHABLE from a trivial
+  "c = 0" assignment in this measurement. Since get_unix_time() is
+  already confirmed elsewhere in this document as genuinely 0 EXTRA
+  ticks (beyond the assignment line's own baseline cost), and get_cpu()
+  now measures identically to it here, the correct reading is: CALLING
+  get_cpu() adds no extra tick on top of what any statement already
+  costs. This is a narrower, and different, question from T04/T07/
+  T08/T10's findings that get_cpu()'s own RETURN VALUE behaves
+  unstably and history-dependently when polled repeatedly - both can be
+  true at once: the call itself is cheap and uniform, but what it
+  reports is complex. T05 (call surcharge, a dedicated wall-clock-
+  currency test) has not been run yet in this investigation - per T11's
+  own explicit instruction, when it is, compare its verdict against
+  this kill-currency one; a disagreement between the two would itself
+  be the finding, not something to average away.
+  Also notable: all 9 STAGE 4 runs independently reproduce the exact
+  same "not sharp, +/-1 rung" boundary instability already established
+  for arith in STAGES 1-3, generalizing that finding beyond arithmetic-
+  only bursts - it appears to be a property of the kill trigger itself,
+  not something specific to plain arithmetic loops.
+
 LOGS
   Servers write your activity to /var/log/auth.log. When you disconnect,
   IDS-enabled servers scan that log and add noise for every entry with

@@ -454,7 +454,7 @@ T10.bd  (T10, CPU-load research programme - NOT a menu.bd test)  [DONE]
   writeup.
 
 T11.bd  (T11, CPU-load research programme - NOT a menu.bd test)
-  [STAGES 1-3 DONE, headline question answered; STAGES 4-5 pending]
+  [STAGES 1-4 DONE, headline question answered; STAGE 5 pending]
   Goal: THE LETHAL BURST BOUNDARY - is there a sharp, deterministic
   unpaced-line count that always kills, or does the same size sometimes
   survive and sometimes die (which alone would fully explain the
@@ -519,8 +519,28 @@ T11.bd  (T11, CPU-load research programme - NOT a menu.bd test)
   sensitivity per T07), not a contamination artifact - though with n=1
   fresh-session data point, a single unlucky phase-alignment remains
   consistent with this too; more fresh-session repeats would sharpen
-  it further. See CPU Research/results.txt (T11 STAGES 1-3 + settle=8
-  follow-ups) and field_notes.txt for the full writeup.
+  it further.
+  STAGE 4 (observer arms, 3 runs each of zero/cpu/time on an identical
+  4,6,8,...,22 ladder): ALL NINE runs reproduce the exact same {12,14,
+  14} boundary distribution regardless of arm - get_cpu() and
+  get_unix_time() show ZERO detectable extra wall-clock cost over a
+  trivial "c=0" assignment (mean burst= at every matching n agrees to
+  2-7 milliseconds across all three arms, far tighter than one tick).
+  Since get_unix_time() is ALREADY confirmed elsewhere as genuinely 0
+  EXTRA ticks, and get_cpu() now measures identically to it, the
+  correct reading is: calling get_cpu() adds no extra tick beyond what
+  any statement already costs - a DIFFERENT question from T04/T07/T08/
+  T10's findings about get_cpu()'s own return value behaving unstably
+  when polled, which remain unaffected. P4 (observer effect) is
+  REFUTED, P5 (specificity) is CONFIRMED. T05 (call surcharge, wall-
+  clock currency) has not been run yet - compare its verdict against
+  this kill-currency one when it is; per the test's own instruction, a
+  disagreement between the two would itself be the finding, not
+  something to average away. Bonus: all 9 runs independently reproduce
+  the NOT-SHARP pattern already found for arith, generalizing it beyond
+  arithmetic bursts specifically. See CPU Research/results.txt (T11
+  STAGES 1-4 + settle=8 follow-ups) and field_notes.txt for the full
+  writeup.
 
 T18.bd  (T18, CPU-load research programme - NOT a menu.bd test)
   Goal: price log() itself. Does it cost exactly one tick regardless of its
