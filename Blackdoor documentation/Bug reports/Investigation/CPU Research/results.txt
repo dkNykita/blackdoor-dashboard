@@ -396,3 +396,128 @@ NOTES       : T01 IS NOW FULLY COMPLETE - all 8 steps done. This result
               or network calls at the same time) - that would need its
               own dedicated test if the variance mystery is ever
               revisited with a live theory pointing at it.
+
+RUN-ID      : T02 run 1/2 (the tick ruler - does the engine block on
+              tick exhaustion, and what's this machine's real tick rate)
+WHEN        : 2026-09-14, fresh session start
+START-STATE : fresh ; ps/jobs clean: y (both pasted, "No running
+              processes.")
+TIER        : UNKNOWN GOING IN - this is what the test measures
+RAW         : Nykita@localhost ~/scripts > T02
+               RULER-CLOCK raw=1789379166.496 (decimals => float clock; whole number => 1s resolution, read span= not block=)
+               RULER-START arms=0,10,20,30,0B rounds=4,4,4,4,2 unit='a = a + 1' get_cpu_calls=0
+               PHASE-0 begin at=3.5019998550415
+               P0 r=0 units=0 block=0.09899997711182 a=0 at=6.10199999809265
+               P0 r=1 units=0 block=0.1010000705719 a=0 at=11.2990000247955
+               P0 r=2 units=0 block=0.09999990463257 a=0 at=16.4949998855591
+               P0 r=3 units=0 block=0.09999990463257 a=0 at=21.6979999542236
+               PHASE-0 end span=21.1970000267029 units=0 rounds=4 a=0
+               PHASE-10 begin at=25.7000000476837
+               P10 r=0 units=10 block=1.10699987411499 a=10 at=29.300999879837
+               P10 r=1 units=10 block=1.1010000705719 a=20 at=35.4979999065399
+               P10 r=2 units=10 block=1.10000014305115 a=30 at=41.7009999752045
+               P10 r=3 units=10 block=1.10000014305115 a=40 at=47.8910000324249
+               PHASE-10 end span=25.1989998817444 units=10 rounds=4 a=40
+               PHASE-20 begin at=51.8929998874664
+               P20 r=0 units=20 block=2.09599995613098 a=60 at=56.4900000095367
+               P20 r=1 units=20 block=2.10199999809265 a=80 at=63.6989998817444
+               P20 r=2 units=20 block=2.11299991607666 a=100 at=70.9019999504089
+               P20 r=3 units=20 block=2.09899997711182 a=120 at=78.0929999351501
+               PHASE-20 end span=29.1959998607635 units=20 rounds=4 a=120
+               PHASE-30 begin at=82.0889999866486
+               P30 r=0 units=30 block=3.10199999809265 a=150 at=87.6979999542236
+               P30 r=1 units=30 block=3.10000014305115 a=180 at=95.8940000534058
+               P30 r=2 units=30 block=3.09400010108948 a=210 at=104.092000007629
+               P30 r=3 units=30 block=3.09500002861023 a=240 at=112.290999889374
+               PHASE-30 end span=33.2030000686646 units=30 rounds=4 a=240
+               PHASE-0B begin at=116.299000024796 (drift control - must match PHASE-0)
+               P0B r=0 units=0 block=0.10000014305115 a=240 at=118.894000053406
+               P0B r=1 units=0 block=0.09499979019165 a=240 at=124.09099984169
+               PHASE-0B end span=10.7990000247955 units=0 rounds=2 a=240
+               RULER-DONE total=128.092000007629 a=240 (a must be 240)
+SCALAR      : mean block= by arm: P0=0.09999996s, P10=1.10200006s,
+              P20=2.10249996s, P30=3.09775007s, P0B=0.09749997s.
+              sec_per_unit=(P30-P0)/30=0.09992500s ; tick_rate=10.0075
+KILLED?     : no (ran to completion, a=240 as required)
+VS PREDICT  : block rises monotonically 0->10->20->30 with EQUAL steps
+              (1.0020s, 1.0005s, 0.9953s per 10-unit increment) -
+              matches base-tier prediction (P0~0.1s, P10~1.1s, P20~2.1s,
+              P30~3.1s) almost exactly. CONFIRMS the engine blocks on
+              tick exhaustion (wall-clock time IS a linear work meter) -
+              DECISIVELY REFUTES the "engine does not block" branch (P30
+              is nowhere near ~0.00-0.05s) and the "not linear" branch
+              (no >2x disagreement between steps). RULER-CLOCK raw
+              carries decimals -> float clock (matches T01's finding,
+              third independent confirmation). Within-phase spread (max
+              0.019s at P10) is far under the 0.5s "too coarse" bucket -
+              instrument precision is fine. DRIFT CONTROL: P0B mean
+              (0.0975s) vs P0 mean (0.1000s) - 2.5ms apart, no material
+              warm-up. INTEGRITY: a read exactly 0,0,0,0/10,20,30,40/
+              60,80,100,120/150,180,210,240/240,240 and finished at 240
+              as required - zero deviation.
+NOTES       : Tier = BASE (10 ticks/sec), confirmed directly for the
+              first time (every prior calculation in this investigation
+              assumed this rather than measuring it). This is also the
+              first tick-cost measurement in the whole investigation
+              taken with ZERO get_cpu() calls anywhere in the
+              instrument - can't be contaminated by get_cpu() adding
+              its own load. Run 2 needed per protocol before trusting
+              sec_per_unit (2 repeats required; 3rd only if >15% apart).
+
+RUN-ID      : T02 run 2/2 (back to back with run 1, same session)
+WHEN        : 2026-09-14, immediately after run 1
+START-STATE : presumed fresh (no ps/jobs re-check between the two runs;
+              nothing else was started in between)
+TIER        : base 10t/s, per run 1 - this run checks reproducibility
+RAW         : Nykita@localhost ~/scripts > T02
+               RULER-CLOCK raw=1789379373.269 (decimals => float clock; whole number => 1s resolution, read span= not block=)
+               RULER-START arms=0,10,20,30,0B rounds=4,4,4,4,2 unit='a = a + 1' get_cpu_calls=0
+               PHASE-0 begin at=3.5019998550415
+               P0 r=0 units=0 block=0.0939998626709 a=0 at=6.09699988365173
+               P0 r=1 units=0 block=0.09899997711182 a=0 at=11.2990000247955
+               P0 r=2 units=0 block=0.10199999809265 a=0 at=16.5069999694824
+               P0 r=3 units=0 block=0.1010000705719 a=0 at=21.7049999237061
+               PHASE-0 end span=21.2059998512268 units=0 rounds=4 a=0
+               PHASE-10 begin at=25.6949999332428
+               P10 r=0 units=10 block=1.1010000705719 a=10 at=29.3020000457764
+               P10 r=1 units=10 block=1.1010000705719 a=20 at=35.5039999485016
+               P10 r=2 units=10 block=1.08800005912781 a=30 at=41.7019999027252
+               P10 r=3 units=10 block=1.10500001907349 a=40 at=47.9099998474121
+               PHASE-10 end span=25.2000000476837 units=10 rounds=4 a=40
+               PHASE-20 begin at=51.9059998989105
+               P20 r=0 units=20 block=2.10700011253357 a=60 at=56.5030000209808
+               P20 r=1 units=20 block=2.09999990463257 a=80 at=63.7059998512268
+               P20 r=2 units=20 block=2.09500002861023 a=100 at=70.8989999294281
+               P20 r=3 units=20 block=2.10300016403198 a=120 at=78.1080000400543
+               PHASE-20 end span=29.2110002040863 units=20 rounds=4 a=120
+               PHASE-30 begin at=82.1009998321533
+               P30 r=0 units=30 block=3.09800004959106 a=150 at=87.7019999027252
+               P30 r=1 units=30 block=3.10000014305115 a=180 at=95.9049999713898
+               P30 r=2 units=30 block=3.10800004005432 a=210 at=104.109999895096
+               P30 r=3 units=30 block=3.09299993515015 a=240 at=112.297999858856
+               PHASE-30 end span=33.1949999332428 units=30 rounds=4 a=240
+               PHASE-0B begin at=116.309000015259 (drift control - must match PHASE-0)
+               P0B r=0 units=0 block=0.10500001907349 a=240 at=118.899999856949
+               P0B r=1 units=0 block=0.09799981117249 a=240 at=124.100999832153
+               PHASE-0B end span=10.7910001277924 units=0 rounds=2 a=240
+               RULER-DONE total=128.111000061035 a=240 (a must be 240)
+SCALAR      : mean block= by arm: P0=0.09899998s, P10=1.09875005s,
+              P20=2.10125005s, P30=3.09975004s, P0B=0.10149992s.
+              sec_per_unit=(P30-P0)/30=0.10002500s ; tick_rate=9.9975
+KILLED?     : no (ran to completion, a=240 as required)
+VS PREDICT  : Reproduces run 1 essentially exactly: equal ~1.00s steps
+              (0.9998s, 1.0025s, 0.9985s), sec_per_unit differs from run
+              1 by only 0.0001s (0.09993s vs 0.10003s - <0.1% apart,
+              nowhere near the 15% threshold that would require a 3rd
+              run). Same float-clock confirmation, same clean integrity
+              check, same negligible drift (P0B-P0 = +2.5ms this time,
+              opposite sign from run 1's -2.5ms - consistent with
+              symmetric noise, not a directional drift).
+NOTES       : T02 COMPLETE (2/2 runs, well within the 15% agreement
+              threshold - no 3rd run needed). COMBINED sec_per_unit
+              across both runs = 0.09998s -> tick_rate = 10.0025
+              ticks/sec, i.e. BASE TIER to within 0.03%. Promoted to
+              field_notes.txt's CPU LOAD section as a direct
+              confirmation of the "1 line = 1 tick = 100ms at base
+              tier" model this whole investigation has used since day
+              one - previously assumed, now measured.

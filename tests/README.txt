@@ -137,6 +137,34 @@ test_cpu_decay.bd
   not tied to function/API calls - refuted the "+10t needs a function
   call" hypothesis.
 
+T02.bd  (T02, CPU-load research programme - NOT a menu.bd test)  [DONE]
+  Goal: THE TICK RULER. One question the whole investigation had always
+  assumed but never checked: does the engine actually BLOCK a script
+  once a second's tick budget is spent (is elapsed wall-clock time a
+  linear readout of executed-statement count), and if so what's this
+  machine's real tick rate? Five phases (0/10/20/30/0B unit lines of
+  `a = a + 1`, bracketed by get_unix_time() only) with ZERO get_cpu()
+  calls anywhere, so the measurement can't be contaminated by get_cpu()
+  itself adding load.
+  Progress: COMPLETE, 2/2 runs (well within the 15% agreement threshold
+  - no 3rd run needed).
+  Result: block= rose monotonically 0.10/1.10/2.10/3.10s across arms
+  0/10/20/30 in BOTH runs, matching the base-tier prediction almost
+  exactly - CONFIRMS the engine blocks on tick exhaustion (wall-clock
+  time IS a linear work meter) and DECISIVELY REFUTES "engine doesn't
+  block" and "not linear." sec_per_unit = 0.09993s (run 1), 0.10003s
+  (run 2), 0.09998s combined -> tick_rate = 10.00-10.01 ticks/sec both
+  ways of computing it - this machine is BASE TIER, now measured
+  directly rather than assumed. Drift control (PHASE-0B vs PHASE-0)
+  matched within 2.5ms both runs; integrity check (`a`'s value after
+  every phase) passed with zero deviation both runs; RULER-CLOCK raw
+  carried decimals both times (float clock, third independent
+  confirmation after T01). This directly confirms, for the first time
+  with zero get_cpu() involvement, the "1 line = 1 tick = 100ms at base
+  tier" model this whole investigation has used since day one. See CPU
+  Research/results.txt (T02 runs 1-2) and field_notes.txt's CPU LOAD
+  section for the promoted finding.
+
 T09.bd  (T09, CPU-load research programme - NOT a menu.bd test)
   Goal: does get_cpu() clamp at 100 and DISCARD everything above it, or
   does a hidden accumulator keep counting past the ceiling so a bigger

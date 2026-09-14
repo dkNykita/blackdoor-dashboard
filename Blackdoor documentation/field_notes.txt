@@ -44,6 +44,35 @@ CPU LOAD (confirmed by testing this session)
   So do crack(), decrypt(), bypass_firewall() - real computation, not
   network I/O.
 
+  DIRECTLY CONFIRMED (2026-09-14, T02 "the tick ruler"): this whole
+  document has assumed "elapsed wall-clock time == work done" and "1
+  line = 1 tick = 100ms at base tier" from the start, but until now
+  nothing had actually tested whether the engine BLOCKS a script once a
+  second's tick budget is spent, as opposed to wall-clock time just
+  drifting independently of executed-statement count. T02 measures the
+  real time cost of 0/10/20/30 back-to-back `a = a + 1` lines with ZERO
+  get_cpu() calls anywhere in it (so the measurement can't be
+  contaminated by get_cpu() itself adding load) and brackets each burst
+  with get_unix_time() only - no sleep/log/string-building inside the
+  timed window. Two independent runs, back to back: mean block= at 0/
+  10/20/30 units was 0.100/1.102/2.102/3.098s (run 1) and 0.099/1.099/
+  2.101/3.100s (run 2) - equal ~1.00s steps per 10-unit increment in
+  BOTH runs, matching the base-tier prediction (P0~0.1s, P10~1.1s,
+  P20~2.1s, P30~3.1s) almost exactly. sec_per_unit = (mean@30-mean@0)/30
+  came out to 0.09993s (run 1), 0.10003s (run 2), 0.09998s (combined) -
+  tick_rate = 1/sec_per_unit = 10.01, 9.998, 10.003 ticks/sec across the
+  three ways of computing it. This machine runs BASE TIER (10
+  ticks/sec), confirmed directly rather than assumed, and the engine
+  DOES block on tick exhaustion - wall-clock elapsed time genuinely is
+  a linear work meter, to within a few milliseconds of noise. The drift
+  control (PHASE-0B repeating PHASE-0 at the very end, after ~2 minutes
+  and 240 executed unit-lines) matched PHASE-0 within 2.5ms both runs -
+  no session warm-up effect. Integrity check (the `a` variable's exact
+  value after every phase) passed on both runs with zero deviation.
+  Every timing number anywhere in this document that assumed "1 line =
+  1 tick = 100ms at base tier" now rests on a direct measurement, not
+  an assumption. Full data: CPU Research/results.txt, T02 runs 1-2.
+
   CORRECTED (this document - field_notes.txt itself - was WRONG about
   this all session, NOT the game's own API reference): "network-style
   calls (connect(), scan(), download(), upload()) do NOT cost CPU load"
