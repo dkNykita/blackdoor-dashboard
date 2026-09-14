@@ -228,6 +228,39 @@ T04.bd  (T04, CPU-load research programme - NOT a menu.bd test)  [DONE]
   could localize where it starts and ends. See CPU Research/results.txt
   (T04 runs 1-2) and field_notes.txt for the full writeup.
 
+T08.bd  (T08, CPU-load research programme - NOT a menu.bd test)  [DONE]
+  Goal: METER MEMORY II - does get_cpu() decay from saturation as a
+  short step, a geometric/EMA decay, or a slow linear drain, and does
+  that decay explain the real crash traces' ~3.7s throttle() cost? One
+  clean (unpolled) post-burst sample per phase at k=0,3,1,8,2,5,0,2
+  seconds delay (scrambled order + 2 replicates as drift controls),
+  plus a P9 throttle-probe that inlines nu.throttle()'s exact shape to
+  measure the wait directly.
+  Progress: COMPLETE, 2/2 runs (shapes agreed exactly, no 3rd run
+  triggered). Run BEFORE T07 per T07.bd's own precondition #3, which
+  flags the CPU Research README's listed session order (T07, T08, T09)
+  as inverted.
+  Result: NONE of the three named models fits cleanly. Sorted by k:
+  100 (k=0) -> 80 (k=1) -> 10/floor (k=2 through k=8), reproduced to
+  10+ decimal digits across both runs. This REFUTES the slow linear-
+  drain model (predicted ~9s to clear; actual clears by ~3.5s since
+  burst start) and REFUTES a constant-ratio geometric decay (residual-
+  above-floor goes 90->70->0, not a fixed ratio). BEST FIT: a
+  rectangular window roughly 2.0-2.5s long, with partial credit where
+  the burst's own 1.5s duration straddles the window edge (explaining
+  the intermediate 80 at k=1 before a full drop to floor at k=2).
+  HEADLINE: the P9 throttle-probe (an isolated burst + one inlined
+  throttle()-shaped poll loop) measured wait=1.90s, NOT the ~3.7s real
+  crash traces show - roughly HALF. The isolated decay-then-single-poll
+  pattern does NOT explain the real throttle() cost on its own; T04's
+  finding (get_cpu() is unstable when polled rapidly without a settle,
+  exactly what throttle()'s own repeated polling does) is the leading
+  candidate for the missing ~1.8s. Side finding: a 15-line unrolled
+  burst is confirmed SUB-LETHAL (survived cleanly both runs) - new data
+  point for future burst sizing in this programme. See CPU
+  Research/results.txt (T08 runs 1-2) and field_notes.txt for the full
+  writeup.
+
 T09.bd  (T09, CPU-load research programme - NOT a menu.bd test)
   Goal: does get_cpu() clamp at 100 and DISCARD everything above it, or
   does a hidden accumulator keep counting past the ceiling so a bigger

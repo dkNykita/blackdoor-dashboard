@@ -957,6 +957,39 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   (a paced probe at N=6/7/9/10, one value at a time) to localize.
   Full data: CPU Research/results.txt, T04 runs 1-2.
 
+  T08 (meter memory II - decay from saturation) is complete next (run
+  BEFORE T07 per T07.bd's own precondition #3 - the session plan's
+  listed order was inverted) and directly attacks the ~3.7s throttle()
+  constant quoted throughout this document. A single unpolled
+  get_cpu() sample was taken k=0,1,2,3,5,8 seconds after a fixed,
+  confirmed-sub-lethal 15-line unrolled burst (scrambled phase order
+  plus 2 replicates as drift controls - both replicates matched their
+  originals exactly). Sorted by k, both runs read IDENTICALLY to 10+
+  decimal digits: 100 (k=0) -> 80 (k=1) -> 10/floor (k=2 through k=8).
+  This REFUTES a slow linear drain at ~10 points/sec (predicted ~9s to
+  clear; it actually clears within ~3.5s of the burst starting) and
+  REFUTES a constant-ratio geometric decay (the residual above floor
+  goes 90 -> 70 -> 0, not a fixed ratio - a real geometric decay would
+  still show nonzero residual at k=2). The best fit is a RECTANGULAR
+  WINDOW roughly 2.0-2.5 seconds long, with partial credit where the
+  burst's own ~1.5s duration straddles the window's edge (explaining
+  the intermediate 80 reading at k=1 rather than a clean binary cliff).
+  This means the meter's own memory is SHORTER than the ~3.7s throttle
+  constant, not the direct cause of it.
+  HEADLINE: T08 also ran a P9 throttle-probe - an isolated burst
+  followed by nu.throttle()'s exact polling shape inlined - specifically
+  to reproduce the ~3.7s crash-trace constant in isolation for the
+  first time. It measured wait=1.90s (both runs, 7ms apart) - roughly
+  HALF the real figure. So a single clean burst plus a single throttle-
+  shaped poll sequence does NOT explain the real ~3.7s cost by itself;
+  something in the REAL throttle() call sequence adds the missing
+  ~1.8s. The leading candidate, given T04's finding immediately above:
+  throttle()'s own REPEATED polling (get_cpu() called every second in a
+  while loop, with no multi-second settle between calls) sits exactly
+  in the "rapid, order-sensitive" regime T04 showed to be unstable -
+  unlike this test's single clean sample per phase. Full data: CPU
+  Research/results.txt, T08 runs 1-2.
+
 LOGS
   Servers write your activity to /var/log/auth.log. When you disconnect,
   IDS-enabled servers scan that log and add noise for every entry with
