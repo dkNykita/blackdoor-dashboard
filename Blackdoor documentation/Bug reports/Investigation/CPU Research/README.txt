@@ -221,8 +221,9 @@ BIGGEST RISKS TO THIS PROGRAMME
 PER-EXPERIMENT REFERENCE (T01-T28)
 Priorities: P1 = highest information gain per minute, run first;
 P4 = only if earlier results demand it. Full runnable scripts live in
-../../tests/ under the filename(s) shown. Read the script header before
-running - it repeats the prediction and the run instructions.
+the repo's tests/ folder (../../../../tests/ from here) under the
+filename(s) shown. Read the script header before running - it repeats
+the prediction and the run instructions.
 ===============================================================================
 ------------------------------------------------------------------------------
 T01  [P1]  Clock and external-instrument validation

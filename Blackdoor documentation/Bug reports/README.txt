@@ -25,6 +25,9 @@ Investigation/01_get_cpu_run_to_run_inconsistency.txt [script]
   CONFIRMED still unexplained - revived here instead of staying
   withdrawn. menu.bd/utils/*.bd development is paused as of 2026-09-14
   specifically because of this; see CLAUDE.md.
+  Active research programme for this report: Investigation/CPU Research/
+  (README.txt = methodology + 28-experiment plan; results.txt = per-run
+  log) - the T01-T28 scripts it defines live in ../../tests/.
 
 CLOSED (v1.1.1) - see Closed/ for full text + resolution note per file:
 

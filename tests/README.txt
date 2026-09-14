@@ -7,13 +7,15 @@ each one; this file is just the compact status view.
 
 CPU LOAD RESEARCH PROGRAMME (T01-T28): the authoritative plan, ordering,
 methodology, recording protocol and per-experiment reference lives in
-../Blackdoor documentation/CPU Research/README.txt - read that first.
-The T01-T28 scripts in this folder implement it. This file tracks their
-per-script Result: as they are run; the programme file is the campaign.
-Run results get appended to ../Blackdoor documentation/CPU Research/
-results.txt (one record per run). The four test_cpu_decay/decode_pacing/
-token_dispatch/dispatch_after_imports scripts predate the programme (they
-came out of the frozen menu.bd investigation) and are NOT part of T01-T28.
+../Blackdoor documentation/Bug Reports/Investigation/CPU Research/README.txt
+- read that first (it lives under the bug report it serves,
+Investigation/01_get_cpu_run_to_run_inconsistency.txt). The T01-T28
+scripts in this folder implement it. This file tracks their per-script
+Result: as they are run; the programme file is the campaign. Run results
+get appended to that same folder's results.txt (one record per run).
+The four test_cpu_decay/decode_pacing/token_dispatch/dispatch_after_imports
+scripts predate the programme (they came out of the frozen menu.bd
+investigation) and are NOT part of T01-T28.
 
 test_cpu_decay.bd
   Goal: characterize get_cpu()'s actual behavior over time in isolation
