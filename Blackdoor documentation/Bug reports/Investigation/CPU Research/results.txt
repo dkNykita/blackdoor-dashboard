@@ -94,3 +94,60 @@ NOTES       : Only STEP 1 (repeat 1/2) of the full 8-step protocol was
               foreground concurrency - the shared-tick-budget question).
               Do not update field_notes.txt's model as settled from this
               one run alone - it's promising but partial.
+
+RUN-ID      : T01 STEP 1, repeat 2/2 (run 4/? - STEP 1 now complete)
+WHEN        : 2026-09-14, same session as runs 1-3
+START-STATE : presumed fresh ; ps/jobs still NOT pasted (STEP 0 still
+              never captured across any of the 3 real attempts so far)
+TIER        : base 10t/s assumed, not yet cross-checked against T02
+RAW         : Nykita@localhost ~/scripts/Jobs > T01
+               T01[A] raw_clock_t0=1789377693.794 mode=clock blocks=10
+               T01[A] gran d1=0.10000014305115
+               T01[A] gran d2=0.09999990463257
+               T01[A] gran d3=0.09899997711182
+               T01[A] gran d4=0.1010000705719
+               T01[A] INTERVAL START - START YOUR STOPWATCH NOW
+               T01[A] INTERVAL END - STOP STOPWATCH NOW - interval=27.3989999294281s
+               T01[A] DONE blocks=10 interval=27.3989999294281s (vs stopwatch) total_from_first_line=38.4120001792908s (vs `time`)
+               SW: 27.90
+SCALAR      : interval=27.3989999294281s (in-game) vs stopwatch=27.90s ;
+              diff=0.5010000705719s ; gran d1-d4 = 0.100/0.100/0.099/0.101s
+KILLED?     : no (mode=clock, ran to completion)
+VS PREDICT  : raw_clock_t0 (1789377693.794, 231.466s after run 3's - the
+              two runs weren't back-to-back, consistent with real gaps
+              between pastes) again a real Sept-2026 epoch with a
+              fractional part - SECOND confirmation of both facts.
+              Granularity (0.100/0.100/0.099/0.101) again squarely in
+              the "~0.10 with jitter" bucket - SECOND confirmation of
+              ~100ms/line pacing at base tier, refuting tick-
+              quantisation again. Interval vs stopwatch: diff=0.501s -
+              1 millisecond OVER the test's own 0.5s same-repeat
+              threshold, essentially a dead-on tie with run 3's 0.339s.
+              Neither run comes anywhere near the ALTERNATE "differ by
+              >1.5s, same direction on both repeats" simulated-time
+              threshold, so this does NOT support scaled/simulated
+              time - but it's not a comfortable pass of the real-time
+              threshold either. Notably both repeats disagree in the
+              SAME direction (stopwatch always reads higher: +0.339s,
+              then +0.501s) - consistent with a small, fairly stable
+              human reaction-lag bias (the script's own comments budget
+              ~0.4s/press of reaction error, i.e. up to ~0.8s of total
+              slack across a start+stop pair), not with a proportional
+              clock-scaling factor, which would need a second interval
+              LENGTH to actually distinguish from a fixed bias.
+NOTES       : STEP 1 is now COMPLETE (2/2 repeats). VERDICT for STEP 1
+              specifically: get_unix_time() is real-epoch-based and
+              float-returning (2/2, doc mismatch confirmed), line
+              pacing is ~100ms/line at base tier not tick-quantised
+              (2/2), and in-game elapsed time vs stopwatch is
+              CONSISTENT WITH real wall-clock time within human
+              reaction-lag noise, but the margin (0.339s, 0.501s) is
+              tight enough that this should be treated as "no evidence
+              of scaling," not "scaling ruled out to high confidence" -
+              STEPS 3-4 (`time` vs total_from_first_line, two block
+              counts) are a cleaner way to close this since they don't
+              depend on human reaction time at all. STEP 0 (ps/jobs
+              baseline) STILL never captured in any of the 3 real runs -
+              should be captured on the next fresh run regardless of
+              which step it's for. STEPS 3-4, 5-6, 7-8 remain
+              outstanding.

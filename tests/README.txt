@@ -51,26 +51,33 @@ T01.bd  (T01, CPU-load research programme - NOT a menu.bd test)
   that name; does it return an int (per web_api.txt) or a float; is
   line pacing really ~100ms/line at base tier or tick-quantised; does
   in-game elapsed time match real wall-clock time.
-  Progress: STEP 1 (first of 2 required repeats) run once, with a
-  stopwatch. STEP 0 (ps/jobs baseline), STEP 2 (repeat), STEPS 3-4
-  (`time` comparison), STEPS 5-6 (fatal-mode kill delay under `time`),
-  STEPS 7-8 (background/foreground concurrency) all still outstanding -
-  this is ONE data point out of the full protocol, not a finished test.
-  Result (preliminary, repeat pending): raw_clock_t0=1789377462.328 -
-  the magnitude matches a real Unix timestamp for Sept 2026 (in-game
-  time really is Unix-epoch-based), but it carries a fractional part
-  (.328), directly confirming the long-suspected doc mismatch (web_api.txt
-  says get_unix_time() -> int; it doesn't). Granularity probe (d1-d4 =
-  0.101/0.099/0.101/0.099s) lands in the "~0.10 with jitter" bucket -
-  CONFIRMS ~100ms/line pacing at base tier, REFUTES tick-quantisation
-  (values are not exactly 0.1 to full precision) and REFUTES the
-  "far below 0.1" theory. Interval vs stopwatch: 27.401s (in-game) vs
-  27.74s (stopwatch) = 0.339s apart, within the test's own 0.5s
-  agreement threshold on this one repeat - leans toward "in-game
-  elapsed time is real wall-clock time," but the script's own protocol
-  requires the second repeat to agree too (human reaction error is
-  ~0.4s/press) before this is conclusive. Full verdict needs the
-  remaining steps; see CPU Research/results.txt for the raw log.
+  Progress: STEP 1 is now COMPLETE (2/2 repeats, both with a stopwatch).
+  STEP 0 (ps/jobs baseline - never captured in any of the 3 real runs
+  so far), STEPS 3-4 (`time` comparison), STEPS 5-6 (fatal-mode kill
+  delay under `time`), STEPS 7-8 (background/foreground concurrency)
+  all still outstanding - T01 as a whole is NOT a finished test yet.
+  Result for STEP 1 (2/2 repeats in): raw_clock_t0 was a real Sept-2026
+  Unix epoch value WITH a fractional part on both runs (1789377462.328,
+  1789377693.794) - CONFIRMS get_unix_time() is genuinely epoch-based,
+  and directly confirms the long-suspected doc mismatch (web_api.txt
+  says get_unix_time() -> int; it returns a float). Granularity probe
+  landed in the "~0.10 with jitter (0.09-0.11)" bucket on BOTH runs
+  (0.101/0.099/0.101/0.099, then 0.100/0.100/0.099/0.101) - CONFIRMS
+  ~100ms/line pacing at base tier twice over, REFUTES tick-quantisation
+  (never exactly 0.1 to full precision) and REFUTES the "far below 0.1"
+  full-speed-burst theory. Interval vs stopwatch: run 1 diff=0.339s
+  (within the test's 0.5s threshold), run 2 diff=0.501s (1ms OVER it -
+  essentially a tie). Both intervals are shorter than their matching
+  stopwatch reading, same direction both times - consistent with a
+  small, fairly stable human reaction-lag bias (~0.4s/press budgeted by
+  the test itself), NOT with the alternate "differ by >1.5s" scaled-time
+  signature, which neither run comes remotely close to. VERDICT: no
+  evidence in-game time is scaled/simulated, but the margin is tight
+  enough that STEPS 3-4 (`time` vs total_from_first_line, which don't
+  depend on human reaction time at all) are needed to close this
+  cleanly rather than resting on stopwatch precision. See CPU
+  Research/results.txt for the raw logs (runs 3-4) and field_notes.txt
+  for the promoted findings.
 
 test_cpu_decay.bd
   Goal: characterize get_cpu()'s actual behavior over time in isolation
