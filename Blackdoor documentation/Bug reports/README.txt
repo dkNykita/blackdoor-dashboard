@@ -13,13 +13,19 @@ Three states now, one folder each:
 
 OPEN - see Open/ for full text:
 
-Open/01_param_default_quotes_embedded_literally.txt [script]
-  Quoting an @param default (`default="10"`) makes get_param() return
-  the literal quote characters as part of the value - int() on it then
-  throws Cannot convert '"10"' to int.. Found internally 2026-09-14 via
-  T01.bd's first real run; not yet submitted to Discord. Fix already
-  applied to this project's own tests/T01-T28 (see field_notes.txt);
-  this report is about the engine behavior itself, not our code.
+Open/01_param_default_type_and_quoting_leak.txt [script]
+  get_param() returns a @param-declared default typed/quoted exactly as
+  written in the comment, ignoring the inline fallback argument: a
+  quoted default (`default="10"`) leaks literal quote characters into
+  the value, and an unquoted numeric default (`default=10`) returns an
+  actual NUMBER even when the call site expects a string - either one
+  crashes downstream code that assumes a clean string. Found internally
+  2026-09-14 via two successive T01.bd crashes; not yet submitted to
+  Discord. Fix already applied to this project's own tests/T01-T28 (see
+  field_notes.txt); this report is about the engine behavior itself,
+  not our code. (Renamed from
+  01_param_default_quotes_embedded_literally.txt when the second, type-
+  coercion half of the bug was found and folded in.)
 
 INVESTIGATION - see Investigation/ for full text:
 
