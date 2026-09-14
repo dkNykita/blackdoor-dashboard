@@ -37,6 +37,33 @@ test_cpu_ceiling.bd  (T09, CPU-load research programme - NOT a menu.bd test)
   Progress: authored, not yet run. Depends on T04/T08 reference values.
   Result: pending.
 
+test_log_price.bd  (T18, CPU-load research programme - NOT a menu.bd test)
+  Goal: price log() itself. Does it cost exactly one tick regardless of its
+  argument, or does cost scale with STRING LENGTH, with the number of
+  CONCATENATION OPERATIONS building the argument, or with the optional
+  second Color argument? Applied stake: this project's ubiquitous debug
+  pattern log("..." + str(get_unix_time() - t0) + "s") is budgeted at ONE
+  tick everywhere in field_notes, but the v1.1.0 changelog (Updates/v1.1.0
+  - Persistence.txt line 60, "the same function call, wrapped in identical
+  arithmetic, could cost wildly different amounts of tick budget depending
+  only on which side of the expression it sat on") describes an accountant
+  that walks the expression tree - under which that line is 7-12 ticks and
+  every instrumented trace in the corpus is inflated in the same direction.
+  Seven arms in ONE execution, 4 rounds x 6 measured lines each, wall clock
+  only, ZERO get_cpu() calls: NOLOG (b = 1) / SHORT (log 2-char) / LONG
+  (log 241-char) / COLOR (log + Color.amber) / CONCAT (3 ops, 0 calls) /
+  SHORTB (SHORT repeated as drift+scrollback control) / DBUG (the literal
+  production debug line). LONG-vs-SHORT and COLOR-vs-SHORT are exact
+  matched pairs - identical expression trees, one variable changed.
+  THE SIX UNPACED log() LINES ARE THE EXPERIMENT - a kill is a result;
+  arms ascend in predicted cost and the FULL summary for arms 1-6 prints
+  BEFORE the riskiest arm (DBUG) runs, so a DBUG death still delivers six
+  arms fully analysed. ~3 min/run, 2 runs.
+  Progress: authored, not yet run. Depends on T02 (seconds-per-tick, and
+  its verdict that the engine blocks on tick exhaustion) and T03 (noise
+  floor); confirms/refutes T14's charging-unit verdict in the applied case.
+  Result: pending.
+
 test_decode_pacing.bd
   Goal: A/B - does utils/hostdata.bd's decode_tuple_list() (real,
   unmodified) eventually CPU-overload if hammered repeatedly with
