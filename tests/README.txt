@@ -195,6 +195,39 @@ T03.bd  (T03, CPU-load research programme - NOT a menu.bd test)  [DONE]
   assumed (the tool to check isn't owned). See CPU Research/results.txt
   and field_notes.txt for the full writeup.
 
+T04.bd  (T04, CPU-load research programme - NOT a menu.bd test)  [DONE]
+  Goal: METER RESPONSE FUNCTION. Is get_cpu() a linear tick counter
+  (constant points per executed line) or a geometric-saturation EMA,
+  how many meter points does one line add, and does get_cpu()'s own
+  line get charged to the reading it returns? PART A/A2 (rapid vs
+  filler-spaced back-to-back reads), PART C (ambient floor, 3s-spaced),
+  PART B (a paced 0/1/3/5/8/12/20/26-line staircase, settled with
+  sleep(4) before each burst).
+  Progress: COMPLETE, 2/2 runs (protocol specifies no conditional 3rd
+  run for this test; audit f=80 valid on both).
+  Result: EVERY reading in both runs is an exact multiple of 10 (the
+  odd-looking "39.9999999999989" etc. are plain float rounding error
+  for 40) - strong reinforcement of the standing "meter quantizes to
+  10s" observation. Neither named model fits: Model L (constant step
+  per line) is REFUTED (N=1, N=3 both read 0, not a rising 10/30); the
+  named geometric-saturation alternative is also REFUTED (no shrinking-
+  residual pattern, N=1/N=3 don't start high). HEADLINE SPLIT: PART A
+  (rapid back-to-back reads, no settle) is NOT run-to-run reproducible -
+  its one nonzero value read 40 in run 1 and 30 in run 2, a full
+  quantum-of-10 apart. PART B (paced, sleep(4) settle before every
+  burst) is PERFECTLY reproducible at all 9 checkpoints in both runs,
+  right down to a genuinely surprising non-monotonic dip: N=8 (cpu=10)
+  reads LOWER than N=5 (cpu=40) despite doing MORE work, identically in
+  both runs. get_cpu() is deterministic when called after a proper
+  settle period and unstable/order-sensitive when polled rapidly in
+  succession - itself a real, reproducible property of the instrument,
+  and a plausible thread for why this codebase's own get_cpu()-polling
+  code (throttle(), refresh_status()) might behave inconsistently even
+  on identical workloads. The N=8 dip is a new, unexplained open
+  question - a future paced test isolating N=6/7/9/10 one at a time
+  could localize where it starts and ends. See CPU Research/results.txt
+  (T04 runs 1-2) and field_notes.txt for the full writeup.
+
 T09.bd  (T09, CPU-load research programme - NOT a menu.bd test)
   Goal: does get_cpu() clamp at 100 and DISCARD everything above it, or
   does a hidden accumulator keep counting past the ceiling so a bigger

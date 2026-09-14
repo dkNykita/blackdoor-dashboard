@@ -590,3 +590,152 @@ NOTES       : THE MOST IMPORTANT RESULT SO FAR: engine tick delivery to
               dataset every later A/B test (T14-T19, T20-T25) is judged
               against - a real difference in those tests can no longer
               be waved away as "maybe that's just engine noise."
+
+RUN-ID      : T04 run 1/2 (meter response function - linear counter vs
+              EMA, points per executed line)
+WHEN        : 2026-09-14, same session as T01-T03
+START-STATE : fresh ; ps/jobs clean: y (both "No running processes.")
+TIER        : base 10t/s, per T02
+RAW         : Nykita@localhost ~/scripts > T04
+               T04 boot cpu=0
+               T04 A k=1 cpu=0
+               T04 A k=2 cpu=0
+               T04 A k=3 cpu=0
+               T04 A k=4 cpu=0
+               T04 A k=5 cpu=39.9999999999989 t=24.9989998340607
+               T04 A2 k=1 cpu=0
+               T04 A2 k=2 cpu=0
+               T04 A2 k=3 cpu=0
+               T04 A2 k=4 cpu=50
+               T04 A2 k=5 cpu=50 t=38.305999994278
+               T04 C k=1 cpu=0
+               T04 C k=2 cpu=0
+               T04 C k=3 cpu=0 t=54.3079998493195
+               T04 B N=0 cpu=0 t=61.0979998111725
+               T04 B N=1 cpu=0 t=67.9949998855591
+               T04 B N=3 cpu=0 t=75.0989999771118
+               T04 B N=5 cpu=39.9999999999999 t=82.3959999084473
+               T04 B N=8 cpu=10 t=90
+               T04 B N=12 cpu=50 t=97.9969999790192
+               T04 B N=0r cpu=0 t=104.794999837875
+               T04 B N=20 cpu=100 t=113.597999811172
+               T04 B N=26 cpu=100 t=122.996999979019
+               T04 audit f=80 MUST BE 80 - any other value voids every slope
+               T04 done t=125.898000001907 - paste every T04 line, full precision, do not round
+SCALAR      : PART A: 0,0,0,0,40 (jump at k5). PART A2: 0,0,0,50,50
+              (jump at k4, plateaus). PART C: 0,0,0 (clean floor). PART
+              B by N: N0=0,N1=0,N3=0,N5=40,N8=10,N12=50,N0r=0,N20=100,
+              N26=100. audit f=80 (valid, no lines optimized away).
+KILLED?     : no (ran to completion, N=20/N=26 bursts reached the 100
+              ceiling momentarily but never sustained it)
+VS PREDICT  : EVERY reading in the whole run is an exact multiple of 10
+              (0/10/40/50/100 - the "39.9999999999989" and
+              "39.9999999999999" values are plain float representation
+              error for 40, not genuine fractional readings) - strongly
+              reinforces the standing "meter quantizes to multiples of
+              10" observation from earlier live play. Neither of T04's
+              own named models fits cleanly: Model L (constant step per
+              line) is REFUTED - N=1 and N=3 both read 0, not a rising
+              10/30 as a 10-points/line model predicts. The named
+              GEOMETRIC SATURATION alternative is also REFUTED - N=1/N=3
+              don't read "above 70/90" as that mode requires, and there
+              is no shrinking-residual pattern. PART A (5 reads, zero
+              lines between them) is FLAT for k1-k4 then jumps at k5 -
+              this is the "meter is latched/has lag" signature, not
+              "get_cpu() is free" (which would keep it flat throughout)
+              nor clean per-line linearity (which would climb from k1).
+              PART A2 (1 filler line before each read) jumps EARLIER (at
+              k4 instead of k5) and to a different value (50 vs 40) -
+              per the test's own "both climb" formula, A2 step minus A
+              step = 50-40 = 10 (a candidate per-line-cost estimate,
+              pending run 2 for reproducibility).
+NOTES       : PART B's staircase is NOT monotonic: N=8 (cpu=10) reads
+              LOWER than N=5 (cpu=40) despite doing MORE work (8 filler
+              lines vs 5) - a real anomaly, not yet explained. Also
+              notable: "T04 B N=8 ... t=90" printed with NO decimal
+              places at all (vs every other line's ~13-decimal float) -
+              likely just this specific elapsed-time sum landing on an
+              exact float value (90.0) given how deterministic this
+              engine's tick timing has proven (T02/T03), not a separate
+              clock-resolution finding on its own - but worth watching
+              in run 2 for whether the same anomaly recurs at the same
+              N and the same suspiciously-round timestamp.
+
+RUN-ID      : T04 run 2/2 (back to back with run 1, same session)
+WHEN        : 2026-09-14, immediately after run 1
+START-STATE : presumed fresh (no ps/jobs re-check; nothing else started
+              between the two runs)
+TIER        : base 10t/s, per T02
+RAW         : Nykita@localhost ~/scripts > T04
+               T04 boot cpu=0
+               T04 A k=1 cpu=0
+               T04 A k=2 cpu=0
+               T04 A k=3 cpu=0
+               T04 A k=4 cpu=0
+               T04 A k=5 cpu=29.9999999999999 t=24.9990000724792
+               T04 A2 k=1 cpu=0
+               T04 A2 k=2 cpu=0
+               T04 A2 k=3 cpu=0
+               T04 A2 k=4 cpu=50
+               T04 A2 k=5 cpu=50 t=38.2999999523163
+               T04 C k=1 cpu=0
+               T04 C k=2 cpu=0
+               T04 C k=3 cpu=0 t=54.308000087738
+               T04 B N=0 cpu=0 t=61.1040000915527
+               T04 B N=1 cpu=0 t=68.0079998970032
+               T04 B N=3 cpu=0 t=75.0989999771118
+               T04 B N=5 cpu=39.9999999999999 t=82.4019999504089
+               T04 B N=8 cpu=10 t=90
+               T04 B N=12 cpu=50 t=98.0019998550415
+               T04 B N=0r cpu=0 t=104.800999879837
+               T04 B N=20 cpu=100 t=113.598000049591
+               T04 B N=26 cpu=100 t=123.003000020981
+               T04 audit f=80 MUST BE 80 - any other value voids every slope
+               T04 done t=125.904000043869 - paste every T04 line, full precision, do not round
+SCALAR      : PART A: 0,0,0,0,30 (jump at k5, DIFFERENT value than run
+              1's 40). PART A2: 0,0,0,50,50 (identical to run 1). PART
+              C: 0,0,0 (identical to run 1). PART B by N: N0=0,N1=0,
+              N3=0,N5=40,N8=10,N12=50,N0r=0,N20=100,N26=100 (IDENTICAL
+              to run 1 at every single N). audit f=80 (valid).
+KILLED?     : no
+VS PREDICT  : PART A's k5 value (30) DISAGREES with run 1's (40) by
+              exactly one quantum-of-10 (10.0 apart, both are "clean"
+              multiples of 10, just different ones) - PART A does NOT
+              reproduce between identical runs. Every other section
+              DOES reproduce, and PART B reproduces with ZERO deviation
+              at all 9 checkpoints, including the exact same N=8 dip
+              (cpu=10, still lower than N=5's 40) and the exact same
+              "t=90" round-number timestamp at N=8. A2's per-test-
+              formula step (50-30=20) now disagrees with run 1's
+              derived value (50-40=10) - this derived quantity inherits
+              PART A's instability and should NOT be trusted as "the
+              per-line cost" without more repeats to characterize what
+              PART A's k5 value actually varies over.
+NOTES       : T04 COMPLETE per protocol (2/2 runs, no third-run trigger
+              specified for this test). HEADLINE FINDING: PART A (rapid
+              back-to-back get_cpu() calls, zero lines between them) is
+              NOT run-to-run reproducible (30 vs 40 at k5), while PART
+              B (paced staircase, sleep(4) settle before each burst) IS
+              perfectly reproducible at every single checkpoint,
+              including a genuinely surprising non-monotonic dip at N=8
+              that appears identically in both runs. This is a striking
+              split: get_cpu() behaves DETERMINISTICALLY when called
+              after a proper settle period, and UNSTABLE/order-sensitive
+              when called several times in immediate succession with no
+              gap - itself a real, reproducible property of the
+              instrument, and a plausible new thread for why so much of
+              this codebase's own get_cpu()-polling code (throttle(),
+              refresh_status()) might behave inconsistently even when
+              the underlying workload is identical. The N=8 dip
+              (LOWER than N=5 despite MORE lines executed) refutes both
+              of T04's own pre-stated candidate models (constant-step
+              linear counter, geometric-saturation EMA) and is an open
+              question - a future test isolating N=6/N=7/N=9/N=10 one
+              at a time (paced, like PART B) could localize exactly
+              where the dip starts and ends. A 3rd T04 run focused on
+              PART A alone (many repeated k5-only reads) could help
+              characterize whether that specific reading's instability
+              follows any pattern (e.g. alternates, or depends on
+              something in the preceding sleep(10)/boot sequence) -
+              recommended as an optional follow-up, not required by
+              protocol.

@@ -923,6 +923,40 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   already suspected, now with the "it's just noise" alternative
   meaningfully weakened rather than merely un-investigated.
 
+  T04 (meter response function) is then complete and turns directly
+  toward get_cpu() itself rather than the clock/instrument. Every
+  reading across both runs was an exact multiple of 10 (0/10/40/50/100 -
+  values like "39.9999999999989" are float rounding error for 40, not
+  real fractional readings) - reinforcing the standing "meter quantizes
+  to 10s" observation from live play. Neither candidate model survives:
+  a constant-points-per-line counter is refuted (N=1 and N=3 filler
+  lines both read 0, not a rising 10/30), and a geometric-saturation EMA
+  is also refuted (N=1/N=3 don't start high, no shrinking-residual
+  pattern). The HEADLINE finding is a split in reproducibility: PART A
+  (5 get_cpu() calls back to back, zero lines between them) is FLAT for
+  4 reads then jumps on the 5th - but the jump's VALUE does not
+  reproduce between runs (40 in run 1, 30 in run 2, one full quantum-of-
+  10 apart). PART B (a paced staircase of 0/1/3/5/8/12/20/26 filler
+  lines, each burst preceded by a sleep(4) settle) is instead PERFECTLY
+  reproducible at every single checkpoint in both runs - including a
+  genuinely surprising, exactly-repeated non-monotonic dip: N=8 reads
+  cpu=10, LOWER than N=5's cpu=40, despite N=8 doing MORE work. So
+  get_cpu() is deterministic when polled after a proper settle period,
+  and unstable/order-sensitive when polled several times in rapid
+  succession with no gap between calls - a real, reproducible property
+  of the instrument itself, not sampling noise (since PART B reproduces
+  exactly and PART A's instability is confined to the rapid-fire case).
+  This is directly relevant to the central mystery: it means
+  get_cpu()-heavy code that polls repeatedly without settling time
+  between calls (throttle()'s own polling loop, or refresh_status()
+  calling get_security()/probe_vuln() back to back) sits in exactly the
+  regime T04 shows to be unstable, giving a concrete, testable mechanism
+  for why identical code+data could read differently run to run. The
+  N=8 dip itself remains an open, unexplained question - refutes both
+  of T04's own candidate models and would need a dedicated follow-up
+  (a paced probe at N=6/7/9/10, one value at a time) to localize.
+  Full data: CPU Research/results.txt, T04 runs 1-2.
+
 LOGS
   Servers write your activity to /var/log/auth.log. When you disconnect,
   IDS-enabled servers scan that log and add noise for every entry with
