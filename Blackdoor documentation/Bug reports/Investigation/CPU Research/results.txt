@@ -1638,3 +1638,76 @@ NOTES       : REVISED HEADLINE: the central mystery mechanism is more
               throttle()'s own pacing could ever be "enough," or whether
               the hidden accumulator is effectively unclearable within
               any practical settle time.
+
+RUN-ID      : T11 follow-up (recommended settle=8 hold-mode test, 3
+              runs, user-initiated) - does doubling the settle from 3s
+              to 8s eliminate or delay the eventual hold-mode death?
+WHEN        : 2026-09-14, same continued session, immediately after
+              STAGE 3 - by this point roughly 10 CPU-overload kills had
+              already occurred in this one continued session (1 from
+              STAGE 1, 4 from STAGE 2, 2 from STAGE 3's extra hold runs)
+START-STATE : continued session, NOT independently re-confirmed clean -
+              this matters a great deal for this specific batch, see
+              NOTES
+TIER        : base 10t/s
+RAW         : Nykita@localhost ~/scripts > T11 arith 17 0 100 8
+               KILLBOUND mode=arith n=17 step=0 rungs=100 settle=8 entry_cpu=0
+               CALIB arith8=2.9909999370575s pred_n=13 (0 = clock too coarse)
+               RUNG r=0 mode=arith n=17
+               OK r=0 n=17 burst=5.69599986076355s
+               [r=1-6 all OK, burst 5.696-5.703s, tightly clustered]
+               RUNG r=7 mode=arith n=17
+
+               [SYSTEM] CPU overloaded...] killed.
+               [run B: entry_cpu=0, died IMMEDIATELY on r=0, no OK at all]
+               [run C: entry_cpu=0, r=0 OK(5.704s), r=1 OK(5.703s), r=2
+               DIED, no OK]
+SCALAR      : Death points at settle=8: 8th attempt (run A), 1st
+              attempt (run B), 3rd attempt (run C). Death points at
+              settle=3 (prior batch): 8th, 5th, 1st. Both distributions
+              span the same range (1st through 8th) with no visible
+              shift toward surviving MORE repeats at the longer settle.
+KILLED?     : yes, all 3 runs (at r=7, r=0, r=2 respectively)
+VS PREDICT  : Doubling settle from 3s to 8s did NOT eliminate the
+              eventual hold-mode death, and does not show an obvious
+              DELAY either (run B died on the very FIRST attempt, same
+              as settle=3's fastest failure). Taken at face value, this
+              would suggest the hidden accumulator's own clearing time
+              is longer than 8 seconds, or that inter-burst settle time
+              is not the (or not the only) governing variable.
+NOTES       : IMPORTANT CONFOUND, not fully resolved by this batch: by
+              the time this settle=8 test ran, roughly 10 CPU-overload
+              kills had already happened in this SAME continued
+              session. T10 already established that repeated kills
+              within one session leave a PERSISTENT, session-level
+              elevated idle floor (30-40, not the clean ~10 baseline)
+              that does not clear even after 5+ seconds of idle time
+              and does not show up in entry_cpu (which reads ~0
+              regardless, per both T10 and every run in this file).
+              T11 has no equivalent of T10's floor_cpu reading (it goes
+              straight from entry_cpu into the burst functions), so
+              there is NO WAY to check, from this data alone, whether
+              this batch's failures reflect (a) the settle=3/8 hold-
+              mode accumulation mechanism itself, unaffected by settle
+              length, or (b) simple session-level fatigue/floor
+              elevation from the ~10 PRIOR kills already accumulated in
+              this session by the time this batch ran - a confound this
+              specific follow-up cannot rule out. Run B dying on its
+              very FIRST attempt is consistent with either story (a
+              fresh hold-mode run's first burst has now died immediately
+              three separate times across this whole T11 session -
+              STAGE 2's first two n=18 attempts, and now this run B -
+              which could mean "session-level contamination has grown
+              severe enough that even a first attempt is now at risk,"
+              matching T10's finding almost exactly). RECOMMENDATION:
+              a clean settle=8 test needs a GENUINE FRESH GAME SESSION
+              (not just fresh script launches within this same long,
+              increasingly kill-heavy continued session) before running
+              hold mode again - only then can "does more settle help"
+              be answered without this confound. Given how many kills
+              have now accumulated (~13 total across this whole T11
+              session), a session restart is worth doing before any
+              further T11/T12/T13 work, both to get clean data AND to
+              test T10's own recommended follow-up (whether the
+              elevated floor eventually clears given enough real time,
+              or requires an actual restart) as a side benefit.

@@ -462,9 +462,9 @@ T11.bd  (T11, CPU-load research programme - NOT a menu.bd test)
   menu.bd's own code)? Described in its own header as possibly the most
   important test in the whole programme.
   Progress: STAGE 1 (locate boundary), STAGE 2 (survivor-side
-  sharpness), STAGE 3 (fresh single-shot cross-check) all complete.
-  STAGE 4 (observer arms: zero/cpu/time) and STAGE 5 (log arms:
-  intlog/concatlog) not yet run.
+  sharpness), STAGE 3 (fresh single-shot cross-check) all complete,
+  PLUS a settle=8 follow-up (see below). STAGE 4 (observer arms:
+  zero/cpu/time) and STAGE 5 (log arms: intlog/concatlog) not yet run.
   Result: STAGE 1 bracketed the ladder-mode boundary to nS=18 (survived
   ~6.0s)/nL=21 (died). STAGE 2 then found n=18 split 2 survived/3 died
   across 5 attempts, and n=17 survived 7 CONSECUTIVE times (timing
@@ -497,10 +497,20 @@ T11.bd  (T11, CPU-load research programme - NOT a menu.bd test)
   threshold before finishing - a precise, mechanistically-grounded
   explanation for why the variance concentrates specifically inside
   the token-decode loop for hosts with real field data, exactly as
-  already observed elsewhere in this investigation. Recommended
-  follow-up: re-run hold mode at settle=8 (T11 arith 17 0 100 8) to see
-  whether a longer settle eliminates the eventual death or only delays
-  it. See CPU Research/results.txt (T11 STAGES 1-3) and field_notes.txt
+  already observed elsewhere in this investigation.
+  SETTLE=8 FOLLOW-UP (3 more hold-mode runs): doubling settle from 3s
+  to 8s did NOT eliminate the eventual death and shows no clear delay
+  either - death points were 8th/1st/3rd attempt at settle=8 vs
+  8th/5th/1st at settle=3, statistically indistinguishable ranges. BUT
+  this batch ran late in an already 10-kill-deep continued session, and
+  T10 already showed repeated kills leave a persistent elevated floor
+  that entry_cpu can't detect - so this result CANNOT cleanly separate
+  "the accumulation mechanism itself is unaffected by settle length"
+  from "session-level fatigue from ~10 prior kills is now confounding
+  everything." A clean re-test needs a genuine FRESH GAME SESSION
+  (not just fresh script launches within this same long session) -
+  recommended before further T11/T12/T13 work. See CPU Research/
+  results.txt (T11 STAGES 1-3 + settle=8 follow-up) and field_notes.txt
   for the full writeup.
 
 T18.bd  (T18, CPU-load research programme - NOT a menu.bd test)

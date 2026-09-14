@@ -1267,6 +1267,26 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   the boundary) and 5 (log arms: intlog/concatlog) remain to run. Full
   data: CPU Research/results.txt, T11 STAGES 1-3.
 
+  SETTLE=8 FOLLOW-UP, WITH AN IMPORTANT UNRESOLVED CONFOUND: 3 more
+  hold-mode n=17 runs at settle=8 (double the original 3s) still all
+  eventually died - at the 8th, 1st, and 3rd attempt respectively,
+  statistically indistinguishable from settle=3's 8th/5th/1st pattern.
+  Taken at face value this says doubling settle neither helps nor
+  clearly delays the eventual death. BUT this batch ran after roughly
+  10 CPU-overload kills had already piled up in this one continued
+  session, and T10 already proved repeated kills leave a persistent,
+  entry_cpu-invisible elevated floor that does not clear on its own -
+  so this result cannot cleanly separate "the hold-mode accumulation
+  mechanism itself is unaffected by settle length" from "session-level
+  fatigue from the prior ~10 kills is now confounding everything,
+  independent of this test's own settle parameter." A clean test of
+  "does more settle help" needs a genuine FRESH GAME SESSION, not just
+  fresh script launches within an already kill-heavy continued one -
+  recommended before any further T11/T12/T13 work in this programme,
+  both to get uncontaminated data and to test, as a side benefit,
+  whether T10's persistent floor ever fully clears given a real restart
+  rather than just idle time.
+
 LOGS
   Servers write your activity to /var/log/auth.log. When you disconnect,
   IDS-enabled servers scan that log and add noise for every entry with
