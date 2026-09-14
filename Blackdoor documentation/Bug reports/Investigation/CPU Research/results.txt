@@ -1841,3 +1841,78 @@ NOTES       : Per the test's own explicit instruction, T05 (call
               ratio of ~0.68-0.72, close to the predicted 2/3, though
               both boundaries are themselves fuzzy by +/-1-2 rungs so
               this is not a precise confirmation.
+
+RUN-ID      : T11 STAGE 5/5 (the log arms - intlog/concatlog, 2 runs
+              each instead of the planned 1, since the user repeated
+              both) - T11 IS NOW FULLY COMPLETE, ALL 5 STAGES DONE
+WHEN        : 2026-09-14, continued session, immediately after STAGE 4
+START-STATE : continued session, not independently re-confirmed clean
+TIER        : base 10t/s
+RAW         : Nykita@localhost ~/scripts > T11 intlog 200 0 1
+               KILLBOUND mode=intlog n=200 step=0 rungs=1 settle=3 entry_cpu=0
+               CALIB arith8=3.00099992752075s pred_n=13 (0 = clock too coarse)
+               RUNG r=0 mode=intlog n=200
+               1
+               2
+               ...
+               14
+
+               [SYSTEM] CPU overloaded...] killed.
+               [intlog run2: IDENTICAL - dies after printing 14, both
+               CALIB~3.00s]
+               [concatlog run1: dies after printing "x13"]
+               [concatlog run2: IDENTICAL - dies after printing "x13"]
+SCALAR      : intlog boundary: dies at n=15 (last printed = 14), IDENTICAL
+              in both runs. concatlog boundary: dies at n=14 (last
+              printed = x13), IDENTICAL in both runs.
+KILLED?     : yes, all 4 runs, at the exact same point each time within
+              each arm
+VS PREDICT  : P7 (n*_concatlog == n*_intlog under per-line charging;
+              strictly lower under per-operation charging): concatlog's
+              boundary (13) IS one lower than intlog's (14) - CONFIRMS
+              per-OPERATION charging, i.e. the extra string concatenation
+              in "x" + str(j) costs something beyond just being "one
+              more line." P6 (n*_intlog ~= n*_arith under per-line
+              charging; below it if log() carries a per-operation
+              surcharge): intlog's boundary (14) is CLEARLY BELOW
+              arith's (~17-21 across STAGES 1-3) - CONFIRMS log() DOES
+              carry a real surcharge beyond plain per-line charging,
+              directly corroborating T10's earlier unplanned finding
+              that a log()-with-concatenation line costs far more than
+              the 1 tick budgeted for it throughout field_notes.txt.
+NOTES       : STRIKING CONTRAST WITH EVERY OTHER T11 ARM: intlog and
+              concatlog are PERFECTLY SHARP and PERFECTLY REPRODUCIBLE -
+              exact same death point, twice each, with zero variation -
+              while arith/zero/cpu/time ALL showed the fuzzy, +/-1-2-
+              rung NOT-SHARP instability that is this test's headline
+              finding. This is a genuinely interesting, unexplained
+              meta-observation: the more EXPENSIVE per-iteration cost of
+              a log()-based burst (per T10, roughly 7-9 ticks vs arith's
+              ~2-3) may make the boundary LESS sensitive to whatever
+              subtle phase-timing effect causes arith/zero/cpu/time's
+              instability - plausibly because a larger per-iteration
+              cost "coarsens" the effective resolution at which the
+              underlying kill-trigger mechanism is being sampled, so
+              small phase-alignment noise that matters at arith's finer
+              grain gets swamped out at log()'s coarser one. This is
+              speculative and worth a dedicated follow-up (repeating
+              intlog/concatlog several MORE times, and/or a mode with an
+              intermediate per-iteration cost) if the sharp-vs-fuzzy
+              distinction is ever revisited.
+              T11 IS NOW FULLY COMPLETE - ALL 5 STAGES DONE. Final
+              summary of the whole test: (1) a single, properly-isolated
+              burst at the boundary size is reliable; (2) REPEATED bursts
+              within one continuous run (or possibly even isolated bursts,
+              per the one fresh-session single-attempt death) are NOT
+              reliably safe even with what looks like adequate settling -
+              a real, still not-fully-explained instability that is a
+              complete, sufficient mechanism for the central menu.bd
+              variance mystery; (3) get_cpu()/get_unix_time() calls carry
+              no extra kill-currency cost beyond a bare statement; (4)
+              log()-with-concatenation carries a real, substantial
+              per-operation surcharge, confirming T10's side-finding
+              and directly relevant to menu.bd's own ubiquitous debug-
+              logging pattern; (5) log()-based bursts are, unexpectedly,
+              SHARP and perfectly reproducible where arithmetic-based
+              ones are not - an open, unexplained puzzle for a future
+              test.

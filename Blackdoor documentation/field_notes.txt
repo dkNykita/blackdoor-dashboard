@@ -1340,6 +1340,57 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   only bursts - it appears to be a property of the kill trigger itself,
   not something specific to plain arithmetic loops.
 
+  STAGE 5 (the log arms - intlog/concatlog, 2 runs each) closes out T11
+  entirely and finds the exact OPPOSITE of every other arm's behavior:
+  intlog died at the IDENTICAL point (last integer printed = 14) in
+  BOTH runs; concatlog died at the IDENTICAL point (last printed =
+  "x13") in BOTH runs. PERFECTLY sharp and perfectly reproducible -
+  a striking contrast to arith/zero/cpu/time's consistent +/-1-2-rung
+  fuzziness. concatlog's boundary (13) sits exactly one below intlog's
+  (14), confirming per-OPERATION charging (the extra string
+  concatenation costs something real, not just "one more line").
+  intlog's boundary (14) sits clearly below arith's (~17-21 across
+  STAGES 1-3), confirming log() carries a genuine per-operation
+  surcharge beyond plain per-line charging - directly corroborating
+  T10's earlier unplanned finding that a log()-with-concatenation line
+  (the exact style used ubiquitously for debug output throughout
+  menu.bd/utils/*.bd) costs far more than the single tick this whole
+  document has budgeted for it. The sharp-vs-fuzzy contrast between log
+  arms and every other arm is itself a new, unexplained puzzle: a
+  log()-based burst's larger per-iteration cost may "coarsen" the
+  effective resolution at which whatever subtle phase-timing effect
+  drives the other arms' instability gets sampled, effectively
+  swamping out the noise that matters at a finer per-iteration grain -
+  speculative, and worth a dedicated follow-up if this thread is ever
+  revisited (e.g. a mode with an intermediate per-iteration cost,
+  between arith's ~2-3 ticks and log()'s ~7-9).
+
+  T11 IS NOW FULLY COMPLETE - ALL 5 STAGES DONE. Overall verdict, as
+  the single most consequential test in the whole programme: (1) a
+  single, properly-isolated burst at the boundary size is reliable -
+  the kill trigger is not simply random for an isolated near-lethal
+  burst; (2) REPEATED bursts within one continuous run (and possibly
+  even isolated ones, per the single fresh-session death) are NOT
+  reliably safe even with settling that looks completely adequate by
+  every visible metric - a real, still only partially explained
+  instability that is by itself a complete, sufficient mechanism for
+  the central +40.7/+111.0/+40.3/+65.5/+64.3s menu.bd variance mystery,
+  and it means no amount of pacing work on menu.bd alone could ever
+  have produced a stable result, vindicating the decision to pause that
+  investigation and pursue this research programme instead; (3)
+  get_cpu() and get_unix_time() calls carry no extra kill-currency cost
+  beyond a bare statement - the observer effect does not manifest in
+  this currency (T05, not yet run, may show a different verdict in wall-
+  clock currency, which per this test's own instruction would itself be
+  the finding rather than something to reconcile away); (4) log() with
+  string concatenation carries a real, substantial per-operation
+  surcharge, directly relevant to menu.bd's own ubiquitous debug-
+  logging pattern and consistent with T10's side-finding; (5) log()-
+  based bursts are, unexpectedly, perfectly sharp and reproducible
+  exactly where arithmetic-based ones are not - an open puzzle for
+  future work. Full data: CPU Research/results.txt, T11 all 5 stages
+  plus the settle=8 and fresh-session follow-ups.
+
 LOGS
   Servers write your activity to /var/log/auth.log. When you disconnect,
   IDS-enabled servers scan that log and add noise for every entry with

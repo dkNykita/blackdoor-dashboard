@@ -453,8 +453,8 @@ T10.bd  (T10, CPU-load research programme - NOT a menu.bd test)  [DONE]
   Research/results.txt (T10 runs 1-8) and field_notes.txt for the full
   writeup.
 
-T11.bd  (T11, CPU-load research programme - NOT a menu.bd test)
-  [STAGES 1-4 DONE, headline question answered; STAGE 5 pending]
+T11.bd  (T11, CPU-load research programme - NOT a menu.bd test)  [DONE]
+  [ALL 5 STAGES COMPLETE]
   Goal: THE LETHAL BURST BOUNDARY - is there a sharp, deterministic
   unpaced-line count that always kills, or does the same size sometimes
   survive and sometimes die (which alone would fully explain the
@@ -538,9 +538,36 @@ T11.bd  (T11, CPU-load research programme - NOT a menu.bd test)
   disagreement between the two would itself be the finding, not
   something to average away. Bonus: all 9 runs independently reproduce
   the NOT-SHARP pattern already found for arith, generalizing it beyond
-  arithmetic bursts specifically. See CPU Research/results.txt (T11
-  STAGES 1-4 + settle=8 follow-ups) and field_notes.txt for the full
-  writeup.
+  arithmetic bursts specifically.
+  STAGE 5 (log arms, intlog/concatlog, 2 runs each): the exact OPPOSITE
+  of STAGE 1-4's fuzziness - intlog dies at the identical point (last
+  printed=14) in BOTH runs, concatlog dies at the identical point (last
+  printed=x13) in BOTH runs. PERFECTLY sharp and reproducible, a
+  striking contrast to arith/zero/cpu/time's +/-1-2-rung instability.
+  concatlog's boundary (13) is one lower than intlog's (14) - CONFIRMS
+  per-OPERATION charging (the extra string concatenation costs
+  something, P7). intlog's boundary (14) is clearly below arith's
+  (~17-21) - CONFIRMS log() carries a real per-operation surcharge
+  beyond plain per-line charging (P6), directly corroborating T10's
+  earlier unplanned finding that a log()-with-concatenation line costs
+  far more than its budgeted 1 tick. The sharp-vs-fuzzy contrast itself
+  is an open, unexplained puzzle: a log()-based burst's larger per-
+  iteration cost may "coarsen" the effective resolution at which
+  whatever subtle phase-timing effect drives arith's instability gets
+  sampled - speculative, worth a dedicated follow-up if revisited.
+  T11 IS NOW FULLY COMPLETE (ALL 5 STAGES). Overall verdict: (1) a
+  single isolated burst at the boundary size is reliable; (2) REPEATED
+  bursts within one run (or possibly even isolated ones, per the one
+  fresh-session single-attempt death) are not reliably safe even with
+  seemingly-adequate settling - a real, still-unexplained instability
+  that is a complete, sufficient mechanism for the central menu.bd
+  variance mystery; (3) get_cpu()/get_unix_time() calls carry no extra
+  kill-currency cost beyond a bare statement; (4) log()-with-
+  concatenation carries a real, substantial per-operation surcharge,
+  directly relevant to menu.bd's own ubiquitous debug-logging pattern;
+  (5) log()-based bursts are unexpectedly sharp and reproducible where
+  arithmetic ones are not. See CPU Research/results.txt (T11 STAGES
+  1-5 + settle=8 follow-ups) and field_notes.txt for the full writeup.
 
 T18.bd  (T18, CPU-load research programme - NOT a menu.bd test)
   Goal: price log() itself. Does it cost exactly one tick regardless of its
