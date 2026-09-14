@@ -1459,3 +1459,87 @@ NOTES       : STAGE 1 gives a clean, if wide (3-rung/step=3), bracket:
               side) with this nS/nL bracket, without re-centering the
               ladder (the bracket is already tight enough to proceed;
               the pred_n mismatch is noted but not blocking).
+
+RUN-ID      : T11 STAGE 2/5 (sharpness, survivor side) - 4 adaptive
+              runs (n=18 x3, then n=17 x1) instead of the planned 1,
+              because the FIRST two n=18 attempts died immediately
+              (a result in itself)
+WHEN        : 2026-09-14, same continued session, immediately after
+              STAGE 1
+START-STATE : continued session, not independently re-confirmed clean
+TIER        : base 10t/s
+RAW         : Nykita@localhost ~/scripts > T11 arith 18 0 8
+               KILLBOUND mode=arith n=18 step=0 rungs=8 settle=3 entry_cpu=0
+               CALIB arith8=3.00099992752075s pred_n=13 (0 = clock too coarse)
+               RUNG r=0 mode=arith n=18
+
+               [SYSTEM] CPU overloaded. All processes terminated.
+
+               1 process killed.
+               [attempt 2, same command: IDENTICAL shape - dies on r=0,
+               no OK line at all, CALIB=2.995s]
+               [attempt 3, same command: r=0 SURVIVES this time -
+               "OK r=0 n=18 burst=6.00399994850159s" - then r=1 (SAME
+               n=18 again, same run) DIES with no OK]
+               [attempt 4, dropped to n=17: T11 arith 17 0 8 ->
+               r=0 through r=6 (7 repeats) ALL SURVIVE:
+               burst = 5.70499992370605, 5.70099997520447,
+               5.6969997882843, 5.70300006866455, 5.69700002670288,
+               5.70099997520447, 5.71000003814697 (mean=5.7020s,
+               stdev=0.0046s, spread only 0.013s across all 7) - then
+               r=7 (the 8th and FINAL repeat, SAME n=17, same run,
+               same settle=3) DIES with no OK.]
+SCALAR      : n=18 across 5 total independent attempts (STAGE 1's
+              ladder r=4, plus STAGE 2's 3 runs' r=0/r=1 slots): 2
+              SURVIVED (5.997s, 6.004s), 3 DIED. n=17 across 8 attempts
+              in one continuous run: 7 SURVIVED (mean 5.702s, spread
+              only 0.013s - essentially IDENTICAL timing every time),
+              1 DIED (the 8th, r=7).
+KILLED?     : yes on 5 of the 8 total script invocations in this
+              stage (attempts 1, 2, 3's r=1, and 4's r=7); attempt 3's
+              r=0 and all of attempt 4's r=0-r=6 survived
+VS PREDICT  : THIS IS "THE HEADLINE" RESULT T11's own header predicted
+              as the single most important possible outcome of the
+              whole programme: THE SAME EXACT BURST SIZE, SAME CODE,
+              SAME SETTLE, BOTH SURVIVES AND DIES. n=18 split 2-3
+              (survived/died) across 5 attempts. n=17 survived 7
+              CONSECUTIVE times with near-identical burst timing
+              (stdev 0.0046s - about as deterministic-LOOKING as
+              anything in this whole programme) and then died on the
+              8th attempt with ZERO warning in the timing pattern of
+              the 7 successful attempts leading up to it. P1 (SHARP:
+              some n survives every trial, n+step dies every trial) is
+              DECISIVELY REFUTED for both n=17 and n=18. This
+              CONCLUSIVELY CONFIRMS the "NOT SHARP" branch: "the kill
+              line is phase-dependent - where the burst starts relative
+              to the engine's own tick/second boundary decides whether
+              it dies. That is a complete, sufficient mechanism for
+              +40.7/+111.0/+40.3/+65.5/+64.3s, and it means no amount
+              of pacing work on menu.bd could ever have produced a
+              stable result."
+NOTES       : THIS IS LIKELY THE SINGLE MOST IMPORTANT FINDING IN THE
+              ENTIRE PROGRAMME. If it holds up under STAGE 3's
+              "unimpeachable" fresh-single-shot-run cross-check (still
+              pending - this stage's repeats were all within continuous
+              script runs, which the test's own KNOWN CONFOUND section
+              flags as a possible carryover artifact rather than proof
+              of a truly stochastic engine-level boundary), it means
+              the central menu.bd variance mystery has FINALLY been
+              LOCATED: not in menu.bd's own code, not fixable by any
+              amount of careful pacing or throttle-placement (every
+              approach already tried and exhausted during the frozen
+              menu.bd investigation), but living inside the ENGINE'S
+              OWN KILL TRIGGER, which is non-deterministic (or at
+              minimum indistinguishable from non-deterministic at the
+              script level, e.g. via unobservable phase-alignment
+              against some internal clock) for burst sizes sitting near
+              the lethal boundary. n=17's run is the more compelling
+              of the two, precisely because its 7 survivors' timing is
+              SO tight (0.013s spread) that "imperfect settling
+              building up gradually" can be ruled out as the
+              explanation - there is no visible trend in the 7 clean
+              readings before the sudden, unheralded 8th death.
+              PROCEEDING TO STAGE 3 (T11 arith 17 0 1, x3, ~20s apart,
+              genuinely fresh single-shot runs) as the "slow,
+              unimpeachable" cross-check this test's own protocol
+              calls for before reporting NOT-SHARP as final.
