@@ -1385,3 +1385,77 @@ NOTES       : MOST DEFENSIBLE READING: a below-ceiling dip and extended
               aggregate manifestation of the central variance mystery -
               even though which SPECIFIC run will extend remains
               unpredictable in advance.
+
+RUN-ID      : T11 STAGE 1/5 (locate the boundary, arith mode) - the
+              lethal burst boundary, arguably the single most important
+              question in the programme (a stochastic boundary alone
+              would fully explain the central mystery)
+WHEN        : 2026-09-14, same continued session as T10's batches
+START-STATE : fresh per ps/jobs (both "No running processes.")
+TIER        : base 10t/s, per T02 etc.
+RAW         : Nykita@localhost ~/scripts > T11 arith
+               KILLBOUND mode=arith n=6 step=3 rungs=10 settle=3 entry_cpu=0
+               CALIB arith8=2.99400019645691s pred_n=13 (0 = clock too coarse)
+               RUNG r=0 mode=arith n=6
+               OK r=0 n=6 burst=2.40199995040894s
+               RUNG r=1 mode=arith n=9
+               OK r=1 n=9 burst=3.29500007629395s
+               RUNG r=2 mode=arith n=12
+               OK r=2 n=12 burst=4.1949999332428s
+               RUNG r=3 mode=arith n=15
+               OK r=3 n=15 burst=5.10199999809265s
+               RUNG r=4 mode=arith n=18
+               OK r=4 n=18 burst=5.99699997901917s
+               RUNG r=5 mode=arith n=21
+
+               [SYSTEM] CPU overloaded. All processes terminated.
+
+               1 process killed.
+SCALAR      : nS (largest survivor) = 18, burst=5.997s. nL (smallest
+              lethal so far) = 21 (died mid-burst, exact duration
+              unknown - RUNG line prints BEFORE the burst). CALIB:
+              arith8=2.994s (0.374s/iter for an 8-iter burst) ->
+              pred_n=13. Per-rung rate DECLINES as n grows: 0.400 (n=6)
+              -> 0.366 -> 0.350 -> 0.340 -> 0.333 (n=18) s/iteration -
+              consistent with a fixed per-call overhead (~0.63s, fit
+              from n=15/18) plus a per-iteration marginal rate (~0.298
+              s/iteration) that converges toward, but stays above, the
+              naive "2 lines/iteration at 10 ticks/sec = 0.2s" estimate.
+KILLED?     : yes-at RUNG r=5 (n=21) - the smallest burst size tried
+              that has died so far in this run
+VS PREDICT  : CALIB's own pred_n=13 UNDERSHOOTS the empirically observed
+              boundary (18-21) by 5-8 iterations - a real, non-trivial
+              miss. Most likely cause: pred_n's formula (40/cal) assumes
+              the full 5s budget converts at the CALIB's OWN measured
+              rate (0.374s/iter, itself inflated by fixed overhead
+              diluted over only 8 iterations), without separately
+              accounting for the fixed per-call overhead that gets
+              proportionally diluted at LARGER n - so it underestimates
+              how many iterations actually fit in a real ~5-6s window.
+              The marginal per-iteration rate (~0.298s, i.e. ~3 ticks
+              for a nominally 2-line body) is itself informative: fitting
+              CALIB's own total (2.994s for 8 iterations, 3 var-decl
+              lines executing AFTER the timer starts, plus 9 while-
+              condition evaluations, plus 8x2 body lines, plus 1 final
+              get_unix_time() line) as (3 + 9 + 16 + 1) ticks = 29 ticks
+              = 2.9s predicts cal almost exactly (2.994s observed) IF
+              the while-loop's own condition-check line costs 1 tick
+              per evaluation - convergent with T10's still-open "while-
+              line DOES cost a tick" branch.
+NOTES       : STAGE 1 gives a clean, if wide (3-rung/step=3), bracket:
+              nS=18 (survived ~6.0s, already past the documented "5
+              seconds"), nL=21 (died). Per the test's own header, since
+              ARITH mode never calls get_cpu() at all, this ~6s
+              survival is NOT in conflict with "100% for 5s kills" -
+              the kill trigger has already been shown (via test_decode_
+              pacing's ~840s survival at a LOGGED cpu=100) to track
+              something OTHER than get_cpu()'s own output, so a
+              meter-free burst surviving past "5 seconds of wall clock"
+              says nothing about whether get_cpu() itself would have
+              read 100 continuously the whole time - this is exactly
+              why T11 is deliberately meter-free. Proceeding to STAGE 2
+              (T11 arith 18 0 8 - sharpness on the survivor side) and
+              STAGE 3 (T11 arith 21 0 1, x3 - sharpness on the lethal
+              side) with this nS/nL bracket, without re-centering the
+              ladder (the bracket is already tight enough to proceed;
+              the pred_n mismatch is noted but not blocking).
