@@ -1,6 +1,6 @@
 Report link: none - found internally via in-game testing (T01.bd, CPU Research programme, 2026-09-14), not sourced from Discord.
 
-BUG REPORT: @param defaults leak their raw comment syntax (quotes and type) into get_param(), ignoring the inline fallback argument
+BUG REPORT: @param defaults leak their comment syntax (quotes, type) into get_param(), not the fallback
 
 Tags: script
 
