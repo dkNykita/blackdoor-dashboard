@@ -51,12 +51,11 @@ T01.bd  (T01, CPU-load research programme - NOT a menu.bd test)
   that name; does it return an int (per web_api.txt) or a float; is
   line pacing really ~100ms/line at base tier or tick-quantised; does
   in-game elapsed time match real wall-clock time.
-  Progress: STEP 0 (ps/jobs baseline, now clean), STEP 1 (2/2 repeats),
-  and STEP 3 (`time run T01 10`) are COMPLETE. STEP 4 (`time run T01
-  20`, needed to tell fixed overhead from a different-clocks finding),
-  STEPS 5-6 (fatal-mode kill delay under `time`), STEPS 7-8 (background/
-  foreground concurrency) still outstanding - T01 as a whole is NOT a
-  finished test yet.
+  Progress: STEP 0 (ps/jobs baseline, clean), STEP 1 (2/2 repeats),
+  STEP 3 (`time run T01 10`), and STEP 4 (`time run T01 20`) are all
+  COMPLETE. STEPS 5-6 (fatal-mode kill delay under `time`) and STEPS
+  7-8 (background/foreground concurrency) still outstanding - T01 as a
+  whole is NOT a finished test yet.
   Result for STEP 1 (2/2 repeats in): raw_clock_t0 was a real Sept-2026
   Unix epoch value WITH a fractional part on both runs (1789377462.328,
   1789377693.794) - CONFIRMS get_unix_time() is genuinely epoch-based,
@@ -82,12 +81,17 @@ T01.bd  (T01, CPU-load research programme - NOT a menu.bd test)
   try - CONFIRMS `time` is a usable external instrument (the "no
   instrument exists" branch is refuted), and confirms `run <script>
   <args>` as the general syntax for composing a script invocation with
-  another terminal command. time=40.094s vs total_from_first_line=
-  38.394s -> diff=+1.700s, notably more than the test's "~1s -> agree,
-  usable as-is" bucket - lands closer to "fixed overhead" but can't be
-  told apart from "different clocks" (a major finding) without STEP 4's
-  blocks=20 data point for comparison. See CPU Research/results.txt for
-  the raw logs (runs 3-5) and field_notes.txt for the promoted findings.
+  another terminal command.
+  Result for STEP 3+4 together: diff (time minus total_from_first_line)
+  was +1.700s at blocks=10 and +1.701s at blocks=20 - 1 MILLISECOND
+  apart despite the in-game interval nearly doubling (27.4s -> 54.4s).
+  CONFIRMS the overhead is FIXED (process start/`run`-dispatch cost
+  paid before the script's own t0 line ever runs), and DECISIVELY
+  REFUTES "time and get_unix_time() run on different clocks" - a
+  proportional relationship would have shown roughly double the diff
+  at blocks=20. `time`'s ~1.70s constant is now a known correction, not
+  an open question. See CPU Research/results.txt (runs 3-6) and
+  field_notes.txt for the promoted findings.
 
 test_cpu_decay.bd
   Goal: characterize get_cpu()'s actual behavior over time in isolation

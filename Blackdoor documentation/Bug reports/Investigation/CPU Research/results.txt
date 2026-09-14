@@ -199,3 +199,53 @@ NOTES       : `run <script> <args>` (not bare `<script> <args>`) is
               with any other terminal command, not just `time`. STEP 4
               is the next step; STEPS 5-6 (fatal mode under `time`) and
               7-8 (bg/fg concurrency) still outstanding after that.
+
+RUN-ID      : T01 STEP 4 (run 6/? - fixed-vs-proportional overhead
+              question, second and last data point needed)
+WHEN        : 2026-09-14, same session as runs 1-5
+START-STATE : presumed fresh (STEP 0 not re-checked this run; already
+              confirmed clean immediately before run 5 in the same
+              session, nothing else was started since)
+TIER        : base 10t/s assumed, not yet cross-checked against T02
+RAW         : Nykita@localhost ~/scripts/Jobs > time run T01 20
+               T01[A] raw_clock_t0=1789378269.2 mode=clock blocks=20
+               T01[A] gran d1=0.10599994659424
+               T01[A] gran d2=0.09999990463257
+               T01[A] gran d3=0.1010000705719
+               T01[A] gran d4=0.09899997711182
+               T01[A] INTERVAL START - START YOUR STOPWATCH NOW
+               T01[A] INTERVAL END - STOP STOPWATCH NOW - interval=54.4070000648499s
+               T01[A] DONE blocks=20 interval=54.4070000648499s (vs stopwatch) total_from_first_line=65.3989999294281s (vs `time`)
+               (time: 67.100s)
+SCALAR      : time=67.100s vs total_from_first_line=65.3989999294281s ;
+              diff=+1.701s. Compare run 5 (blocks=10): diff=+1.700s.
+              Interval ratio 54.407/27.394=1.986 (blocks doubled 10->20,
+              interval nearly doubled - linear per-block cost, as
+              expected, not the focus of this check but a sane sanity
+              check on the side).
+KILLED?     : no (mode=clock, ran to completion)
+VS PREDICT  : diff at blocks=10 was +1.700s; diff at blocks=20 is
+              +1.701s - a 1 MILLISECOND difference despite the run
+              length nearly doubling (27.4s -> 54.4s in-game). This
+              CONFIRMS the "differ by a fixed amount at both blocks=10
+              and blocks=20 -> process start/teardown overhead" branch
+              cleanly and DECISIVELY REFUTES "differ proportionally ->
+              time and get_unix_time() run on different clocks" - a
+              proportional relationship would have shown roughly double
+              the diff at blocks=20, not the same one to 3 decimal
+              places. `time` and get_unix_time() are the SAME clock
+              (or at minimum, clocks running at the identical rate)
+              with a constant ~1.70s startup/dispatch overhead between
+              them - most plausibly `time run T01 N`'s own
+              process-spawn + `run` dispatch cost, which happens BEFORE
+              this script's own t0 line ever executes and so was never
+              visible to get_unix_time() at all.
+NOTES       : STEP 4 complete - the fixed-vs-proportional question is
+              CLOSED with high confidence (2 data points, 1ms apart on
+              a near-doubled run length is about as clean a "fixed" as
+              this instrument can produce). Promoting to field_notes.txt
+              and tests/README.txt: `time`'s ~1.70s overhead over
+              get_unix_time()-based measurement is a constant to
+              subtract, not evidence of a second clock. Remaining: STEPS
+              5-6 (fatal-mode kill delay under `time`, 2 repeats) and
+              7-8 (bg/fg concurrency, shared-tick-budget question).

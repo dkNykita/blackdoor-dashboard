@@ -1110,8 +1110,9 @@ CONFIRMED THIS SESSION (live testing of the refactored Active tree):
     documentation for a multi-key literal (e.g. a `state` dict
     consolidating several vars, Krok 12) has to live in a block comment
     ABOVE the single-line literal, never inline next to a key.
-  - `get_unix_time()` returns a FLOAT, not an int as web_api.txt
-    documents ("get_unix_time() -> int"). Confirmed twice via T01's
+  - `get_unix_time()` returns a FLOAT, not an int as documented
+    (web_api.txt:552, help_api.txt:119, editor_documentation.txt:214 -
+    all three say verbatim "Returns int."). Confirmed twice via T01's
     granularity probe (raw_clock_t0=1789377462.328, then
     1789377693.794 on a second run minutes later) - both real Sept-2026
     Unix epoch magnitudes (confirming the timestamp genuinely IS the
@@ -1128,10 +1129,26 @@ CONFIRMED THIS SESSION (live testing of the refactored Active tree):
     both repeats (0.339s and 0.501s apart on ~27.4s intervals, stopwatch
     always reading slightly higher) - no evidence in-game time is scaled
     or simulated, though this specific check has a wide enough margin
-    that it isn't the strongest evidence in the test (see CPU
-    Research/results.txt runs 3-4; STEPS 3-4 of T01, comparing against
-    the `time` command instead of a stopwatch, are a tighter version of
-    the same check and are still outstanding).
+    that it isn't the strongest evidence on its own (see CPU
+    Research/results.txt runs 3-4). The tighter version of the same
+    check - `time run T01 10` then `time run T01 20`, no human
+    reaction time involved - settled it: `time` reads +1.700s higher
+    than get_unix_time()-based total_from_first_line at blocks=10, and
+    +1.701s higher at blocks=20 (1ms apart despite the in-game interval
+    nearly doubling, 27.4s -> 54.4s). CONFIRMS the gap is a FIXED
+    overhead (most plausibly `time`'s own process-spawn/`run`-dispatch
+    cost, paid before the script's t0 line ever executes) and
+    DECISIVELY REFUTES `time` and get_unix_time() running on different
+    clocks - a real second-clock scenario would have shown roughly
+    double the diff at blocks=20, not the same one to 3 decimals. When
+    comparing a `time`-measured duration to a script's own
+    get_unix_time()-based figure, subtract ~1.70s first. Also: bare
+    `time T01 10` (no `run`) fails - "Unknown command: t01" (lowercased)
+    - regardless of spacing/parens/comma syntax; `time` only wraps real
+    builtin verbs. `time run <script> <args>` is the working form, and
+    `run <script> <args>` is worth using generally when composing a
+    script invocation with any other terminal command (see CPU
+    Research/results.txt runs 5-6).
 
 STILL UNRESOLVED / CONFIRMED ABSENT:
   - No real "-flag" command-line syntax exists via @param - it binds
