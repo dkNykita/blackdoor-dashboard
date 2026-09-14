@@ -102,7 +102,7 @@
 #
 # @param run "run number, 1-8 - only used to label the output" default=?
 
-var RUN = get_param("run", "?").replace("\"", "").trim()
+var RUN = str(get_param("run", "?")).replace("\"", "").trim()
 var ITER = 10
 var c0 = get_cpu()
 var t0 = get_unix_time()

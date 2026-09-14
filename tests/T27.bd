@@ -204,8 +204,8 @@ var t0 = get_unix_time()
 var c0 = get_cpu()
 log("T27 start cpu0=" + str(c0) + " (line-2 reading, before anything settles)")
 sleep(1)
-var h = get_param("host", "").replace("\"", "").trim()
-var rp = get_param("rpath", "").replace("\"", "").trim()
+var h = str(get_param("host", "")).replace("\"", "").trim()
+var rp = str(get_param("rpath", "")).replace("\"", "").trim()
 sleep(1)
 var n = 0
 var a = 0

@@ -188,8 +188,8 @@
 
 var c0 = get_cpu()
 var t0 = get_unix_time()
-var MODE = get_param("mode", "P").replace("\"", "").trim()
-var TAG = get_param("tag", "?").replace("\"", "").trim()
+var MODE = str(get_param("mode", "P")).replace("\"", "").trim()
+var TAG = str(get_param("tag", "?")).replace("\"", "").trim()
 log("T20[" + TAG + "] mode=" + MODE + " LINE1_cpu=" + str(c0) + " t_abs=" + str(t0))
 var a = 0
 var r = 0

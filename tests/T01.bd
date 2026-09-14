@@ -160,9 +160,9 @@
 # @param mode "clock (default) or fatal (deliberate overload, run it under `time`)" default=clock
 # @param tag "label prefixed to every line, so a backgrounded run stays readable next to a foreground one" default=A
 
-var B = int(get_param("blocks", "10").replace("\"", "").trim())
-var MODE = get_param("mode", "clock").replace("\"", "").trim()
-var TAG = "T01[" + get_param("tag", "A").replace("\"", "").trim() + "]"
+var B = int(str(get_param("blocks", "10")).replace("\"", "").trim())
+var MODE = str(get_param("mode", "clock")).replace("\"", "").trim()
+var TAG = "T01[" + str(get_param("tag", "A")).replace("\"", "").trim() + "]"
 var t0 = get_unix_time()
 log(TAG + " raw_clock_t0=" + str(t0) + " mode=" + MODE + " blocks=" + str(B))
 sleep(1)

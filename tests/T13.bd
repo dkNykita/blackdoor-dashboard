@@ -205,9 +205,9 @@
 # @param tier "CPU ticks per second from T02: 10 20 40 80 160" default=10
 # @param hold "seconds to hold the plateau" default=60
 
-var LVL = get_param("lvl", "82").replace("\"", "").trim()
-var TIER = get_param("tier", "10").replace("\"", "").trim()
-var HOLD = get_param("hold", "60").replace("\"", "").trim()
+var LVL = str(get_param("lvl", "82")).replace("\"", "").trim()
+var TIER = str(get_param("tier", "10")).replace("\"", "").trim()
+var HOLD = str(get_param("hold", "60")).replace("\"", "").trim()
 sleep(1)
 var L = int(LVL)
 var RATE = int(TIER)

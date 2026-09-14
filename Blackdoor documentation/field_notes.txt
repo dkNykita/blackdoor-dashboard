@@ -1075,6 +1075,26 @@ CONFIRMED THIS SESSION (live testing of the refactored Active tree):
     to guard anyway. Any NEW .bd script (test or otherwise) should either
     never quote an @param default, or defensively strip quotes at every
     get_param() use - ideally both.
+    ROUND 2 (same fix, re-run after unquoting): T01's very next live run
+    crashed differently - "Line 163: 'number' has no method 'replace'."
+    Root cause now clearer: get_param(name, fallback) does NOT use the
+    inline call-site fallback string when a @param declaration exists for
+    that name and no runtime arg was passed - it substitutes the
+    @param-DECLARED default instead, TYPED per how that default was
+    written. `default=10` (unquoted, numeric-looking) is parsed as an
+    actual number, not a string - so get_param("blocks", "10") returned
+    the number 10, and `.replace("\"", "")` (a string method) threw on
+    it. `utils/sqli.bd`'s normalize_path() already handles this exact
+    class of problem more defensively than net.bd's resolve_raw_target()
+    does: `str(raw).replace("\"", "").trim()` - str() FIRST, always, then
+    strip quotes. Re-fixed all 32 call sites across the same 15 files to
+    match sqli.bd's stronger pattern: `str(get_param(...)).replace("\"",
+    "").trim()`, so it's safe whether the value comes back as a number,
+    a clean string, or a quote-corrupted string. Takeaway for any future
+    @param/get_param() use: get_param()'s return type is NOT guaranteed
+    to be a string just because the inline fallback argument is one -
+    always str() it before calling a string method, don't just trust the
+    call-site fallback's apparent type.
   - Object literals CANNOT span multiple lines at all - confirmed via
     the engine's own parse error ("Expected property name in object
     literal") AND an isolated live test that bisected it down to a

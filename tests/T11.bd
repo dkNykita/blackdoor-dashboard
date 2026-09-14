@@ -372,11 +372,11 @@ func b_concatlog(n, s):
 
 sleep(1)
 
-var MODE = get_param("mode", "arith").replace("\"", "").trim()
-var N = int(get_param("n", "6").replace("\"", "").trim())
-var STEP = int(get_param("step", "3").replace("\"", "").trim())
-var RUNGS = int(get_param("rungs", "10").replace("\"", "").trim())
-var S = int(get_param("settle", "3").replace("\"", "").trim())
+var MODE = str(get_param("mode", "arith")).replace("\"", "").trim()
+var N = int(str(get_param("n", "6")).replace("\"", "").trim())
+var STEP = int(str(get_param("step", "3")).replace("\"", "").trim())
+var RUNGS = int(str(get_param("rungs", "10")).replace("\"", "").trim())
+var S = int(str(get_param("settle", "3")).replace("\"", "").trim())
 sleep(1)
 var k = 0
 var r = 0

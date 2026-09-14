@@ -32,6 +32,16 @@ VS DOCS. None of the per-script entries below have been re-audited
 individually for this - treat every T01-T28 script's param handling as
 fixed as of this date regardless of what its own entry says.
 
+ROUND 2 (same day, re-run after the above): unquoting `default=10`
+exposed that get_param() then returns an actual NUMBER (not a string)
+for that default - the plain `.replace(...)` from round 1 crashed with
+`'number' has no method 'replace'`. Re-fixed all 32 call sites to
+`str(get_param(...)).replace("\"", "").trim()` (str() first, matching
+utils/sqli.bd's normalize_path() - stronger than utils/net.bd's
+resolve_raw_target(), which skips the str()). Lesson: get_param()'s
+return type is NOT guaranteed to match the inline fallback argument's
+type - always str() it before any string method.
+
 test_cpu_decay.bd
   Goal: characterize get_cpu()'s actual behavior over time in isolation
   (does it decay to near-zero at rest, or plateau at a nonzero floor?),

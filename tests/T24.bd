@@ -215,9 +215,9 @@
 
 var c0 = get_cpu()
 var t0 = get_unix_time()
-var TAG = get_param("tag", "?").replace("\"", "").trim()
-var R = int(get_param("rounds", "22").replace("\"", "").trim())
-var NAP = int(get_param("nap", "2").replace("\"", "").trim())
+var TAG = str(get_param("tag", "?")).replace("\"", "").trim()
+var R = int(str(get_param("rounds", "22")).replace("\"", "").trim())
+var NAP = int(str(get_param("nap", "2")).replace("\"", "").trim())
 if R < 4:
     R = 4
 if R > 40:

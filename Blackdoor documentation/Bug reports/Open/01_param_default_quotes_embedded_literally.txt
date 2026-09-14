@@ -23,4 +23,3 @@ Steps to reproduce:
 Sources:
 - Official documentation/1.1.1/editor_documentation.txt, PARAMETERS section: shows `default=VALUE` unquoted as the only documented form.
 - Confirmed live via a script crash and an isolated re-test with quotes removed.
-- This project's field_notes.txt/CLAUDE.md carry the full writeup and a fix applied across 28 test scripts (23 declarations, 32 call sites, 2026-09-14).

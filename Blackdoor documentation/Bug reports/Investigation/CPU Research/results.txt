@@ -26,3 +26,25 @@ NOTES       : Root cause: `# @param blocks ... default="10"` (quoted)
               tests/README.txt's 2026-09-14 entry for the full list).
               Re-run T01 from scratch next session; this record stays as
               the paper trail for why run 1 doesn't count as data.
+
+RUN-ID      : T01 run 2/? (attempt 2, aborted by script bug)
+WHEN        : 2026-09-14, same session as attempt 1
+START-STATE : fresh-boot ; ps/jobs clean: y
+TIER        : not reached
+RAW         : Nykita@localhost ~/scripts/Jobs > T01
+               Line 163: 'number' has no method 'replace'.
+SCALAR      : N/A - crashed on line 1 of its own logic, before t0 logged
+KILLED?     : no (script error, not a CPU-overload kill)
+VS PREDICT  : N/A - authoring bug, not a CPU-model finding
+NOTES       : Unquoting the @param default (attempt 1's fix) exposed a
+              deeper part of the same mechanism: get_param() returns the
+              @param-DECLARED default's own type when no arg is passed,
+              not the inline call fallback's type. `default=10`
+              (unquoted, numeric) comes back as an actual number, so the
+              bare `.replace(...)` chain from attempt 1 threw on it.
+              Re-fixed all 32 call sites to `str(get_param(...)).replace
+              ("\"", "").trim()` (str() first - matches utils/sqli.bd's
+              normalize_path(), stronger than utils/net.bd's
+              resolve_raw_target()). See field_notes.txt ROUND 2 for the
+              full writeup. Re-run T01 again next session; this is the
+              second non-data aborted run.

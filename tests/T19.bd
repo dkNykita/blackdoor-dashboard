@@ -108,8 +108,8 @@ func load_unit(n):
 
 var T0 = get_unix_time()
 log("T19 launch cpu=" + str(get_cpu()))
-var CYCLES = int(get_param("cycles", "3").replace("\"", "").trim())
-var LOADN = int(get_param("loadn", "5").replace("\"", "").trim())
+var CYCLES = int(str(get_param("cycles", "3")).replace("\"", "").trim())
+var LOADN = int(str(get_param("loadn", "5")).replace("\"", "").trim())
 var SETTLE = 2
 sleep(1)
 log("T19 start cycles=" + str(CYCLES) + " loadn=" + str(LOADN) + " settle=" + str(SETTLE))

@@ -73,7 +73,7 @@
 # the F constant here AND in T22.bd to a directory that exists.
 # @param fuse "seconds to wait before burning - time to launch the victim" default=15
 
-var FUSE = int(get_param("fuse", "15").replace("\"", "").trim())
+var FUSE = int(str(get_param("fuse", "15")).replace("\"", "").trim())
 var BURN = 20
 var F = "/home/Nykita/t22_bomb.txt"
 save(F, "state=ARMED fuse=" + str(FUSE) + " burn=" + str(BURN))
