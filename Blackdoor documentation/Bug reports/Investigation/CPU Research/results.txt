@@ -48,3 +48,49 @@ NOTES       : Unquoting the @param default (attempt 1's fix) exposed a
               resolve_raw_target()). See field_notes.txt ROUND 2 for the
               full writeup. Re-run T01 again next session; this is the
               second non-data aborted run.
+
+RUN-ID      : T01 STEP 1, repeat 1/2 (run 3/? - first successful execution)
+WHEN        : 2026-09-14, same session as the two aborted attempts
+START-STATE : presumed fresh ; ps/jobs NOT pasted (STEP 0 skipped) - can't
+              independently confirm a clean process state for this run
+TIER        : base 10t/s assumed, not yet cross-checked against T02
+RAW         : Nykita@localhost ~/scripts/Jobs > T01
+               T01[A] raw_clock_t0=1789377462.328 mode=clock blocks=10
+               T01[A] gran d1=0.10099983215332
+               T01[A] gran d2=0.09899997711182
+               T01[A] gran d3=0.1010000705719
+               T01[A] gran d4=0.09899997711182
+               T01[A] INTERVAL START - START YOUR STOPWATCH NOW
+               T01[A] INTERVAL END - STOP STOPWATCH NOW - interval=27.4009997844696s
+               T01[A] DONE blocks=10 interval=27.4009997844696s (vs stopwatch) total_from_first_line=38.4179999828339s (vs `time`)
+               SW: 27.74
+SCALAR      : interval=27.4009997844696s (in-game) vs stopwatch=27.74s ;
+              diff=0.339s ; gran d1-d4 = 0.101/0.099/0.101/0.099s
+KILLED?     : no (mode=clock, ran to completion)
+VS PREDICT  : raw_clock_t0 magnitude (1789377462.328, Sept 2026) CONFIRMS
+              get_unix_time() is genuinely Unix-epoch-based, not an
+              in-game clock wearing that name. Its fractional part
+              (.328) REFUTES web_api.txt's documented "get_unix_time()
+              -> int" - this is the first direct confirmation of the
+              PURPOSE section's anomaly #1. Granularity (0.101/0.099/
+              0.101/0.099, jitter within 0.09-0.11) lands squarely in
+              the "~0.10 with jitter" bucket -> CONFIRMS ~100ms/line
+              pacing at base tier is real, not tick-quantised (values
+              are not exactly 0.1 to full float precision) and REFUTES
+              the "far below 0.1" (full-speed burst) theory. Interval
+              vs stopwatch (0.339s apart on a 27.4s interval) is within
+              the test's own 0.5s same-repeat threshold -> leans
+              CONFIRMS "in-game elapsed time is real wall-clock time,"
+              but only ONE of the two required repeats is in.
+NOTES       : Only STEP 1 (repeat 1/2) of the full 8-step protocol was
+              run. Outstanding: STEP 0 (ps/jobs baseline - should still
+              be captured retroactively before trusting this run's
+              "clean process state" assumption), STEP 2 (repeat 2 of
+              STEP 1 - required before the stopwatch agreement counts
+              as settled; human reaction error is ~0.4s/press, so one
+              sample can't rule out a mis-press), STEPS 3-4 (`time`
+              comparison, both block counts), STEPS 5-6 (fatal-mode kill
+              delay under `time`, 2 repeats), STEPS 7-8 (background/
+              foreground concurrency - the shared-tick-budget question).
+              Do not update field_notes.txt's model as settled from this
+              one run alone - it's promising but partial.
