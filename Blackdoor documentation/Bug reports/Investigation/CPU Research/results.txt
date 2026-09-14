@@ -867,3 +867,133 @@ NOTES       : T08 COMPLETE (2/2 runs, shapes agree). This is the
               the leading candidate; (3) a 15-line unrolled burst is
               confirmed sub-lethal (new data point for future burst-
               sizing decisions in this programme).
+
+RUN-ID      : T07 run 1/2 (meter memory I - window edge vs decay,
+              plus a built-in check that bears directly on the run-to-
+              run variance mystery)
+WHEN        : 2026-09-14, same session as T01-T04, T08. Tier confirmed
+              via neofetch/sysinfo before running: Mk.I, 10 tps.
+START-STATE : fresh ; ps/jobs clean: y
+TIER        : base 10t/s, confirmed both by T02's measurement and this
+              session's neofetch/sysinfo (Mk.I, 10 tps) - no ladder
+              rescaling needed
+RAW         : Nykita@localhost ~/scripts > T07
+               T07 start - meter memory: window edge vs decay, 16 phases, ~2 min
+               T07 CALSLEEP m05=0.20099997520447 m50=0.70000004768372 m220=2.40100002288818
+               T07 FLOOR pre=10 cpu=10 t=13.3069999217987
+               T07 A d=0.05 pre=10 cpu=0 t=20.3099999427795
+               T07 A d=1.00 pre=10 cpu=80 t=28.3079998493195
+               T07 A d=0.40 pre=10 cpu=80 t=35.7119998931885
+               T07 A d=2.20 pre=10 cpu=0.00000003277871 t=44.9029998779297
+               T07 A d=0.80 pre=10 cpu=40 t=52.7070000171661
+               T07 A d=0.20 pre=10 cpu=60 t=59.904000043869
+               T07 A d=4.00 pre=10 cpu=0 t=70.9019999504089
+               T07 A d=1.40 pre=10 cpu=40 t=79.300999879837
+               T07 A d=0.60 pre=10 cpu=80 t=86.9049999713898
+               T07 B g=0.05 pre=10 cpu=40 t=93.9079999923706
+               T07 B g=0.50 pre=10 cpu=40 t=101.40499997139
+               T07 B g=1.50 pre=9.99999999999996 cpu=0.00000011240983 t=109.90299987793
+               T07 B g=3.00 pre=10 cpu=0 t=119.907999992371
+               T07 A-REP d=0.05 pre=10 cpu=40 t=126.911999940872
+               T07 done - sort ARM A BY d, take successive differences. A-REP vs A d=0.05 = drift. B g=1.50 vs g=3.00: equal = edge.
+SCALAR      : CALSLEEP: m50-m05=0.499s (predicted ~0.45), m220-m50=1.701s
+              (predicted ~1.70) - validity check PASSES. All `pre`
+              values = 10 (floor) across all 14 phases - settle is
+              adequate throughout. ARM A sorted by d: 0(0.05), 60(0.20),
+              80(0.40), 80(0.60), 40(0.80), 80(1.00), 40(1.40), ~0(2.20),
+              0(4.00). ARM B: 40(0.05), 40(0.50), ~0(1.50), 0(3.00).
+              A-REP=40.
+KILLED?     : no
+VS PREDICT  : CALSLEEP passes -> sub-second clock confirmed valid
+              (matches T01). ARM A sorted BY d is NOT monotonic in
+              either direction (0,60,80,80,40,80,40,~0,0) - fits NONE
+              of T07's three named ARM-A shapes cleanly (not a clean
+              rectangular-window step-then-flat, not a smooth geometric
+              shrink, not flat-then-single-drop). ARM B: B1(0.05)=40
+              equals B2(0.50)=40 (no change over that stretch), then
+              drops to floor by B3(1.50), staying at floor through
+              B4(3.00) - B3=B4 signals a HARD EDGE, located between
+              g=0.50 and g=1.50 (roughly 1.1-2.1s total elapsed given
+              the fillers around the gap) - broadly consistent with
+              T08's ~2.0-2.5s window estimate. B1-B3 = 40 = exactly 4U
+              (T04's unit) - per the script's own discrimination rule,
+              this points to a sleep line's own tick being charged ON
+              ENTRY (4U lost), not on exit (which would read 3U).
+NOTES       : THE HEADLINE FINDING is the built-in A1-vs-B1 check: A1
+              (the FIRST d=0.05 reading, early in the run, t~20s) reads
+              cpu=0, but B1 (g=0.05, a differently-ARRANGED but same-
+              gap-length measurement, t~94s) reads cpu=40 - a mismatch
+              the test's own header treats as a direct signal of EITHER
+              tick-order-sensitivity OR within-run meter drift, and
+              explicitly ties to "the run-to-run variance mystery this
+              programme serves." A-REP (SAME arrangement as A1, but
+              late in the run, t~127s) reads 40 - matching B1, NOT
+              matching its own earlier twin A1. This rules out pure
+              "arrangement/order" as the explanation (the same A-shaped
+              measurement gives DIFFERENT answers depending on WHEN in
+              the run it's taken) and points at genuine within-run
+              drift: something about being later in absolute elapsed
+              time/tick-history shifts a short-gap reading from 0
+              toward 40, independent of the immediate local d/g value.
+
+RUN-ID      : T07 run 2/2 (back to back with run 1, same session)
+WHEN        : 2026-09-14, immediately after run 1
+START-STATE : presumed fresh (no ps/jobs re-check; nothing else started
+              between the two runs)
+TIER        : base 10t/s, per T02 and this session's neofetch/sysinfo
+RAW         : Nykita@localhost ~/scripts > T07
+               T07 start - meter memory: window edge vs decay, 16 phases, ~2 min
+               T07 CALSLEEP m05=0.20000004768372 m50=0.69300007820129 m220=2.40899991989136
+               T07 FLOOR pre=10 cpu=10 t=13.305999994278
+               T07 A d=0.05 pre=10 cpu=0 t=20.3090000152588
+               T07 A d=1.00 pre=10 cpu=80 t=28.2999999523163
+               T07 A d=0.40 pre=10 cpu=80 t=35.7030000686646
+               T07 A d=2.20 pre=10 cpu=0.00000004496393 t=44.9019999504089
+               T07 A d=0.80 pre=10 cpu=40 t=52.7059998512268
+               T07 A d=0.20 pre=10 cpu=60 t=59.9029998779297
+               T07 A d=4.00 pre=10 cpu=0 t=70.9019999504089
+               T07 A d=1.40 pre=10 cpu=40 t=79.305999994278
+               T07 A d=0.60 pre=10 cpu=80 t=86.9029998779297
+               T07 B g=0.05 pre=10 cpu=40 t=93.9070000648499
+               T07 B g=0.50 pre=10 cpu=40 t=101.415999889374
+               T07 B g=1.50 pre=9.99999999999996 cpu=0.0000001541973 t=109.907999992371
+               T07 B g=3.00 pre=10 cpu=0 t=119.899999856949
+               T07 A-REP d=0.05 pre=10 cpu=40 t=126.915999889374
+               T07 done - sort ARM A BY d, take successive differences. A-REP vs A d=0.05 = drift. B g=1.50 vs g=3.00: equal = edge.
+SCALAR      : IDENTICAL to run 1 at every single phase (CALSLEEP within
+              0.015s, every `pre`, every ARM A/B/A-REP cpu value exact
+              matches down to float noise on the near-zero readings,
+              every `t=` within 0.008s of run 1's).
+KILLED?     : no
+VS PREDICT  : Reproduces run 1's ENTIRE shape - including the "erratic"
+              non-monotonic ARM A ladder and the A1(0)/B1(40)/A-REP(40)
+              drift signature - with essentially zero deviation. Same
+              conclusions apply; no 3rd run needed (shape agrees).
+NOTES       : T07 COMPLETE (2/2 runs, shapes agree exactly). CRITICAL
+              INTERPRETIVE POINT: the run-to-run match is PERFECT, at
+              every phase including the ones that looked "erratic" when
+              sorted by d or by phase order. This means the erratic-
+              looking ARM A pattern and the A1-vs-B1/A-REP drift are
+              NOT noise or instability - they are a fully DETERMINISTIC
+              function of something (most likely absolute elapsed time
+              or cumulative tick-count history since script launch, both
+              of which are themselves fully deterministic per T02/T03/
+              T08) that a simple "value depends only on d" or "value
+              depends only on phase order" model fails to capture. This
+              reframes the leading theory for the central run-to-run
+              variance mystery: it is very unlikely to be genuine
+              engine-level randomness in get_cpu() (repeatedly refuted
+              now, across T04/T08/T07, whenever the SAME exact sequence
+              of operations is repeated) - it is far more likely that
+              DIFFERENT REAL HOST DATA (different string/token counts in
+              get_entry()'s decode loop) shifts the exact absolute-time/
+              tick-count alignment at which menu.bd's own get_cpu() calls
+              land, and if get_cpu()'s true update rule has this kind of
+              complex, non-monotonic-but-deterministic dependence on
+              exact timing/history (as T07 demonstrates it does), even a
+              SMALL difference in total prior work could produce a
+              WILDLY different, but individually reproducible, get_cpu()
+              reading at the same nominal checkpoint - explaining
+              "same code, same data-SHAPE, different run, different
+              crash point" without requiring any actual randomness in
+              the engine.

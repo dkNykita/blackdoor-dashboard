@@ -261,6 +261,49 @@ T08.bd  (T08, CPU-load research programme - NOT a menu.bd test)  [DONE]
   Research/results.txt (T08 runs 1-2) and field_notes.txt for the full
   writeup.
 
+T07.bd  (T07, CPU-load research programme - NOT a menu.bd test)  [DONE]
+  Goal: METER MEMORY I - window edge vs decay, sub-second resolution.
+  ARM A (gap AFTER a fixed 6-line burst, scrambled d=0.05..4.00 plus a
+  late A-REP replicate) and ARM B (gap INSIDE the burst, g=0.05..3.00)
+  cross-check each other and a built-in A1-vs-B1 comparison tests
+  whether tick order or within-run drift affects the reading - a check
+  the test's own author explicitly ties to the central variance
+  mystery. Run AFTER T08 (T07.bd's own precondition #3 corrects the
+  session plan's listed order). Tier confirmed via neofetch/sysinfo:
+  Mk.I, 10 tps, matching T02 exactly - no ladder rescaling needed.
+  Progress: COMPLETE, 2/2 runs (shapes agreed exactly, no 3rd run
+  triggered).
+  Result: CALSLEEP validity check passes (sub-second clock confirmed,
+  matches T01). ARM A sorted by d is NOT monotonic in either direction
+  (0,60,80,80,40,80,40,~0,0 for d=0.05..4.00) - fits none of the three
+  named ARM-A shapes cleanly. ARM B shows a genuine edge: flat at 40
+  through g=0.50, floor by g=1.50, staying flat (B3=B4, a hard edge),
+  roughly consistent with T08's ~2.0-2.5s window estimate. B1-B3=40=
+  exactly 4x T04's unit - per the test's own rule this points to a
+  sleep line's tick being charged ON ENTRY, not exit.
+  HEADLINE: the test's built-in A1-vs-B1 check fires. A1 (first d=0.05
+  reading, early, t~20s) reads 0; B1 (same 0.05s gap, different
+  arrangement, t~94s) reads 40; A-REP (SAME arrangement as A1, but
+  late, t~127s) ALSO reads 40, matching B1 rather than its own earlier
+  twin. This rules out pure arrangement/order as the explanation and
+  points at real within-run drift tied to absolute time/tick-history,
+  not local d/g value. CRITICALLY: every one of these "erratic" values
+  reproduced EXACTLY across both fully independent runs - this is NOT
+  noise, it is a fully deterministic function of something more complex
+  than d or phase order alone (most likely absolute elapsed time or
+  cumulative tick history, both themselves fully deterministic per
+  T02/T03/T08). REFRAMES the leading theory for the central mystery:
+  engine-level randomness in get_cpu() looks increasingly unlikely
+  (refuted again here, as in T04/T08, whenever the exact same sequence
+  repeats); it is far more plausible that different real host data
+  shifts the exact timing/tick-count at which menu.bd's own get_cpu()
+  calls land, and if get_cpu()'s true update rule is this sensitive to
+  exact history (as demonstrated here), a small data difference could
+  produce a wildly different but individually reproducible reading -
+  explaining the "same code, different run, different crash point"
+  puzzle without requiring true randomness. See CPU Research/
+  results.txt (T07 runs 1-2) and field_notes.txt for the full writeup.
+
 T09.bd  (T09, CPU-load research programme - NOT a menu.bd test)
   Goal: does get_cpu() clamp at 100 and DISCARD everything above it, or
   does a hidden accumulator keep counting past the ceiling so a bigger

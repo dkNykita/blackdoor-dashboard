@@ -990,6 +990,63 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   unlike this test's single clean sample per phase. Full data: CPU
   Research/results.txt, T08 runs 1-2.
 
+  T07 (meter memory I - window edge vs decay) is complete next (run
+  AFTER T08, per T07.bd's own corrected precondition) and produces
+  PERHAPS THE MOST IMPORTANT SYNTHESIS POINT IN THE WHOLE PROGRAMME SO
+  FAR. ARM A (gap after a fixed 6-line burst, scrambled d=0.05s to
+  4.00s) sorted by d gives 0, 60, 80, 80, 40, 80, 40, ~0, 0 - NOT
+  monotonic in either direction, matching none of the three simple
+  models (rectangular window, geometric decay, window-longer-than-
+  ladder) the test set out to distinguish. ARM B (gap INSIDE the burst)
+  does show a clean edge - flat at 40 through g=0.50s, floor by
+  g=1.50s, staying flat after - roughly consistent with T08's ~2.0-2.5s
+  window estimate, and its B1-B3 difference (exactly 4x T04's meter
+  unit) indicates a sleep line's own tick is charged ON ENTRY, not on
+  exit.
+  THE HEADLINE, though, is the test's own built-in A1-vs-B1 check,
+  which the test's author explicitly designed to bear on this
+  investigation's central mystery: A1 (the very first d=0.05 reading,
+  early in the run) reads 0; B1 (the same 0.05s gap, differently
+  arranged, later in the run) reads 40; A-REP (the SAME arrangement as
+  A1, but run late, near the end) ALSO reads 40 - matching B1, not its
+  own earlier twin A1. This rules out pure tick-order/arrangement as
+  the explanation (the identical measurement gives different answers
+  depending on WHEN in the run it happens) and points at real within-
+  run drift tied to absolute elapsed time or cumulative tick history,
+  not the local d/g value alone.
+  CRITICALLY: every single one of these "erratic"-looking values -
+  including the non-monotonic ARM A ladder and the A1/B1/A-REP
+  mismatch - reproduced EXACTLY across two fully independent T07 runs,
+  down to float noise on the near-zero readings. This is NOT noise or
+  instability; it is a fully DETERMINISTIC function of something more
+  complex than "value depends only on d" or "value depends only on
+  phase position" - most plausibly absolute elapsed time or cumulative
+  tick-count history since script launch, both of which are themselves
+  proven fully deterministic (T02, T03, T08).
+  THIS REFRAMES THE LEADING THEORY FOR THE CENTRAL RUN-TO-RUN VARIANCE
+  MYSTERY. Genuine engine-level randomness in get_cpu() looks
+  increasingly unlikely - it has now been refuted three separate times
+  (T04's PART B, T08's k-sweep, T07's whole run) whenever the exact
+  same sequence of operations is repeated; the reading is always the
+  same to many decimal places. What DOES vary, dramatically, is what
+  get_cpu() returns at superficially similar but not-quite-identical
+  points in a run's history (T07's A1 vs A-REP: same code, different
+  absolute time, wildly different reading). The most plausible
+  explanation for menu.bd's real +40.3s -> +111.0s variance is
+  therefore: DIFFERENT REAL HOST DATA (different string/token counts in
+  get_entry()'s own decode loop) shifts the exact absolute-time/tick-
+  count alignment at which menu.bd's own get_cpu() calls land, and
+  because get_cpu()'s true update rule has this kind of complex,
+  non-monotonic-but-fully-deterministic dependence on exact history (as
+  T07 now demonstrates directly), even a SMALL difference in total
+  prior work could land two otherwise-identical runs on wildly
+  different points of that same complex function - producing a
+  dramatically different, but individually perfectly reproducible,
+  reading and crash timing. This does not require the engine to behave
+  randomly at any point; it only requires get_cpu() to be a sensitive,
+  non-obvious function of history, which T07 has now shown it is. Full
+  data: CPU Research/results.txt, T07 runs 1-2.
+
 LOGS
   Servers write your activity to /var/log/auth.log. When you disconnect,
   IDS-enabled servers scan that log and add noise for every entry with
