@@ -18,6 +18,25 @@ test_cpu_decay.bd
   not tied to function/API calls - refuted the "+10t needs a function
   call" hypothesis.
 
+test_cpu_ceiling.bd  (T09, CPU-load research programme - NOT a menu.bd test)
+  Goal: does get_cpu() clamp at 100 and DISCARD everything above it, or
+  does a hidden accumulator keep counting past the ceiling so a bigger
+  burst leaves more residue behind? Four unpaced straight-line bursts
+  (10/25/40/48 `x = 1` statements, no calls, no pacing), each with an
+  identical instrument: a pre-burst baseline capture (cb), a delay-0 peak
+  capture (c0), a delay-2s residue capture (c2), and burst_s = elapsed
+  seconds for the burst itself. Secondary outputs: the first real
+  bisection of the lethal UNROLLED burst size (the famous "fatal 50" was
+  50 loop ITERATIONS ~ 150 executed lines, never 50 lines), an empirical
+  ticks/sec calibration from four (lines, seconds) points, and a
+  launch-time cpu reading on line 1 as a file-length control (334-line
+  file vs the 47-line file that previously read cpu=0 at launch).
+  THE UNPACED BURST IS THE EXPERIMENT - a kill is a result, not a
+  failure; phases ascend so the last "T09 begin B=K" line names the
+  killer exactly.
+  Progress: authored, not yet run. Depends on T04/T08 reference values.
+  Result: pending.
+
 test_decode_pacing.bd
   Goal: A/B - does utils/hostdata.bd's decode_tuple_list() (real,
   unmodified) eventually CPU-overload if hammered repeatedly with
