@@ -165,6 +165,36 @@ T02.bd  (T02, CPU-load research programme - NOT a menu.bd test)  [DONE]
   Research/results.txt (T02 runs 1-2) and field_notes.txt's CPU LOAD
   section for the promoted finding.
 
+T03.bd  (T03, CPU-load research programme - NOT a menu.bd test)  [DONE]
+  Goal: BASELINE NOISE FLOOR. The control this investigation never ran:
+  the simplest possible workload (no imports, no I/O, no throttle(), no
+  data-dependent branching, exactly one get_cpu() call taken BEFORE
+  timing starts), run 8 times back to back, to give every later
+  experiment an error bar and test whether ambient engine noise alone
+  could explain the central mystery's 2.7x crash-point variance.
+  Progress: COMPLETE, all 8 required repeats done in one sitting.
+  Result: DETERMINISTIC. All 40 burst= samples (8 runs x 5 bursts each)
+  spread only 0.78% around a 3.19995s mean; per-run means spread only
+  0.144%; DONE totals across all 8 independent runs (~4.6 min of
+  wall-clock) spread only 0.023%. cpu0=0 on every single run - no
+  creeping residual load across 8 consecutive launches. This lands
+  squarely in the "tight within runs AND across runs -> deterministic
+  tick delivery" bucket, an order of magnitude inside even that
+  bucket's own threshold, and DECISIVELY REFUTES both "ambient per-tick
+  jitter" and "per-run state sets a speed for that whole run" (the
+  shape that would have matched the central mystery). THE MOST
+  IMPORTANT RESULT SO FAR: whatever causes menu.bd's real +40.3s ->
+  +111.0s variance is NOT generic engine/tick noise - it has to come
+  from something this probe deliberately excluded (repeated get_cpu()
+  polling, throttle() looping, a live connection, file I/O, imports, or
+  string/dict building over real data). T03 is now the reference
+  dataset T14-T19 and T20-T25 get judged against. Side finding: this
+  session's `daemons` command returned "requires Daemon Source -
+  purchase it from the shop first" - "no planted daemons" has never
+  actually been independently verifiable in this investigation, only
+  assumed (the tool to check isn't owned). See CPU Research/results.txt
+  and field_notes.txt for the full writeup.
+
 T09.bd  (T09, CPU-load research programme - NOT a menu.bd test)
   Goal: does get_cpu() clamp at 100 and DISCARD everything above it, or
   does a hidden accumulator keep counting past the ceiling so a bigger

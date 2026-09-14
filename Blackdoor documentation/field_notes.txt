@@ -895,6 +895,34 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   relocate throttle, reduce total work) has either failed outright or
   only partially helped without closing the gap.
 
+  CPU RESEARCH PROGRAMME PROGRESS (started after the freeze above; full
+  methodology/plan in Bug Reports/Investigation/CPU Research/README.txt,
+  full per-run data in that folder's results.txt):
+  T01 (instrument validation) and T02 (the tick ruler) both complete -
+  get_unix_time() is a real, float-returning Unix-epoch clock, base tier
+  (10 ticks/sec) is confirmed directly, and the engine genuinely blocks
+  on tick exhaustion (see VERIFIED VS DOCS below for the full detail on
+  both). T03 (baseline noise floor) is then complete and is the single
+  most important result of the programme so far: a bare script with no
+  imports, no I/O, no throttle(), no data-dependent branching, and
+  exactly one get_cpu() call (taken before timing starts) ran 8 times
+  back to back and showed DETERMINISTIC tick delivery - 0.78% spread
+  across all 40 individual burst samples, 0.144% spread between run
+  means, 0.023% spread between the 8 DONE totals over ~4.6 minutes of
+  wall-clock, and cpu0=0 on every single run with no creeping residual
+  load across consecutive launches. This DIRECTLY CONTRADICTS "ambient
+  engine/tick noise" as an explanation for the 2.7x variance
+  (+40.3s -> +111.0s) documented above on the real connected/decode
+  path: whatever causes that variance is NOT a general noise floor in
+  the engine, since a data-free, call-free control reproduces to well
+  under 1% here. It has to come from something T03 deliberately
+  excludes and the real crash path includes: repeated get_cpu() calls,
+  throttle() looping, a live connection, file I/O, imports, or
+  string/dict building over real host data - i.e. something inside
+  get_entry()/find_entry_by_host()'s own token-decode loop, exactly as
+  already suspected, now with the "it's just noise" alternative
+  meaningfully weakened rather than merely un-investigated.
+
 LOGS
   Servers write your activity to /var/log/auth.log. When you disconnect,
   IDS-enabled servers scan that log and add noise for every entry with

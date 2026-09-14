@@ -521,3 +521,72 @@ NOTES       : T02 COMPLETE (2/2 runs, well within the 15% agreement
               confirmation of the "1 line = 1 tick = 100ms at base
               tier" model this whole investigation has used since day
               one - previously assumed, now measured.
+
+RUN-ID      : T03, runs 1-8/8 (the reference noise-floor block - all 8
+              required repeats done in one back-to-back sitting)
+WHEN        : 2026-09-14, fresh game start, wall-clock ~12:00-12:05
+START-STATE : fresh ; ps/jobs clean on the ORIGINAL (pre-restart)
+              session ("No running processes." both) ; `daemons` on
+              that same session returned "requires Daemon Source.
+              Purchase it from the shop first." - NOT re-pasted after
+              the fresh-game restart, so STEP 1's baseline for THIS
+              specific session is assumed, not independently re-verified
+              (minor protocol gap, does not affect the result below).
+TIER        : base 10t/s, per T02
+RAW         : Nykita@localhost ~/scripts > T03 1
+               START run=1 cpu0=0 iter=10
+               R1 B0 burst=3.20799994468689 total=6.70999979972839
+               R1 B1 burst=3.19700002670288 total=13.0969998836517
+               R1 B2 burst=3.20099997520447 total=19.5039999485016
+               R1 B3 burst=3.2020001411438 total=25.9010000228882
+               R1 B4 burst=3.20099997520447 total=32.2969999313354
+               R1 DONE total=34.7049999237061
+               [runs 2-8 identical shape, see field_notes.txt/programme
+               README for full transcript if needed - all 8 blocks
+               archived verbatim in this session's conversation log]
+               R8 DONE total=34.7030000686646
+SCALAR      : ALL 40 burst= samples (8 runs x 5 bursts): mean=3.19995s,
+              stdev=0.00530s, min=3.18900s, max=3.21400s, spread=0.02500s
+              = 0.78% of mean. Per-run means: min=3.19740s,
+              max=3.20200s, spread=0.00460s = 0.144% of grand mean.
+              DONE totals across all 8 runs: mean=34.70625s,
+              min=34.70300s, max=34.71100s, spread=0.00800s = 0.023% of
+              mean. cpu0=0 on EVERY single run (all 8).
+KILLED?     : no (all 8 ran to completion)
+VS PREDICT  : This is bucket (1) - "Tight within runs AND across runs
+              (<5% run level, <10% sample)" - and not narrowly so:
+              0.78% sample-level and 0.144% run-level spread are an
+              order of magnitude tighter than even that bucket's own
+              threshold. DECISIVELY REFUTES bucket (2) (ambient per-tick
+              jitter - there essentially isn't any) and bucket (3) (per-
+              run state/warm-up setting a level for the whole run - all
+              8 run-means sit within 0.005s of each other, no run is
+              meaningfully faster or slower than any other) and bucket
+              (4) (no crash, nowhere close - max burst 3.214s, well
+              under the 3.5s ITER-change threshold and the ~5s kill
+              window). B0's burst= values carry many decimals (e.g.
+              3.20799994468689) -> sub-second float clock, matching
+              field_notes' fractional traces and REFUTING web_api.txt's
+              "-> int" claim a fourth independent time (after T01 x2,
+              T02 x2) - and per the script's own "FIRST THING TO CHECK"
+              note, this makes burst= (not just DONE total=) a valid
+              scalar at this resolution.
+NOTES       : THE MOST IMPORTANT RESULT SO FAR: engine tick delivery to
+              a bare script (no imports, no I/O, no throttle(), no
+              data-dependent branching, exactly one get_cpu() call
+              taken BEFORE timing starts) is DETERMINISTIC to within
+              <1%, both within a single run and across 8 independent
+              runs spanning ~4.6 minutes of wall-clock time. cpu0=0 on
+              every run (no creeping residual load across 8 consecutive
+              launches - no carryover, no warm-up drift). This
+              DIRECTLY CONTRADICTS the idea that ambient engine/tick
+              noise could explain the 2.7x run-to-run variance seen on
+              the real connected/decode menu.bd path (+40.3s -> +111.0s
+              on identical code+data) - whatever causes that variance
+              has to come from something this probe deliberately
+              excludes: repeated get_cpu() polling, throttle() looping,
+              a live connection, file I/O, imports, or string/dict
+              building over real data. This is now the reference
+              dataset every later A/B test (T14-T19, T20-T25) is judged
+              against - a real difference in those tests can no longer
+              be waved away as "maybe that's just engine noise."
