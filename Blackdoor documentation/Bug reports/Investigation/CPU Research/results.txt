@@ -1287,3 +1287,101 @@ NOTES       : THE HEADLINE SYNTHESIS: run 6's single below-ceiling dip
               for 30-60s to see whether/when this elevated floor
               eventually decays back to ~10, or whether it is a
               persistent new plateau for the rest of the session.
+
+RUN-ID      : T10 EXTENSION - 10-run batch, all PART A, hot/back-to-
+              back (user-initiated follow-up to get better statistics
+              on batch 1's single anomalous run)
+WHEN        : 2026-09-14, immediately following the 8-run T10 batch
+              above, same continued session
+START-STATE : continued session, not independently re-confirmed via
+              ps/jobs for this batch
+TIER        : base 10t/s, per T02/T09/T10 batch 1
+RAW         : Nykita@localhost ~/scripts > T10 A
+               KILLTRACE part=A entry_cpu=0 floor_cpu=39.9999999999989
+               1 1.00099992752075 100
+               2 2.1010000705719 100
+               3 3.20099997520447 100
+               4 4.30200004577637 100
+               5 5.40300011634827 100
+               6 6.49699997901917 90.0000000000001
+               7 7.59699988365173 100
+               8 8.69799995422363 100
+               9 9.79299998283386 90.0000035334083
+               10 10.8929998874664 100
+               11 11.9930000305176 100
+               12 13.0950000286102 100
+               13 14.1949999332428 100
+               14 15.3010001182556 100
+               [SYSTEM] CPU overloaded... killed.
+               [runs 2-5, 7-9 (7 total): identical normal shape, final
+               n=5, t~5.40s, cpu=100 at every sample, no dips]
+               [run 6 of this batch: n=1 reads cpu=90 (the ONLY dip),
+               n=2-5 all 100, killed at n=5 t=5.402 - SAME timing as
+               every normal run despite the dip]
+               [run 10 of this batch: n=2 reads 90.0000000000009, n=6
+               reads 90.0000000000001, survived to n=10, t=10.899]
+               floor_cpu=39.9999999999989 IDENTICALLY in ALL 10 runs of
+               this batch (the elevated floor from the prior batch has
+               fully plateaued, not decaying further and not rising
+               further either).
+SCALAR      : Of 10 runs: 7 died normally (n=5, t~5.40s, zero dips). 1
+              died normally WITH one early dip (n=1, run 6). 2 showed
+              dramatically extended survival: n=14/t=15.30s (run 1, 2
+              dips at n=6,9) and n=10/t=10.90s (run 10, 2 dips at
+              n=2,6). Extended-survival rate this batch: 2/10 (20%).
+              Combined with batch 1's 1/6, TOTAL across both PART-A
+              batches: 3/16 runs (~19%) showed extended survival.
+KILLED?     : yes, all 10 (no SURVIVED line in any)
+VS PREDICT  : REFINES (and partially corrects) the prior batch's
+              synthesis. The relationship between a below-ceiling dip
+              and extended survival is a CORRELATION, not a clean 1:1
+              causal rule: run 6 of this batch shows a dip (n=1, cpu=90)
+              with ZERO extension (still dies at exactly n=5, t=5.402 -
+              indistinguishable from a dip-free run). Meanwhile BOTH
+              extended runs (this batch's run 1 and run 10) do show
+              dips - but so does one normal-length run. Looking at
+              overrepresentation instead of a strict rule: 3/3 (100%)
+              of extended runs across both batches show at least one
+              dip, vs only 1/13 (7.7%) of normal-length runs. Dips are
+              therefore ~13x more common among extended-survival runs
+              than normal ones - a real, strong association - but NOT
+              deterministic. The single early dip in run 6 (at n=1,
+              before ANY run - extended or not - has ever died) appears
+              to be inconsequential; the dips that DO co-occur with
+              extension happen alongside or after the point (n=5) where
+              a normal run already dies. The floor_cpu=39.9999999999989
+              CONSTANT across all 10 runs (no further drift up or down)
+              suggests the "persistent post-kill elevated floor" from
+              the prior batch's finding fully plateaus rather than
+              continuing to climb indefinitely.
+NOTES       : MOST DEFENSIBLE READING: a below-ceiling dip and extended
+              survival are very likely both SYMPTOMS of a shared
+              underlying cause (plausibly a genuine, if brief, real
+              reduction in whatever load the kill-trigger's own hidden
+              accumulator is tracking) rather than the dip ITSELF
+              directly and reliably causing the extension by "resetting
+              a counter." An early, isolated dip (run 6's n=1) that
+              occurs before any accumulation could plausibly matter
+              looks like ordinary get_cpu() polling noise (per T04) with
+              no downstream consequence; a dip that occurs DURING what
+              would otherwise be dead time (after n=5, i.e. the run has
+              already escaped the normal kill point) is much more likely
+              to reflect a genuine, if temporary and unexplained,
+              reduction in real accumulated load. This does NOT
+              overturn T10's core headline (get_cpu()'s known polling
+              instability is mechanistically entangled with survival-
+              time variance) but it does mean the earlier "a dip resets
+              the kill's countdown" framing was TOO STRONG as originally
+              worded - REVISED to "a dip is a strong statistical
+              predictor of extension (13x overrepresented) but neither
+              necessary nor sufficient on its own." A dedicated follow-
+              up that could distinguish "dip causes extension" from
+              "shared cause produces both" would need to either force a
+              controlled below-ceiling reading and watch what happens
+              next, or find a way to probe the kill-trigger's own hidden
+              accumulator more directly than get_cpu() readings allow.
+              With n=3 extended runs out of 16, the ~19% base rate
+              itself is now a real, quantified, reproducible-in-
+              aggregate manifestation of the central variance mystery -
+              even though which SPECIFIC run will extend remains
+              unpredictable in advance.

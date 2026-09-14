@@ -392,23 +392,34 @@ T10.bd  (T10, CPU-load research programme - NOT a menu.bd test)  [DONE]
   of inferring the death point from whatever last happened to print.
   PART A instruments get_cpu(); PART B (control) substitutes a copy of
   the loop counter to isolate get_cpu()'s own polling cost.
-  Progress: COMPLETE, 8/8 runs (3 cold PART A >5s apart, 3 hot PART A
-  <=0.5s apart back to back, 2 PART B) - run in a CONTINUED session,
-  not a fresh boot, which turned out to matter (see below).
-  Result: THREE major findings.
-  (1) RUN-TO-RUN VARIANCE REPRODUCED DIRECTLY: 5 of 6 PART-A runs died
-  at exactly n=5 (t~5.4s), cpu=100 every sample; the 6th survived to
-  n=9 (t~9.8s, nearly DOUBLE), with the only difference in its own
-  trace being a single dip to cpu=90 (not 100) at n=5 - a below-ceiling
-  "blip" that appears to have reset or delayed the kill's internal
-  countdown. This is exactly T04's already-demonstrated rapid-polling
-  instability (identical rapid-fire get_cpu() reads gave different
-  values run to run there too) - but T10 now shows that instability,
-  when it happens to land below the ceiling mid-burst, can measurably
-  extend a script's survival time. This is the leading mechanistic
-  candidate for the central menu.bd variance mystery: chance below-
-  ceiling blips in an inherently rapid-poll-unstable meter, not any
-  real randomness in the underlying engine.
+  Progress: COMPLETE, 8/8 runs per the original protocol (3 cold PART A
+  >5s apart, 3 hot PART A <=0.5s apart back to back, 2 PART B), PLUS a
+  user-initiated 10-run PART-A follow-up batch for better statistics -
+  18 PART-A runs total. Run in a CONTINUED session, not a fresh boot,
+  which turned out to matter (see below).
+  Result: FOUR major findings (the 10-run follow-up refined finding 1).
+  (1) RUN-TO-RUN VARIANCE REPRODUCED, RATE QUANTIFIED: across the
+  original 6 PART-A runs plus the 10-run follow-up (16 total), 3 runs
+  (~19%) showed dramatically extended survival - to n=9, n=14, and n=10
+  respectively, vs the normal n=5/t~5.4s every other run showed. ALL 3
+  extended runs show at least one below-ceiling dip (cpu=90 instead of
+  100) somewhere in their trace - exactly T04's already-demonstrated
+  rapid-polling instability - but the relationship is a STRONG
+  CORRELATION, not a strict rule: one normal-length run ALSO showed an
+  early dip (at its very first sample) with zero extension, so dips are
+  ~13x overrepresented in extended runs (3/3) vs normal ones (1/13) but
+  neither necessary nor sufficient on their own. Most defensible
+  reading: a dip and extended survival are likely both SYMPTOMS of a
+  shared underlying cause (a genuine but brief reduction in whatever
+  the kill-trigger's hidden accumulator tracks), not a case of the dip
+  itself directly resetting a counter - an early, isolated dip before
+  any accumulation could matter looks like inconsequential polling
+  noise, while a dip co-occurring with survival PAST the normal n=5
+  death point looks like a real signal. Either way, THIS IS THE LEADING
+  MECHANISTIC CANDIDATE for the central menu.bd variance mystery, now
+  with an actual quantified base rate (~19%, n=16) rather than a single
+  anecdote - and it requires no genuine randomness anywhere in the
+  underlying engine, only the polling instability T04 already proved.
   (2) THE "5 STRAIGHT SECONDS" KILL RULE: sustained-ceiling duration
   before death brackets to (4.3s, 5.5s] for normal runs and (3.3s,
   4.4s] for run 6's second (post-dip) streak - broadly consistent with
@@ -431,6 +442,9 @@ T10.bd  (T10, CPU-load research programme - NOT a menu.bd test)  [DONE]
   seconds later, reads 30-40 - backwards from simple decay, and it does
   NOT reset even after >5s idle between kills (climbs 30->30->40 then
   plateaus at 40 across the session regardless of cold/hot spacing).
+  The 10-run follow-up batch confirms this is a genuine PLATEAU, not
+  just a slow climb - floor_cpu read the exact same 39.9999999999989 in
+  all 10 follow-up runs, neither rising further nor decaying back down.
   Strong evidence that repeated kills within one continued session
   leave a PERSISTENT elevated idle floor that doesn't fully clear the
   way the clean ~10 floor did in T01/T03/T04/T08/T09 - none of which

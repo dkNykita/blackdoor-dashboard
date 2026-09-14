@@ -1107,27 +1107,44 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   T10 (death trace) is complete next, run in a CONTINUED session (not a
   fresh boot - this session had already run several kill-inducing
   tests), and is arguably the single most important result for the
-  central mystery so far: IT REPRODUCES THE VARIANCE DIRECTLY. 8 runs
-  logged one get_cpu() sample per unpaced line until the kill fired.
-  5 of 6 PART-A (instrumented) runs died at exactly n=5 (~5.4s), reading
-  cpu=100 on every single sample. The 6th survived to n=9 (~9.8s,
-  nearly DOUBLE), and the only difference in its own trace was a single
-  dip to cpu=90 (not 100) at n=5 - a below-ceiling "blip" that appears
-  to have reset or substantially delayed whatever counter drives the
-  kill. This blip is exactly the kind of rapid-polling instability T04
-  already demonstrated get_cpu() exhibits (identical rapid-fire reads
-  gave 40 in one T04 run and 30 in another, with zero difference in
-  actual workload). T10 now shows that when such a chance instability
-  happens to land BELOW the ceiling mid-burst, it measurably extends
-  survival time. THIS IS THE LEADING MECHANISTIC CANDIDATE for the
-  central menu.bd variance mystery: the meter's known rapid-polling
-  instability occasionally produces a below-ceiling blip purely by
-  chance (not from any real reduction in workload), and how MANY such
-  blips happen to occur during a run - itself sensitive to exact
-  history/timing per T07 - could directly determine how many extra
-  seconds a script survives before the kill finally fires. This
-  requires no genuine randomness anywhere in the underlying engine,
-  only the instability already proven to exist.
+  central mystery so far: IT REPRODUCES THE VARIANCE DIRECTLY, and a
+  user-initiated 10-run follow-up batch turned the initial anecdote
+  into a quantified, if imperfectly-understood, base rate. 18 total
+  PART-A runs (8 original + 10 follow-up) logged one get_cpu() sample
+  per unpaced line until the kill fired. Across all 16 genuinely
+  comparable PART-A runs (excluding malformed edge cases), the normal
+  pattern is death at exactly n=5 (~5.4s), cpu=100 on every sample - 13
+  of 16 runs matched this exactly. 3 of 16 (~19%) showed dramatically
+  extended survival instead (to n=9, n=14, and n=10 respectively - up
+  to nearly 3x the normal duration). ALL 3 extended runs show at least
+  one below-ceiling dip (cpu=90 instead of 100) somewhere in their
+  trace - exactly the kind of rapid-polling instability T04 already
+  demonstrated (identical rapid-fire reads gave 40 in one T04 run and
+  30 in another, with zero difference in actual workload). BUT the
+  relationship is a correlation, not a strict causal rule: one of the
+  13 normal-length runs ALSO showed a dip (at its very first sample,
+  before any accumulation could plausibly matter) with zero extension -
+  so dips are strongly overrepresented among extended runs (3/3, vs
+  1/13 among normal ones - roughly 13x) but are neither necessary nor
+  sufficient for extension on their own. The most defensible reading:
+  a dip and an extension are most likely both SYMPTOMS of a shared
+  underlying cause - a genuine, if brief and unexplained, reduction in
+  whatever the kill-trigger's own hidden accumulator is tracking -
+  rather than the dip itself directly resetting a counter every time it
+  happens. An isolated early dip that occurs before a normal run would
+  even be expected to die yet looks like inconsequential polling noise;
+  a dip that co-occurs with survival PAST the normal death point looks
+  like a genuine signal. Either way, THIS REMAINS THE LEADING
+  MECHANISTIC CANDIDATE for the central menu.bd variance mystery, now
+  backed by an actual quantified rate (~19%, n=16) instead of a single
+  anecdote, and it still requires no genuine randomness anywhere in the
+  underlying engine - only the polling instability T04 already proved,
+  correlated (not perfectly) with whatever true load state the kill
+  trigger tracks. A follow-up that could cleanly separate "dip causes
+  extension" from "shared cause produces both" would need either a way
+  to force a controlled below-ceiling reading and watch what happens
+  next, or a way to probe the kill-trigger's hidden accumulator more
+  directly than get_cpu() readings allow.
   On the documented "100% for 5 straight seconds" kill rule: the
   sustained-ceiling duration before death brackets to (4.3s, 5.5s] for
   normal runs and (3.3s, 4.4s] for the anomalous run's second streak -
@@ -1172,9 +1189,13 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   experienced a violent kill moments before. METHODOLOGICAL CAUTION:
   any test run in a session where a kill already happened may be
   measuring against an elevated floor, not the clean ~10 baseline this
-  document otherwise treats as standard - worth a dedicated follow-up
-  (log get_cpu() every few seconds for 30-60s post-kill) to see whether
-  this floor eventually decays or is a persistent new session plateau.
+  document otherwise treats as standard. The 10-run follow-up batch
+  confirms this IS a genuine plateau, not just a slow ongoing climb:
+  floor_cpu read the exact same 39.9999999999989 in all 10 follow-up
+  runs, neither rising further nor decaying back toward 10 - still
+  worth a dedicated follow-up (log get_cpu() every few seconds for much
+  longer, minutes rather than seconds, post-kill) to see whether it
+  ever decays given enough real idle time.
   Full data: CPU Research/results.txt, T10 runs 1-8.
 
 LOGS
