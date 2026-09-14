@@ -8,32 +8,44 @@ CONTEXT: this consolidates and supersedes the original "get_cpu() run-to-run inc
 
 === 1. Non-deterministic kill boundary under repeated near-lethal work ===
 Current behavior: A single isolated unpaced burst at a size just below the lethal CPU-overload threshold survives reliably - 5 of 5 fresh single-shot runs at the same burst size survived, timing matching within 11ms of each other across independent script launches. But repeating that exact same burst several times within one continuous script run (with a 3-8 second sleep between each repeat, meant to let load clear) eventually kills the script unpredictably - sometimes on the very next repeat, sometimes after 5, sometimes after 8 - with no warning in the burst's own timing, which stays rock-steady (sub-10ms variation) right up to the death. Doubling the settle time from 3s to 8s did not reliably prevent this, and it reproduced even from a completely fresh game session.
+
 Expected behavior: The same code, run the same number of times with the same pacing, should either always survive or always die at the same point.
+
 Steps to reproduce: Run N unpaced arithmetic-only loop iterations (N just below your lethal threshold), sleep 3-8s, repeat 8-10 times in one script run. Run it several times. Some runs survive every repeat, others die partway through, at inconsistent repeat counts.
 
 === 2. get_cpu() quantizes to multiples of 10 and gives inconsistent readings under rapid polling ===
 Current behavior: Every get_cpu() reading observed was an exact multiple of 10 (0/10/40/50/90/100, never e.g. 47 or 83). Calling get_cpu() several times in a row with zero lines between calls gives inconsistent results on otherwise-identical repeated runs: 5 consecutive calls read 0,0,0,0,40 in one run and 0,0,0,0,30 in an immediately-repeated run with nothing else different. Not just cosmetic: in a batch of 16 identical unpaced-burst tests logging get_cpu() every iteration, 3 runs (~1 in 5) survived far longer than the rest (up to ~3x), and all 3 had logged at least one below-ceiling reading somewhere in their trace, vs only 1 of the other 13.
+
 Expected behavior: get_cpu() should return a consistent value under identical conditions, not snap to multiples of 10 or disagree between repeated calls.
+
 Steps to reproduce: Log get_cpu() 5 times in a row with no other lines between calls, right after a fixed setup. Repeat the script several times. Compare the 5 values across runs.
 
 === 3. get_cpu()'s observable decay window doesn't match the real cost of a throttle-style poll loop ===
 Current behavior: Sampling get_cpu() once, cleanly, at fixed delays (0/1/2/3/5/8s) after a saturating burst shows it back at the idle floor within ~2 seconds - not gradually draining over ~9s the way a fixed points-per-second drain predicts. But reproducing an actual "sleep 1s, then poll every second until below 80%" pattern in isolation after the same burst took ~1.9s to clear in testing - roughly half the ~3-4s that same pattern costs in real gameplay traces.
+
 Expected behavior: A single-sample decay curve and a repeated poll-until-clear loop should agree on recovery time, or the discrepancy should be documented (e.g. does polling itself add load?).
+
 Steps to reproduce: (a) Saturate, then take one get_cpu() reading at increasing fixed delays across separate runs. (b) Saturate the same way, then poll every second until below a threshold, timing the wait. Compare.
 
 === 4. A killed script leaves the CPU meter elevated for the rest of the session ===
 Current behavior: A freshly-launched script's first get_cpu() call reads 0, as expected. But a second call from that same script just 3 seconds later - nothing executed in between but a sleep - reads 30-40 if a script was killed by CPU overload earlier in the same session, and this elevated floor does not decay even after 5+ seconds idle. Appears to persist for the rest of the session.
+
 Expected behavior: get_cpu() should return to its normal idle floor (~10, confirmed rock-steady elsewhere) within a few seconds of any process ending, killed or not.
+
 Steps to reproduce: Trigger a CPU-overload kill. Launch a fresh script reading get_cpu() immediately, sleeping a few seconds, then reading again. Compare against a session with no prior kills.
 
 === 5. log() with string concatenation costs far more than a plain line ===
 Current behavior: A log() line concatenating a value (e.g. log("x" + str(n))) costs roughly 7-9x a plain arithmetic line, by two independent measurements: (a) otherwise-identical loops with vs without an extra get_cpu() call both ran 3-5x slower overall than a plain-line-cost model predicts, purely from a shared logging line; (b) the lethal unpaced-burst size for a loop that logs each iteration is ~20% lower than for plain arithmetic, and one further concatenation lowers it by one more iteration.
+
 Expected behavior: log()'s cost should either be documented as scaling with argument complexity, or actually cost the flat, small amount most scripts assume.
+
 Steps to reproduce: Time N unpaced iterations of log("x" + str(i)) vs N iterations of plain arithmetic (x = x + 1). Compare wall-clock time and/or lethal N for each.
 
 === 6. get_unix_time() returns a float, not an int as documented ===
 Current behavior: The API reference states get_unix_time() returns an int. Every call observed returned a float with multiple decimal digits (e.g. 1789377462.328).
+
 Expected behavior: Documentation should say float, or the function should return an int.
+
 Steps to reproduce: log(str(get_unix_time())) - the printed value has a decimal point.
 
 Sources / methodology: all findings come from purpose-built, isolated .bd test scripts (no mission/game data involved), each repeated multiple times (2-16 runs depending on the test) specifically to separate reproducible behavior from one-off noise - raw logs available on request. This supersedes the original report below, which first surfaced the symptom that finding #1 above most plausibly explains.
