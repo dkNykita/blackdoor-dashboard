@@ -1,0 +1,436 @@
+# tests/test_log_price.bd - T18: WHAT DOES log() ACTUALLY COST?
+#
+# ONE QUESTION: does log() cost exactly one tick no matter what you hand it,
+# or does the price scale with the STRING'S LENGTH, with the NUMBER OF
+# CONCATENATION OPERATIONS used to build the argument, or with the optional
+# second Color argument?
+#
+# WHY THIS ONE IS LOAD-BEARING
+#   Every trace this investigation owns was produced by lines of this shape:
+#     log("DEBUG TIME: " + label + ", +" + str(get_unix_time() - t0) + "s")
+#   and every one of them has been budgeted at ONE tick, because
+#   field_notes.txt's CPU LOAD section says "Every line a script runs costs
+#   1 tick ... Plain statements - assignments, if/loop bodies, log() calls -
+#   all count." One tick. Per line.
+#   But the v1.1.0 changelog (Official documentation/Updates/v1.1.0 -
+#   Persistence.txt, line 60) says something that cannot be true of a
+#   per-LINE accountant: "Fixed scripts being able to dodge CPU-tick cost
+#   just by writing an expression in a particular order - the same function
+#   call, wrapped in identical arithmetic, could cost wildly different
+#   amounts of tick budget depending only on which side of the expression it
+#   sat on - costs the same either way now." An accountant that could be
+#   fooled by which SIDE of an expression a call sat on is an accountant that
+#   WALKS THE EXPRESSION TREE. If it still does, that debug line is not one
+#   tick - it is four concatenations, one subtraction, str(), get_unix_time()
+#   and five leaf reads, i.e. somewhere around 7-12 ticks, 6-12x what it was
+#   budgeted at. Every instrumented number in field_notes would then be
+#   inflated, all in the same direction, by the instrument itself.
+#   That is the whole reason this test exists: to find out whether this
+#   project's own measuring stick is honest before T19-T25 print timings
+#   that everyone is expected to believe.
+#
+# THE UNIT IS DELIBERATELY THE SAME AS T05's: six measured source lines
+#   inside a timed bracket, so any delta converts identically in both tests
+#   (delta / 6 = per-line cost in seconds; divide by T02's seconds-per-tick
+#   to get ticks). At base tier, 0.1s per line = exactly 1 extra tick.
+#
+# THE SEVEN ARMS - every arm is the same function with the same line count,
+# the same loop, the same sleeps and the same bracket. ONLY the six measured
+# lines differ, and between the key pairs they differ in exactly one way:
+#
+#   NOLOG   b = 1                          control: a bare line, nothing printed
+#   SHORT   log(s1)                        s1 = "zz"        (2 chars)
+#   LONG    log(big)                       big = ~241 chars (120x longer)
+#   COLOR   log(s1, Color.amber)           SHORT + one extra argument
+#   CONCAT  log(p1 + p2 + p3 + p4)         3 concat ops, 4 reads, ZERO calls
+#   SHORTB  log(s1)                        SHORT again - drift/scrollback control
+#   DBUG    log(p1 + lbl + p2 + str(get_unix_time() - t0) + p3)
+#                                          the real production instrumentation
+#                                          line: 4 ops, 1 sub, 2 calls, 5 reads
+#
+#   LONG vs SHORT and COLOR vs SHORT are PERFECTLY matched pairs - identical
+#   expression trees, identical node counts, differing in exactly one thing
+#   (character count / one extra argument). Those two comparisons are clean
+#   in a way nothing else in this programme is.
+#
+# HOW TO READ THE RESULT - every delta is against THIS SAME RUN's arms,
+# never against another run. Five identical runs in this investigation died
+# at +40.7/+111.0/+40.3/+65.5/+64.3s; cross-run comparison of absolute
+# timings is not a thing this corpus has earned the right to do.
+#
+#   STRICT PER-LINE CHARGING (the docs are right; our instrumentation is
+#   honest and cheap):
+#     ALL SEVEN arm means agree within T03's noise floor (about +/-0.10s per
+#     round), including DBUG. d_concat and d_dbug are both under 0.15s.
+#     -> log() is one tick, full stop. Argument complexity is free. Every
+#        "DEBUG TIME" line in every trace cost what it was budgeted. Close
+#        the "log() distorts its own trace" worry permanently.
+#
+#   PER-OPERATION (or per-node) CHARGING - the changelog was describing live
+#   behaviour and the tree-walk is still there:
+#     d_concat >= 1.5s per round  (6 lines x ~3 extra nodes x 0.1s = ~1.8s)
+#     AND d_dbug >= 3.5s per round (6 lines x ~7 extra nodes = ~4.2s)
+#     -> the ubiquitous debug line costs 7-12 ticks, not 1. Every
+#        instrumented span in field_notes is inflated by roughly one tick per
+#        operator in every checkpoint line, and the per-token/per-item traces
+#        (which log twice per item) need re-reading with that correction
+#        before any of their "this call costs 14.3s" numbers are quoted again.
+#
+#   LENGTH COSTS (per-character work in the printer):
+#     d_long >= 0.4s per round, or LONG is killed while SHORT survived.
+#     -> print_dashboard()'s long formatted rows are a real unbudgeted cost
+#        and every wide banner/table line in menu.bd is more expensive than a
+#        short one. At ~241 chars vs 2, d_long/6/239 is the per-character
+#        price; multiply by a typical 70-char dashboard row for the real bill.
+#     LENGTH IS FREE: d_long within +/-0.15s of zero -> formatting width is
+#        not a lever; stop worrying about it.
+#
+#   COLOUR COSTS:
+#     d_color ~= +0.6s per round (6 lines x 1 tick) -> the second argument is
+#        charged as its own node; log(msg, Color.x) is 2 ticks, not 1.
+#     d_color ~= 0 -> colour is free; use it freely for readability.
+#
+#   DRIFT / SCROLLBACK CONFOUND (this is why SHORTB exists):
+#     SHORTB is the SAME arm as SHORT, run five arms later, after ~96 payload
+#     lines have been printed - including 24 very long ones. If
+#     |shortb - short| < 0.15s, there is no scrollback cost and no session
+#     warm-up, and the ascending arm order is safe.
+#     IF |shortb - short| >= 0.3s, THE ARM ORDER IS CONFOUNDED: the later
+#     arms are the expensive-looking ones by construction, so d_concat and
+#     d_dbug are NOT trustworthy from this run. Report it and re-run with the
+#     arm order reversed before believing any per-operation conclusion.
+#     This is also the only per-line evidence about terminal-buffer growth
+#     anyone in this programme has collected.
+#
+#   INVALID RUN: if NOLOG is not the smallest mean, something drifted;
+#     report it and re-run. No delta from that run means anything.
+#
+#   INTEGER CLOCK: if every burst= prints as a whole number (0, 1, 2...),
+#     get_unix_time() has 1-second resolution and burst= is unusable. In that
+#     case use each arm's SPAN instead: subtract its ARM-START at= from its
+#     ARM-DONE at=. Every arm's sleeps and boundary lines are identical, so
+#     span differences are exactly 4x the mean differences above - the same
+#     effects, four times larger, and they survive 1-second quantization.
+#
+#   WHAT COUNTS AS A "NODE" is itself unknown, so two figures are printed.
+#     If variable READS are free and only operators/calls are charged, DBUG
+#     has 7 chargeable nodes more than SHORT (4 concats + 1 subtraction +
+#     str() + get_unix_time()) and CONCAT has 3. If reads are charged too,
+#     those become 11 and 6. SUM4's per_op and SUM8's per_node both assume
+#     the reads-are-free reading; halve them for the other. The two figures
+#     only differ in the constant, never in the verdict.
+#
+# IS THE BURST THE EXPERIMENT? YES - deliberately, and this is the one place
+#   the ~10-line unpaced-burst rule is knowingly approached.
+#   Six unpaced log() lines is the payload being priced; it cannot be paced
+#   without destroying the measurement. Sizing: under per-line charging every
+#   arm is 6 ticks = 0.6s of load, trivially safe. Under per-node charging
+#   the worst arm, DBUG, is ~12 ticks x 6 = ~72 ticks... which at base tier
+#   is ~7s of continuous 100% and WILL trip the 5-second kill.
+#   THAT IS NOT A FAILURE. THAT IS THE RESULT, IN THE HARDER CURRENCY:
+#   if DBUG dies while SHORT ran four clean rounds, per-operation charging is
+#   confirmed outright and the exact production debug line is proven lethal
+#   six-in-a-row. Everything is ordered so that death costs nothing else:
+#     - arms ascend in predicted cost, so the cheap clean pairs bank first;
+#     - SHORTB (the validity control) runs BEFORE DBUG, not after;
+#     - the ENTIRE summary for arms 1-6 is printed BEFORE DBUG starts.
+#   A run that dies inside DBUG still delivers six arms fully analysed.
+#   Known-lethal reference points: ~13 unpaced log() calls in a tight loop
+#   (field notes) and 50 unpaced arithmetic lines (test_cpu_decay.bd). Six is
+#   comfortably under both unless argument complexity is charged - which is
+#   exactly the hypothesis.
+#
+# ZERO get_cpu() CALLS. get_cpu()'s own cost is itself unresolved (that is
+#   T05's job) and field_notes carries a player CORRECTION saying it adds
+#   load despite the docs. Importing an unquantified perturbation into the
+#   one test whose subject is measurement honesty would be self-defeating.
+#   Wall clock only. The price paid: this script cannot verify that every arm
+#   started from the same meter state. SHORTB is the substitute for that
+#   check - an empirical one that needs no instrument.
+#
+# HOW TO RUN
+#   1) Run T02 (test_tick_ruler) first and have its seconds-per-tick to hand;
+#      this test reports seconds, and only T02 converts them into ticks.
+#      T02 must have CONFIRMED that the engine blocks on tick exhaustion -
+#      if it REFUTED that, wall-clock deltas measure nothing and this whole
+#      script must be re-cut to kill / no-kill observables.
+#   2) Fresh session if convenient. Run `ps` and `jobs`, confirm nothing else
+#      is running, and paste that output too.
+#   3) Save as ~/scripts/test_log_price.bd and run `test_log_price`.
+#      No parameters. One execution. ~3 minutes.
+#   4) PASTE BACK: every line that does NOT begin with a lowercase z.
+#      Every payload/filler line printed inside a timed bracket begins with
+#      "z" and carries no information - it IS the thing being measured, not a
+#      result. Every line worth pasting begins with LOGPRICE, PRECHECK, ARM-,
+#      R or SUM.
+#   5) ONE EXCEPTION: also paste the FIRST "z0123456789..." line you see, in
+#      full, exactly once. That is the LONG arm's payload and pasting one
+#      proves the terminal actually rendered all ~241 characters (it must end
+#      in ...0123456789). If it is truncated, d_long measures truncation, not
+#      length, and the LENGTH verdict is void.
+#   6) REPEATS: TWO runs, back to back, same session. A third only if
+#      d_concat or d_dbug lands on opposite sides of the 0.15s / 1.5s
+#      decision band between the two runs, or if SHORTB disagrees with SHORT
+#      in one run but not the other.
+#   7) If it dies: paste everything that printed anyway. The last ARM-START
+#      line names the arm that killed it and the last R line names the round,
+#      which is a complete result on its own.
+#
+# IF IT DIES WITH ZERO OUTPUT: this file is ~420 lines, most of it this
+#   header, and nobody has ever established whether comment lines and func
+#   declarations cost ticks at load time (T09/test_cpu_ceiling.bd is the test
+#   that settles it). The sleep(1) between every func definition below exists
+#   to absorb that. If it still prints nothing at all, that is a T09 result,
+#   not a T18 one - strip this header down to its first ten lines and re-run;
+#   if the stripped copy runs, file length costs ticks at load and every long
+#   script in this project starts from a hole.
+
+var t0 = get_unix_time()
+var SML = "zz"
+var BIG = "z012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"
+var P1 = "zz "
+var P2 = " +"
+var P3 = "s"
+var P4 = "cc"
+var LBL = "DBG"
+
+sleep(1)
+
+func arm_nolog(tz):
+    var s = 0
+    var r = 0
+    var b = 0
+    var ts = 0
+    var el = 0
+    while r < 4:
+        sleep(1)
+        ts = get_unix_time()
+        b = 1
+        b = 1
+        b = 1
+        b = 1
+        b = 1
+        b = 1
+        el = get_unix_time() - ts
+        sleep(2)
+        s = s + el
+        r = r + 1
+        log("R" + str(r) + " arm=NOLOG burst=" + str(el) + " at=+" + str(get_unix_time() - tz))
+    return s / 4
+
+sleep(1)
+
+func arm_short(tz, s1):
+    var s = 0
+    var r = 0
+    var ts = 0
+    var el = 0
+    while r < 4:
+        sleep(1)
+        ts = get_unix_time()
+        log(s1)
+        log(s1)
+        log(s1)
+        log(s1)
+        log(s1)
+        log(s1)
+        el = get_unix_time() - ts
+        sleep(2)
+        s = s + el
+        r = r + 1
+        log("R" + str(r) + " arm=SHORT burst=" + str(el) + " at=+" + str(get_unix_time() - tz))
+    return s / 4
+
+sleep(1)
+
+func arm_long(tz, s1):
+    var s = 0
+    var r = 0
+    var ts = 0
+    var el = 0
+    while r < 4:
+        sleep(1)
+        ts = get_unix_time()
+        log(s1)
+        log(s1)
+        log(s1)
+        log(s1)
+        log(s1)
+        log(s1)
+        el = get_unix_time() - ts
+        sleep(2)
+        s = s + el
+        r = r + 1
+        log("R" + str(r) + " arm=LONG burst=" + str(el) + " at=+" + str(get_unix_time() - tz))
+    return s / 4
+
+sleep(1)
+
+func arm_color(tz, s1):
+    var s = 0
+    var r = 0
+    var ts = 0
+    var el = 0
+    while r < 4:
+        sleep(1)
+        ts = get_unix_time()
+        log(s1, Color.amber)
+        log(s1, Color.amber)
+        log(s1, Color.amber)
+        log(s1, Color.amber)
+        log(s1, Color.amber)
+        log(s1, Color.amber)
+        el = get_unix_time() - ts
+        sleep(2)
+        s = s + el
+        r = r + 1
+        log("R" + str(r) + " arm=COLOR burst=" + str(el) + " at=+" + str(get_unix_time() - tz))
+    return s / 4
+
+sleep(1)
+
+func arm_concat(tz, a1, a2, a3, a4):
+    var s = 0
+    var r = 0
+    var ts = 0
+    var el = 0
+    while r < 4:
+        sleep(1)
+        ts = get_unix_time()
+        log(a1 + a2 + a3 + a4)
+        log(a1 + a2 + a3 + a4)
+        log(a1 + a2 + a3 + a4)
+        log(a1 + a2 + a3 + a4)
+        log(a1 + a2 + a3 + a4)
+        log(a1 + a2 + a3 + a4)
+        el = get_unix_time() - ts
+        sleep(2)
+        s = s + el
+        r = r + 1
+        log("R" + str(r) + " arm=CONCAT burst=" + str(el) + " at=+" + str(get_unix_time() - tz))
+    return s / 4
+
+sleep(1)
+
+func arm_shortb(tz, s1):
+    var s = 0
+    var r = 0
+    var ts = 0
+    var el = 0
+    while r < 4:
+        sleep(1)
+        ts = get_unix_time()
+        log(s1)
+        log(s1)
+        log(s1)
+        log(s1)
+        log(s1)
+        log(s1)
+        el = get_unix_time() - ts
+        sleep(2)
+        s = s + el
+        r = r + 1
+        log("R" + str(r) + " arm=SHORTB burst=" + str(el) + " at=+" + str(get_unix_time() - tz))
+    return s / 4
+
+sleep(1)
+
+func arm_dbug(tz, a1, a2, a3, lb):
+    var s = 0
+    var r = 0
+    var ts = 0
+    var el = 0
+    while r < 4:
+        sleep(1)
+        ts = get_unix_time()
+        log(a1 + lb + a2 + str(get_unix_time() - tz) + a3)
+        log(a1 + lb + a2 + str(get_unix_time() - tz) + a3)
+        log(a1 + lb + a2 + str(get_unix_time() - tz) + a3)
+        log(a1 + lb + a2 + str(get_unix_time() - tz) + a3)
+        log(a1 + lb + a2 + str(get_unix_time() - tz) + a3)
+        log(a1 + lb + a2 + str(get_unix_time() - tz) + a3)
+        el = get_unix_time() - ts
+        sleep(2)
+        s = s + el
+        r = r + 1
+        log("R" + str(r) + " arm=DBUG burst=" + str(el) + " at=+" + str(get_unix_time() - tz))
+    return s / 4
+
+sleep(1)
+
+# --- preflight: prove Color.amber resolves before an entire arm depends on
+# --- it. If this raises, the COLOR arm is void but every other arm is fine.
+
+log("LOGPRICE start arms=7 rounds=4 lines=6 clock=" + str(t0))
+sleep(1)
+try:
+    log("PRECHECK color ok", Color.amber)
+catch e:
+    log("PRECHECK color FAILED - COLOR arm is void: " + e.message)
+sleep(1)
+log("LOGPRICE note - paste every line NOT starting with z, plus ONE full z0123... payload line")
+
+# --- driver: arms ascend in predicted cost. SHORTB (validity control) and
+# --- the whole summary for arms 1-6 run BEFORE the riskiest arm, DBUG.
+
+sleep(2)
+log("ARM-START arm=NOLOG payload='b = 1' at=+" + str(get_unix_time() - t0))
+var mNOLOG = arm_nolog(t0)
+log("ARM-DONE arm=NOLOG mean=" + str(mNOLOG) + " at=+" + str(get_unix_time() - t0))
+
+sleep(2)
+log("ARM-START arm=SHORT payload='log(2-char)' at=+" + str(get_unix_time() - t0))
+var mSHORT = arm_short(t0, SML)
+log("ARM-DONE arm=SHORT mean=" + str(mSHORT) + " at=+" + str(get_unix_time() - t0))
+
+sleep(2)
+log("ARM-START arm=LONG payload='log(241-char)' at=+" + str(get_unix_time() - t0))
+var mLONG = arm_long(t0, BIG)
+log("ARM-DONE arm=LONG mean=" + str(mLONG) + " at=+" + str(get_unix_time() - t0))
+
+sleep(2)
+log("ARM-START arm=COLOR payload='log(2-char, Color.amber)' at=+" + str(get_unix_time() - t0))
+var mCOLOR = arm_color(t0, SML)
+log("ARM-DONE arm=COLOR mean=" + str(mCOLOR) + " at=+" + str(get_unix_time() - t0))
+
+sleep(2)
+log("ARM-START arm=CONCAT payload='log(a+b+c+d)' 3ops 0calls at=+" + str(get_unix_time() - t0))
+var mCONCAT = arm_concat(t0, P1, P4, P2, P3)
+log("ARM-DONE arm=CONCAT mean=" + str(mCONCAT) + " at=+" + str(get_unix_time() - t0))
+
+sleep(2)
+log("ARM-START arm=SHORTB payload='log(2-char)' DRIFT CONTROL at=+" + str(get_unix_time() - t0))
+var mSHORTB = arm_shortb(t0, SML)
+log("ARM-DONE arm=SHORTB mean=" + str(mSHORTB) + " at=+" + str(get_unix_time() - t0))
+
+# --- INTERIM SUMMARY: everything except DBUG, printed before DBUG can kill
+# --- the run. Paced one line per sleep so a kill here loses at most one line.
+
+sleep(2)
+log("SUM1 nolog=" + str(mNOLOG) + " short=" + str(mSHORT) + " d_short=" + str(mSHORT - mNOLOG) + " per_line=" + str((mSHORT - mNOLOG) / 6))
+sleep(1)
+log("SUM2 LENGTH long=" + str(mLONG) + " d_long=" + str(mLONG - mSHORT) + " per_line=" + str((mLONG - mSHORT) / 6) + " (>=0.4 => per-character work)")
+sleep(1)
+log("SUM3 COLOUR color=" + str(mCOLOR) + " d_color=" + str(mCOLOR - mSHORT) + " per_line=" + str((mCOLOR - mSHORT) / 6) + " (~0.6 => colour is its own tick)")
+sleep(1)
+log("SUM4 CONCAT concat=" + str(mCONCAT) + " d_concat=" + str(mCONCAT - mSHORT) + " per_line=" + str((mCONCAT - mSHORT) / 6) + " per_op=" + str((mCONCAT - mSHORT) / 18))
+sleep(1)
+log("SUM5 DRIFT shortb=" + str(mSHORTB) + " drift=" + str(mSHORTB - mSHORT) + " (>=0.3 => arm order CONFOUNDED, distrust SUM2/SUM4/SUM7)")
+sleep(1)
+log("SUM6 arms 1-6 banked - starting DBUG, the only arm that may be lethal")
+
+# --- riskiest arm last: the literal production instrumentation line.
+
+sleep(2)
+log("ARM-START arm=DBUG payload='log(p+lbl+p+str(get_unix_time()-t0)+p)' at=+" + str(get_unix_time() - t0))
+var mDBUG = arm_dbug(t0, P1, P2, P3, LBL)
+log("ARM-DONE arm=DBUG mean=" + str(mDBUG) + " at=+" + str(get_unix_time() - t0))
+
+sleep(2)
+log("SUM7 DEBUGLINE dbug=" + str(mDBUG) + " d_dbug=" + str(mDBUG - mSHORT) + " per_line=" + str((mDBUG - mSHORT) / 6))
+sleep(1)
+log("SUM8 per_node=" + str((mDBUG - mSHORT) / 42) + " (7 chargeable nodes x 6 lines, reads assumed free; halve if reads are charged - compare to SUM4 per_op)")
+sleep(1)
+log("SUM9 VERDICT all d within 0.15 => PER-LINE, instrumentation honest; d_concat>=1.5 and d_dbug>=3.5 => PER-OPERATION, every trace inflated")
+sleep(1)
+log("LOGPRICE DONE 7/7 arms x 4 rounds total=+" + str(get_unix_time() - t0) + "s - paste every non-z line")
