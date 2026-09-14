@@ -20,10 +20,10 @@ Open/01_param_default_type_and_quoting_leak.txt [script]
   the value, and an unquoted numeric default (`default=10`) returns an
   actual NUMBER even when the call site expects a string - either one
   crashes downstream code that assumes a clean string. Found internally
-  2026-09-14 via two successive T01.bd crashes; not yet submitted to
-  Discord. Fix already applied to this project's own tests/T01-T28 (see
-  field_notes.txt); this report is about the engine behavior itself,
-  not our code. (Renamed from
+  2026-09-14 via two successive T01.bd crashes; submitted to Discord
+  same day (see Report link:). Fix already applied to this project's
+  own tests/T01-T28 (see field_notes.txt); this report is about the
+  engine behavior itself, not our code. (Renamed from
   01_param_default_quotes_embedded_literally.txt when the second, type-
   coercion half of the bug was found and folded in.)
 

@@ -1,4 +1,4 @@
-Report link: none - found internally via in-game testing (T01.bd, CPU Research programme, 2026-09-14), not sourced from Discord.
+Report link: https://discordapp.com/channels/1490681520174661755/1548985665159569458
 
 BUG REPORT: @param defaults leak their comment syntax (quotes, type) into get_param(), not the fallback
 
