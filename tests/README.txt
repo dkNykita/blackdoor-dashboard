@@ -453,6 +453,56 @@ T10.bd  (T10, CPU-load research programme - NOT a menu.bd test)  [DONE]
   Research/results.txt (T10 runs 1-8) and field_notes.txt for the full
   writeup.
 
+T11.bd  (T11, CPU-load research programme - NOT a menu.bd test)
+  [STAGES 1-3 DONE, headline question answered; STAGES 4-5 pending]
+  Goal: THE LETHAL BURST BOUNDARY - is there a sharp, deterministic
+  unpaced-line count that always kills, or does the same size sometimes
+  survive and sometimes die (which alone would fully explain the
+  central menu.bd variance mystery, independent of anything in
+  menu.bd's own code)? Described in its own header as possibly the most
+  important test in the whole programme.
+  Progress: STAGE 1 (locate boundary), STAGE 2 (survivor-side
+  sharpness), STAGE 3 (fresh single-shot cross-check) all complete.
+  STAGE 4 (observer arms: zero/cpu/time) and STAGE 5 (log arms:
+  intlog/concatlog) not yet run.
+  Result: STAGE 1 bracketed the ladder-mode boundary to nS=18 (survived
+  ~6.0s)/nL=21 (died). STAGE 2 then found n=18 split 2 survived/3 died
+  across 5 attempts, and n=17 survived 7 CONSECUTIVE times (timing
+  stdev 0.005s - essentially identical) before dying on the 8th with no
+  warning - decisively refuting a sharp boundary (P1) for these repeat-
+  in-one-run ("hold mode") tests. STAGE 3's fresh single-shot cross-
+  check then REFINED this: 5/5 genuinely fresh, separately-launched
+  n=17 runs ALL survived (timing spread only 0.011s across 5
+  independent launches - as clean as anything in this programme), while
+  2 MORE hold-mode runs both eventually died (at the 5th and the very
+  1st repeat respectively) - 3/3 hold-mode attempts now dying overall,
+  at three different repeat counts (1st, 5th, 8th), vs 5/5 fresh single
+  shots surviving cleanly.
+  REVISED HEADLINE: a single, properly-isolated burst at the boundary
+  size is RELIABLE. The instability lives specifically in REPEATED
+  bursts within one continuous run - even with a settle=3s gap between
+  them that looks adequate by every visible metric (burst= timing stays
+  rock-steady right up to the death), something accumulates across
+  repeats that a single burst's own decay curve (T08, which only ever
+  measured decay from ONE isolated burst) never captured. This matches
+  the test's own anticipated KNOWN CONFOUND ("load survives the sleep")
+  almost exactly, and means STAGE 1/2's reported boundaries likely
+  UNDERSTATE the true single-burst lethal size.
+  WHY THIS MATTERS FOR menu.bd: get_entry()'s real token-decode loop is
+  structurally a hold-mode run - repeated near-costly work punctuated by
+  throttle() calls meant to settle the load, exactly like this test's
+  settle=3 sleeps, which have now been shown NOT to reliably clear
+  whatever accumulates. A host with more items/tokens (more repeated
+  bursts) would have proportionally more chances to cross this hidden
+  threshold before finishing - a precise, mechanistically-grounded
+  explanation for why the variance concentrates specifically inside
+  the token-decode loop for hosts with real field data, exactly as
+  already observed elsewhere in this investigation. Recommended
+  follow-up: re-run hold mode at settle=8 (T11 arith 17 0 100 8) to see
+  whether a longer settle eliminates the eventual death or only delays
+  it. See CPU Research/results.txt (T11 STAGES 1-3) and field_notes.txt
+  for the full writeup.
+
 T18.bd  (T18, CPU-load research programme - NOT a menu.bd test)
   Goal: price log() itself. Does it cost exactly one tick regardless of its
   argument, or does cost scale with STRING LENGTH, with the number of

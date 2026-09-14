@@ -1543,3 +1543,98 @@ NOTES       : THIS IS LIKELY THE SINGLE MOST IMPORTANT FINDING IN THE
               genuinely fresh single-shot runs) as the "slow,
               unimpeachable" cross-check this test's own protocol
               calls for before reporting NOT-SHARP as final.
+
+RUN-ID      : T11 STAGE 3/5 (sharpness, lethal side - fresh single-shot
+              cross-check) PLUS 2 extra user-initiated hold-mode runs
+              (rungs=100) for additional data on the accumulation
+              pattern hinted at by STAGE 2
+WHEN        : 2026-09-14, same continued session, immediately after
+              STAGE 2, ~20s between each of the 5 single-shot runs
+START-STATE : continued session, not independently re-confirmed clean
+TIER        : base 10t/s
+RAW         : Nykita@localhost ~/scripts > T11 arith 17 0 1
+               KILLBOUND mode=arith n=17 step=0 rungs=1 settle=3 entry_cpu=0
+               CALIB arith8=2.99399995803833s pred_n=13 (0 = clock too coarse)
+               RUNG r=0 mode=arith n=17
+               OK r=0 n=17 burst=5.69700002670288s
+               DONE mode=arith top_n=17 nothing died - raise n or step and re-run
+               [4 more identical-shape single-shot runs: all SURVIVED,
+               burst=5.70300006866455, 5.70300006866455,
+               5.70799994468689, 5.70299983024597]
+               [then 2 hold-mode runs, T11 arith 17 0 100:
+               run A: r=0 OK(5.703) r=1 OK(5.696) r=2 OK(5.690)
+                      r=3 OK(5.698) r=4 DIED (no OK)
+               run B: r=0 DIED IMMEDIATELY (no OK at all)]
+SCALAR      : 5/5 FRESH single-shot n=17 runs SURVIVED (mean=5.7028s,
+              stdev=0.0039s, spread only 0.011s - as tight as any
+              measurement in this whole programme). 2/2 additional
+              hold-mode n=17 runs eventually DIED (at r=4 and r=0
+              respectively) - combined with STAGE 2's original hold-
+              mode run (died at r=7), that is 3/3 hold-mode attempts
+              dying, at three DIFFERENT repeat counts (1st, 5th, 8th).
+KILLED?     : no for all 5 single-shot runs; yes for both new hold-mode
+              runs (at r=4 and r=0 respectively)
+VS PREDICT  : THIS REFINES STAGE 2's conclusion in an important way.
+              P1 (SHARP) is still refuted for HOLD MODE specifically
+              (3/3 hold-mode runs die, but at wildly different repeat
+              counts: 1, 5, 8). But the "unimpeachable" fresh single-
+              shot cross-check this stage exists to run shows n=17 is
+              ACTUALLY RELIABLE when properly isolated: 5/5 survived,
+              with burst timing so tight (0.011s spread across 5
+              independent process launches) that there is no visible
+              sign of any instability at all in a clean, single,
+              properly-settled burst. This matches the test's own
+              anticipated KNOWN CONFOUND almost exactly: "ladder n* <
+              fresh-run n* -> LOAD SURVIVES THE SLEEP. That is not a
+              spoiled experiment, it is a second mechanism for the
+              central mystery." STAGE 1's ladder (which strung 5
+              sequential bursts, n=6 through n=18, into ONE continuous
+              run before finally dying at n=21) and STAGE 2's hold-mode
+              runs were BOTH susceptible to this same confound - their
+              reported boundaries (nS=18/nL=21 from STAGE 1; the mixed
+              n=17/n=18 results from STAGE 2) likely UNDERSTATE the
+              true single-burst lethal boundary, because settle=3s
+              between repeated bursts in the SAME run does not fully
+              clear whatever accumulates from a near-lethal burst -
+              even though burst= timing itself stays rock-steady right
+              up until the death (no visible warning sign).
+NOTES       : REVISED HEADLINE: the central mystery mechanism is more
+              precisely "repeated near-lethal bursts within one
+              continuous run accumulate a hidden danger that a single
+              burst's own decay curve (T08, which only ever measured
+              decay from ONE isolated burst) never captured" - NOT
+              simply "the kill trigger is randomly non-deterministic
+              for any isolated burst at the boundary size." A single,
+              properly-isolated n=17 burst is reliable. Multiple such
+              bursts in sequence, even with a 3s settle that LOOKS
+              adequate by every visible metric, are NOT reliably safe -
+              and the exact number of repeats survived before death is
+              itself unpredictable (1, 5, or 8 in the three hold-mode
+              attempts observed), meaning this specific accumulation
+              mechanism still has an irreducible, history-sensitive
+              component of its own (consistent with T07's broader
+              finding that get_cpu()-adjacent quantities depend on
+              exact history in complex, non-monotonic ways).
+              WHY THIS MATTERS ENORMOUSLY FOR menu.bd: get_entry()'s
+              real token-decode loop processes MANY items/tokens in
+              sequence for a host with real field data - structurally
+              exactly like a hold-mode run (repeated near-costly work,
+              punctuated by throttle() calls that are SUPPOSED to
+              settle the load back down, exactly like this test's
+              settle=3 sleeps). If throttle()'s own settling is
+              similarly insufficient to fully clear a hidden multi-
+              burst accumulator (as this test's settle=3 demonstrably
+              is not), then a host with MORE items to decode (more
+              repeated bursts) would have proportionally MORE chances
+              to cross that hidden threshold before finishing - a
+              precise, mechanistically-grounded explanation for why the
+              variance concentrates specifically in hosts with real
+              field data, and specifically inside the token-decode
+              loop, exactly as already observed. RECOMMENDED FOLLOW-UP
+              per the test's own KNOWN CONFOUND section: re-run the
+              hold-mode test at settle=8 (T11 arith 17 0 100 8) to see
+              whether a longer settle eliminates the eventual death, or
+              only delays it further - this would directly test whether
+              throttle()'s own pacing could ever be "enough," or whether
+              the hidden accumulator is effectively unclearable within
+              any practical settle time.

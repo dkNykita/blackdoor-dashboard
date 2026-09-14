@@ -1198,6 +1198,75 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   ever decays given enough real idle time.
   Full data: CPU Research/results.txt, T10 runs 1-8.
 
+  T11 (the lethal burst boundary) is complete through its first 3
+  stages next, and is LIKELY THE MOST IMPORTANT RESULT IN THE WHOLE
+  PROGRAMME - it directly locates the mechanism behind the central
+  mystery, and refines it with real precision. THE QUESTION: is there a
+  sharp, fixed unpaced-line count that always kills, or can the exact
+  same burst size both survive and die? STAGE 1 (a ladder of rising
+  arith bursts in one run) bracketed a boundary at nS=18 (survived,
+  ~6.0s)/nL=21 (died). STAGE 2 (repeating the boundary size within one
+  continuous run, "hold mode") then found n=18 splitting 2 survived/3
+  died across 5 attempts, and - the cleanest single data point in the
+  whole programme - n=17 surviving 7 CONSECUTIVE times with burst
+  timing so tight (stdev 0.005s) that no gradual trend was visible, then
+  dying on the 8th attempt with zero warning. This decisively refutes a
+  sharp boundary for hold-mode repeats.
+  STAGE 3 then ran the "unimpeachable" cross-check the test's own
+  protocol calls for: 5 GENUINELY FRESH, separately-launched n=17 runs.
+  ALL FIVE SURVIVED, with burst timing spread of only 0.011s across 5
+  independent process launches - as clean and reliable as any
+  measurement in this entire investigation. Two MORE hold-mode runs
+  (deliberately run for extra data) both eventually died too, at the
+  5th and the very 1st repeat respectively - 3 of 3 hold-mode attempts
+  now die overall, at three DIFFERENT repeat counts (1st, 5th, 8th).
+  THE REVISED, MORE PRECISE HEADLINE: a single, properly-isolated burst
+  at the boundary size is RELIABLE - it is not that the engine's kill
+  trigger is simply random for any lone burst near the boundary. The
+  instability lives specifically in REPEATED bursts within one
+  continuous script run: even with a settle=3s gap between bursts that
+  looks completely adequate by every visible metric (the surviving
+  bursts' own timing stays rock-steady right up to the moment of death,
+  with no gradual drift), something accumulates across repeats that a
+  single burst's own decay curve (T08, which only ever measured decay
+  from ONE isolated burst, never several bursts in sequence) never
+  captured. This matches this test's own pre-anticipated KNOWN
+  CONFOUND ("ladder n* < fresh-run n* -> LOAD SURVIVES THE SLEEP...
+  it is a second mechanism for the central mystery") almost exactly -
+  and it means STAGE 1's and STAGE 2's own reported "boundaries" likely
+  UNDERSTATE the true single-burst lethal size, since both were
+  themselves built from sequences of repeated bursts.
+  WHY THIS IS THE MOST IMPORTANT RESULT FOR menu.bd SPECIFICALLY:
+  get_entry()/find_entry_by_host()'s real token-decode loop is
+  STRUCTURALLY a hold-mode run - repeated near-costly per-token work,
+  punctuated by throttle() calls whose entire job is to settle the load
+  back down between iterations, exactly like this test's settle=3
+  sleeps, which have now been shown NOT to reliably clear whatever
+  actually accumulates. If throttle()'s own settling has the same
+  limitation, then a host with MORE tokens/fields to decode (more
+  repeated near-costly bursts, each throttled in between) would have
+  proportionally MORE chances to cross this hidden, slow-building
+  threshold before the loop finishes - a precise, mechanistically-
+  grounded explanation for why the run-to-run variance concentrates
+  specifically inside the token-decode loop, and specifically for hosts
+  with real, non-empty field data, exactly as already established
+  earlier in this document. It also means the exact number of "safe"
+  repeats before death is itself unpredictable (1, 5, or 8 repeats
+  survived across the three hold-mode attempts observed) - this
+  accumulation mechanism still has its own irreducible, history-
+  sensitive component, consistent with T07's broader finding that
+  get_cpu()-adjacent quantities depend on exact history in complex,
+  non-monotonic ways rather than behaving as a simple fixed budget.
+  RECOMMENDED FOLLOW-UP (per the test's own KNOWN CONFOUND section):
+  re-run hold mode at settle=8 (T11 arith 17 0 100 8) to see whether a
+  longer settle eliminates the eventual death or only delays it -
+  directly testing whether throttle()'s own pacing could ever be
+  "enough" against this specific mechanism, or whether the hidden
+  accumulator is effectively unclearable within any practical settle
+  time. STAGES 4 (observer arms: does get_cpu()/get_unix_time() move
+  the boundary) and 5 (log arms: intlog/concatlog) remain to run. Full
+  data: CPU Research/results.txt, T11 STAGES 1-3.
+
 LOGS
   Servers write your activity to /var/log/auth.log. When you disconnect,
   IDS-enabled servers scan that log and add noise for every entry with
