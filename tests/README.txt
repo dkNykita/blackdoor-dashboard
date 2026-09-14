@@ -52,10 +52,10 @@ T01.bd  (T01, CPU-load research programme - NOT a menu.bd test)
   line pacing really ~100ms/line at base tier or tick-quantised; does
   in-game elapsed time match real wall-clock time.
   Progress: STEP 0 (ps/jobs baseline, clean), STEP 1 (2/2 repeats),
-  STEP 3 (`time run T01 10`), and STEP 4 (`time run T01 20`) are all
-  COMPLETE. STEPS 5-6 (fatal-mode kill delay under `time`) and STEPS
-  7-8 (background/foreground concurrency) still outstanding - T01 as a
-  whole is NOT a finished test yet.
+  STEP 3 (`time run T01 10`), STEP 4 (`time run T01 20`), and STEPS
+  5-6 (fatal mode under `time`, 2/2 repeats) are all COMPLETE. Only
+  STEPS 7-8 (background/foreground concurrency) remain - T01 as a
+  whole is close but not finished yet.
   Result for STEP 1 (2/2 repeats in): raw_clock_t0 was a real Sept-2026
   Unix epoch value WITH a fractional part on both runs (1789377462.328,
   1789377693.794) - CONFIRMS get_unix_time() is genuinely epoch-based,
@@ -90,8 +90,22 @@ T01.bd  (T01, CPU-load research programme - NOT a menu.bd test)
   REFUTES "time and get_unix_time() run on different clocks" - a
   proportional relationship would have shown roughly double the diff
   at blocks=20. `time`'s ~1.70s constant is now a known correction, not
-  an open question. See CPU Research/results.txt (runs 3-6) and
-  field_notes.txt for the promoted findings.
+  an open question.
+  Result for STEPS 5-6 (2/2 repeats): `time` printed NOTHING for either
+  killed run - not a duration, not a zero, no line at all where runs
+  5-6's "(time: X.XXXs)" was. CONFIRMS (twice) the "no external
+  instrument for time-of-death" branch, REFUTES the hoped-for "a
+  duration is printed for a killed script" branch - the documented "5
+  straight seconds" kill-delay claim is STILL unverified and needs a
+  different method (see T06/T11). Side finding: burst_start (pure fixed
+  bookkeeping before the lethal burst, no field data or loops over host
+  records involved) was +4.301s and +4.300s on the two repeats - 1ms
+  apart, essentially identical under idle conditions. Cross-reference
+  for the still-open menu.bd variance mystery: a data-free fixed tick
+  sequence reproduces to ~1ms here, so that variance is NOT a general
+  noise floor in the tick/clock system - it's specific to menu.bd's own
+  code path. See CPU Research/results.txt (runs 3-8) and field_notes.txt
+  for the promoted findings.
 
 test_cpu_decay.bd
   Goal: characterize get_cpu()'s actual behavior over time in isolation

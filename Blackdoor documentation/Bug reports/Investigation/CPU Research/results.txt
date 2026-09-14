@@ -249,3 +249,75 @@ NOTES       : STEP 4 complete - the fixed-vs-proportional question is
               subtract, not evidence of a second clock. Remaining: STEPS
               5-6 (fatal-mode kill delay under `time`, 2 repeats) and
               7-8 (bg/fg concurrency, shared-tick-budget question).
+
+RUN-ID      : T01 STEP 5, repeat 1/2 (run 7/? - fatal mode under `time`)
+WHEN        : 2026-09-14, same session as runs 1-6
+START-STATE : presumed fresh (STEP 0 not re-checked this run; nothing
+              else started since the confirmed-clean check before run 5)
+TIER        : base 10t/s assumed, not yet cross-checked against T02
+RAW         : Nykita@localhost ~/scripts/Jobs > time run T01 10 fatal
+               T01[A] raw_clock_t0=1789378481.151 mode=fatal blocks=10
+               T01[A] FATAL armed - a 300-step unpaced burst starts two lines below. This run is MEANT to die.
+               T01[A] FATAL burst_start=+4.30099987983704s <- LAST LINE BEFORE THE BURST. `time` total minus this = seconds from burst start to kill.
+
+               [SYSTEM] CPU overloaded. All processes terminated.
+
+               1 process killed.
+SCALAR      : burst_start=+4.301s ; NO "(time: ...)" line printed at all
+KILLED?     : yes-at: "FATAL burst_start=+4.30099987983704s" (last line
+              printed before the kill message; the burst itself never
+              got to log anything, by design)
+VS PREDICT  : `time` printed NOTHING for this killed run - not even a
+              zero or an error, just silence where run 5/6's "(time:
+              X.XXXs)" line was. This lands on the "`time` ... prints
+              nothing for the killed run -> no external instrument
+              exists; crash time-of-death stays an inference from the
+              last checkpoint that printed" branch, NOT the hoped-for
+              "a duration IS printed for a killed script -> exact
+              zero-observer time-of-death" branch. The kill-delay
+              measurement this step was designed to get (`time` total
+              minus burst_start) is NOT obtainable this way.
+NOTES       : `time` behaves asymmetrically: it reports a duration for
+              a script that runs to completion (runs 5-6) but reports
+              NOTHING when the timed script is killed by the CPU-
+              overload system kill, rather than reporting a partial or
+              zero duration. The kill-time-of-death question (is the
+              documented "5 straight seconds" delay real/accurate) is
+              still open pending a different measurement approach - see
+              T06 (kill catchability) and T11 (lethal burst boundary)
+              for other angles already in the programme.
+
+RUN-ID      : T01 STEP 6 (run 8/? - repeat 2/2 of fatal mode under `time`)
+WHEN        : 2026-09-14, same session as runs 1-7
+START-STATE : presumed fresh, same as run 7
+TIER        : base 10t/s assumed, not yet cross-checked against T02
+RAW         : Nykita@localhost ~/scripts/Jobs > time run T01 10 fatal
+               T01[A] raw_clock_t0=1789378495.339 mode=fatal blocks=10
+               T01[A] FATAL armed - a 300-step unpaced burst starts two lines below. This run is MEANT to die.
+               T01[A] FATAL burst_start=+4.29999995231628s <- LAST LINE BEFORE THE BURST. `time` total minus this = seconds from burst start to kill.
+
+               [SYSTEM] CPU overloaded. All processes terminated.
+
+               1 process killed.
+SCALAR      : burst_start=+4.300s ; again NO "(time: ...)" line
+KILLED?     : yes-at: "FATAL burst_start=+4.29999995231628s"
+VS PREDICT  : Identical outcome to run 7 - `time` prints nothing for a
+              killed run, CONFIRMED on both repeats. SECOND, independent
+              confirmation of the "no external instrument for
+              time-of-death" branch.
+NOTES       : burst_start was +4.301s (run 7) and +4.300s (run 8) -
+              1 MILLISECOND apart, essentially identical, under
+              otherwise idle/clean conditions with no field data
+              involved (this is pure fixed bookkeeping: sleep(1) + an
+              if-check + a var assign + a log() + sleep(2), no loops
+              over host records). Worth flagging as a cross-reference
+              for the still-unexplained menu.bd run-to-run variance
+              (+40.7/+111.0/+40.3/+65.5/+64.3s on identical code+data):
+              a simple fixed tick sequence with no data-dependent
+              looping reproduces to ~1ms here, so whatever drove that
+              variance is NOT a general noise floor in the tick/clock
+              system itself - it's something specific to menu.bd's own
+              code path (most likely something data-size-dependent in
+              get_entry()'s token-decode loop, as already suspected).
+              STEP 5-6 COMPLETE. Only STEPS 7-8 (bg/fg concurrency)
+              remain to close T01 entirely.

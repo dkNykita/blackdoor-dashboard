@@ -1148,7 +1148,28 @@ CONFIRMED THIS SESSION (live testing of the refactored Active tree):
     builtin verbs. `time run <script> <args>` is the working form, and
     `run <script> <args>` is worth using generally when composing a
     script invocation with any other terminal command (see CPU
-    Research/results.txt runs 5-6).
+    Research/results.txt runs 5-6). `time` is also ASYMMETRIC: it only
+    reports a duration for a script that runs to completion. `time run
+    T01 10 fatal` (deliberately overloads and dies) printed NOTHING at
+    all where the completed runs' "(time: X.XXXs)" line was - confirmed
+    on 2/2 repeats. So `time` cannot give an exact zero-observer
+    time-of-death for a CPU-overload kill; that number still has to be
+    inferred from the last checkpoint a killed script managed to print,
+    same as before this test. The documented "5 straight seconds at
+    100%" kill-delay claim remains UNVERIFIED - this instrument can't
+    reach it, a different method is needed (see T06/T11). Side finding
+    from the same two repeats: burst_start (a fixed, data-free
+    bookkeeping sequence - sleep(1), an if-check, a var assign, a
+    log(), sleep(2), no loops over any host record) measured +4.301s
+    and +4.300s - 1ms apart. Worth cross-referencing against the
+    still-unexplained menu.bd run-to-run variance (+40.7/+111.0/+40.3/
+    +65.5/+64.3s on identical code+data, see STARTUP CPU OVERLOAD
+    INVESTIGATION above): a fixed tick sequence with zero data-dependent
+    looping reproduces to ~1ms here, so that variance is NOT a general
+    noise floor anywhere in the tick/clock system itself - it has to be
+    something specific to menu.bd's own code path, most plausibly
+    something size-dependent in get_entry()'s token-decode loop, as
+    already suspected there.
 
 STILL UNRESOLVED / CONFIRMED ABSENT:
   - No real "-flag" command-line syntax exists via @param - it binds
