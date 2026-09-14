@@ -997,3 +997,82 @@ NOTES       : T07 COMPLETE (2/2 runs, shapes agree exactly). CRITICAL
               "same code, same data-SHAPE, different run, different
               crash point" without requiring any actual randomness in
               the engine.
+
+RUN-ID      : T09, runs 1-3/3 (the ceiling - clamp vs hidden tick debt
+              above 100)
+WHEN        : 2026-09-14, same session as T01-T04, T07, T08
+START-STATE : fresh ; ps/jobs clean: y (both "No running processes.")
+TIER        : base 10t/s, per T02
+RAW         : Nykita@localhost ~/scripts > T09
+               T09 alive launch_cpu=0 (file-length control; ~0 = launch is free)
+               T09 begin B=10
+               T09 B=10 base=10 peak=100 res=10.0000000003128 burst_s=1.1010000705719 t=13.1929998397827
+               T09 begin B=25
+               T09 B=25 base=10 peak=100 res=10 burst_s=2.6010000705719 t=23.6989998817444
+               T09 begin B=40
+               T09 B=40 base=10 peak=100 res=10 burst_s=4.1029999256134 t=35.6969997882843
+               T09 begin B=48
+               T09 B=48 base=10 peak=100 res=10 burst_s=4.8970000743866 t=48.4969999790192
+               T09 done - all four bursts survived; 50 straight executed ticks is NOT lethal
+               [runs 2 and 3 reproduce every value above to 10+ decimal
+               digits except burst_s's last 2-3 digits - see field_notes
+               for the full 3-run burst_s table]
+SCALAR      : base=10, peak=100, res=10 (res=10.0000000003128 for B=10
+              specifically, IDENTICALLY in all 3 runs; exactly 10 for
+              B=25/40/48 in all 3 runs) - for EVERY burst size, EVERY
+              run. launch_cpu=0 all 3 runs. burst_s: B=10 mean=1.10100s
+              (zero spread across 3 runs), B=25 mean=2.59767s (spread
+              0.012s), B=40 mean=4.10433s (spread 0.006s), B=48
+              mean=4.89833s (spread 0.008s). Linear fit (B=10,B=48):
+              slope=0.09993s/line -> 10.007 ticks/sec, intercept=0.1017s
+              fixed overhead; predicts B=25/40 within 0.002-0.005s of
+              observed.
+KILLED?     : no (none of the 3 runs, none of the 12 total bursts -
+              B=48, the sharpest possible probe of the literal "50
+              executed ticks = 5s @ 100%" rule, survived every time)
+VS PREDICT  : TEXTBOOK, UNAMBIGUOUS CLAMP CONFIRMATION - prediction 1
+              exactly. cb (base) is IDENTICAL (10) across all 4 burst
+              sizes in every run - the settle is fully adequate, no
+              carryover contaminates the comparison (prediction 4,
+              CARRYOVER, is refuted). c0 (peak) is PINNED at exactly 100
+              for EVEN THE SMALLEST burst (B=10, only 10 unpaced lines)
+              - refutes prediction 3 (NOT SATURATING; get_cpu() is not
+              a usable gauge of burst size once saturation is reached
+              this early). c2 (residue, 2s after the burst) is IDENTICAL
+              across all 4 burst sizes in every run - decisively refutes
+              prediction 2 (DEBT model; a 48-line burst leaves NO more
+              residue behind than a 10-line burst 2 seconds later).
+              File-length control: launch_cpu=0 in all 3 runs, on a
+              334-line top-level SCRIPT (by far the longest test script
+              run so far, previous longest 89 lines) - DISMISSES the
+              concern that a top-level script's own file length costs
+              ticks at launch the way an imported MODULE's line count
+              does (prediction 6). burst_s gives a 5th independent
+              tick-rate calibration (10.007 ticks/sec) agreeing with
+              T02's 10.0025 within 0.05%, and confirms the burst-length-
+              to-time relationship is CLEANLY LINEAR across 10-48 lines
+              with a small (~0.10s, ~1 tick) fixed overhead - no
+              superlinear cost, no per-burst penalty that scales with
+              size beyond the per-line rate itself.
+NOTES       : The single cleanest, most unambiguous result the whole
+              programme has produced - literally every value in every
+              run either matches exactly or falls on a tight linear
+              fit. NO variance emerged at all across all 3 runs (the
+              "free variance data" 3rd run showed nothing new) - B=48
+              did NOT reproduce the central mystery in this simplest
+              possible system; the ceiling/ clamp behavior itself is
+              rock-solid and deterministic. Every in-script CPU guard
+              in this codebase (throttle(), cpu_guard_fast(), every
+              "while get_cpu() > threshold" loop) can now be trusted to
+              NOT be silently blind to "how far over" a burst went -
+              100 really does mean "saturated," not "saturated by an
+              unknown, possibly enormous margin." Side observation: the
+              user watched the live in-game CPU meter during run 3's
+              bursts and reported far more intermediate fluctuation than
+              this script's 3-point (base/peak/residue) sampling ever
+              captures (rough eyeballed sequences like 20-10-100-40-10-
+              20 and 20-10-60-100-90-10-0) - informal, not lab-grade
+              data, but qualitatively consistent with T07/T08's finding
+              that the true underlying signal is a complex, continuously
+              -evolving quantity between any two discrete sample points,
+              not a simple step function.

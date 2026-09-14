@@ -1047,6 +1047,38 @@ STARTUP CPU OVERLOAD INVESTIGATION - SUMMARY (Krok 12+)
   non-obvious function of history, which T07 has now shown it is. Full
   data: CPU Research/results.txt, T07 runs 1-2.
 
+  T09 (the ceiling - clamp vs hidden tick debt) is complete next and is
+  the cleanest, most unambiguous result the programme has produced.
+  Four unpaced straight-line bursts (10/25/40/48 lines, no calls, no
+  pacing) each captured base/peak/2s-residue, 3 runs back to back:
+  base=10, peak=100, res=10 for EVERY burst size in EVERY run, matching
+  to 10+ decimal digits (B=10's residue even reproduces the identical
+  tiny float-noise offset, 10.0000000003128, all 3 times). get_cpu() is
+  a genuine CLAMP: work above 100 is destroyed, not hidden as debt - a
+  48-line burst leaves no more residue 2 seconds later than a 10-line
+  one, and even the smallest burst (10 lines) already fully saturates
+  the reading to exactly 100. Every in-script CPU guard in this
+  codebase (throttle(), cpu_guard_fast(), every "while get_cpu() >
+  threshold" loop) can be trusted not to be silently blind to "how far
+  over" a burst went. None of the 3 runs killed on ANY burst including
+  B=48 (the sharpest possible probe of the literal "50 executed ticks =
+  5s at 100%" kill rule) - the central variance mystery did not
+  reproduce in this simplest possible system; the ceiling behavior
+  itself is rock-solid and fully deterministic.
+  Two side findings worth keeping: (1) launch_cpu=0 on this 334-line
+  top-level SCRIPT (the longest test script run so far, previous
+  longest 89 lines) DISMISSES the concern that a top-level script's own
+  file length costs launch ticks the way an imported MODULE's line
+  count does (that concern remains valid for modules, just not for the
+  top-level script itself - relevant to menu.bd's own size, separate
+  from its ~11 imported modules' sizes). (2) burst_s across all 4 sizes
+  and 3 runs gives a 5th independent tick-rate calibration (10.007
+  ticks/sec, agreeing with T02's 10.0025 within 0.05%) and confirms the
+  burst-length-to-time relationship is CLEANLY LINEAR from 10 to 48
+  lines with a small (~0.10s, ~1 tick) fixed overhead - no superlinear
+  cost anywhere in that range. Full data: CPU Research/results.txt, T09
+  runs 1-3.
+
 LOGS
   Servers write your activity to /var/log/auth.log. When you disconnect,
   IDS-enabled servers scan that log and add noise for every entry with

@@ -304,7 +304,7 @@ T07.bd  (T07, CPU-load research programme - NOT a menu.bd test)  [DONE]
   puzzle without requiring true randomness. See CPU Research/
   results.txt (T07 runs 1-2) and field_notes.txt for the full writeup.
 
-T09.bd  (T09, CPU-load research programme - NOT a menu.bd test)
+T09.bd  (T09, CPU-load research programme - NOT a menu.bd test)  [DONE]
   Goal: does get_cpu() clamp at 100 and DISCARD everything above it, or
   does a hidden accumulator keep counting past the ceiling so a bigger
   burst leaves more residue behind? Four unpaced straight-line bursts
@@ -320,8 +320,37 @@ T09.bd  (T09, CPU-load research programme - NOT a menu.bd test)
   THE UNPACED BURST IS THE EXPERIMENT - a kill is a result, not a
   failure; phases ascend so the last "T09 begin B=K" line names the
   killer exactly.
-  Progress: authored, not yet run. Depends on T04/T08 reference values.
-  Result: pending.
+  Progress: COMPLETE, 3/3 runs (2 for the ceiling comparison, the 3rd
+  free variance data - protocol calls for 2 more if a kill ever
+  happens, but none did).
+  Result: TEXTBOOK, UNAMBIGUOUS CLAMP CONFIRMATION - the cleanest result
+  the whole programme has produced. base=10, peak=100, res=10 for EVERY
+  burst size (10/25/40/48 lines) in EVERY run, matching to 10+ decimal
+  digits (B=10's residue even reproduces the exact same tiny float-noise
+  offset, 10.0000000003128, in all 3 runs). Peak is pinned at exactly
+  100 even for the SMALLEST burst (B=10) - refutes "not saturating."
+  Residue is IDENTICAL regardless of burst size - decisively refutes
+  the DEBT model (a 48-line burst leaves no more residue than a 10-line
+  one). cb never climbs across phases - refutes carryover/contamination.
+  None of the 3 runs killed on ANY burst, including B=48 (the sharpest
+  possible probe of the literal "50 executed ticks = 5s@100%" rule) -
+  the central mystery did NOT reproduce in this simplest possible
+  system; the ceiling behavior itself is rock-solid. Every in-script
+  CPU guard (throttle(), cpu_guard_fast(), every "while get_cpu() >
+  threshold" loop) can be trusted not to be blind to "how far over" a
+  burst went. Side findings: launch_cpu=0 on this 334-line top-level
+  SCRIPT (by far the longest test script run so far) DISMISSES the
+  concern that a top-level script's own file length costs launch
+  ticks the way an imported module's does; burst_s gives a 5th
+  independent tick-rate calibration (10.007 ticks/sec, agreeing with
+  T02 within 0.05%) and confirms burst-length-to-time is cleanly
+  LINEAR from 10-48 lines with a small (~0.10s) fixed overhead, no
+  superlinear cost. The user's informal live-meter observation during
+  run 3 showed far more intermediate fluctuation than the script's
+  3-point sampling captures - qualitatively consistent with T07/T08's
+  finding that the true signal evolves continuously between samples.
+  See CPU Research/results.txt (T09 runs 1-3) and field_notes.txt for
+  the full writeup.
 
 T18.bd  (T18, CPU-load research programme - NOT a menu.bd test)
   Goal: price log() itself. Does it cost exactly one tick regardless of its
