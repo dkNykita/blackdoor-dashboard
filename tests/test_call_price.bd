@@ -1,0 +1,319 @@
+# tests/test_call_price.bd - T05: call surcharge and the observer effect.
+#
+# ONE QUESTION: does making a CALL cost anything on top of the one tick the
+# source line it sits on already costs - and above all, does get_cpu()?
+#
+# WHY THIS ONE MATTERS MORE THAN IT LOOKS
+#   Four official files price get_cpu(), get_unix_time() and the builtins at
+#   "Cost: 0 ticks". field_notes.txt lists get_cpu() under "Confirmed
+#   genuinely 0 ticks (these were right)" at line ~74 - and then at line ~442
+#   carries a CORRECTION saying the player observed get_cpu() adding load
+#   after all, with no magnitude ever attached to it. Both statements still
+#   stand in the same file today. That unquantified correction is now
+#   load-bearing: it is the stated reason the extra-throttle experiment
+#   (+3.8s per item, crash moved ~70s EARLIER) was read as self-defeating, the
+#   stated explanation for the pinned cpu=100 / cpu=80 readings, and the
+#   justification for the entire "fewer checks, not more" strategy pivot.
+#   Nothing has ever A/B'd it. This script does, and it is the cheapest
+#   experiment in the whole programme.
+#
+# METHOD - seven arms, one run, wall clock ONLY
+#   get_cpu() is the SUBJECT here, so it is never used as the instrument: the
+#   only observable is elapsed real time. Every arm is a byte-for-byte
+#   identical function - same line count, same loop, same sleeps, same
+#   bracket - differing ONLY in the right-hand side of six measured lines:
+#     CTRL  b = 1                                        baseline: bare line
+#     GCPU  b = get_cpu()                                the suspect
+#     TIME  b = get_unix_time()                          the ruler itself
+#     ISTR  b = str(7)                                   a builtin
+#     UFNC  b = f0()                                     a user call frame
+#     ADDS  b = r + r + r + r        4 leaves, 3 adds, NO calls (DENS control)
+#     DENS  b = get_cpu()+get_cpu()+get_cpu()+get_cpu()  4 CALLS on ONE line
+#   ADDS/DENS are a matched pair: same expression tree shape, four leaves
+#   each, the leaves differing only by being a variable read vs a call. They
+#   are what separates "charged per call" from "charged per line".
+#
+# READING IT - every delta is against the SAME run's CTRL, never another run
+#   d_X       = mean burst of arm X  -  mean burst of CTRL   (seconds)
+#   per-call  = d_X / 6                       (six measured lines, 1 call each)
+#   in ticks  = per-call / seconds-per-tick from T01. At base tier (10
+#               ticks/sec, ~0.1 s/tick) a d_X of +0.6s == exactly 1 extra
+#               tick per call.
+#   VERDICTS:
+#     every |d| < 0.15s  -> calls are free beyond their own line. The docs are
+#         right, the field_notes CORRECTION is wrong, and every conclusion
+#         resting on "get_cpu() adds load" reopens.
+#     d_gcpu >= 0.4s in BOTH runs -> the surcharge is REAL. throttle()'s
+#         `while get_cpu() > t: sleep(1)` is provably feeding the meter it is
+#         waiting on, and every get_cpu()-guarded number in field_notes needs
+#         a correction factor.
+#     d_ufnc >= 1.0s -> a real call frame, roughly 2 ticks (frame + the
+#         callee's own `return` line).
+#     (dens-adds)/24 ~= d_gcpu/6 -> charging is PER CALL.
+#     dens ~= adds              -> charging is PER LINE; extra calls on the
+#                                  same line ride along free.
+#     d_adds >= 0.4s           -> operators/variable reads are charged too,
+#                                  i.e. per expression NODE, not per line.
+#   INVALID RUN: if CTRL is not the smallest mean, report it and re-run -
+#   something drifted and no delta from that run can be trusted.
+#
+# THE BURST IS THE EXPERIMENT (deliberate, not an oversight)
+#   The six measured lines are unpaced on purpose - that is what is being
+#   priced - and are bracketed by sleep(1) on both sides so every arm starts
+#   from the same decayed meter state. Worst case is DENS: if every call costs
+#   1 tick that is 6 x (1 line + 4 calls) = 30 ticks = ~3.0s of continuous
+#   load at base tier, inside the 5s kill window. GCPU only dies if a call
+#   costs ~6+ ticks. IF AN ARM IS KILLED, THAT IS A RESULT, NOT A FAILURE:
+#   DENS dying while GCPU survives means a call costs >= ~1.5 ticks AND
+#   charging is per call. GCPU dying at all means the surcharge is enormous.
+#
+# ARM ORDER is risk-ordered on purpose: CTRL and GCPU run first so the
+#   headline A/B is banked within the first ~45s, because the single most
+#   reliably observed hazard in this whole investigation is a run dying at an
+#   unpredictable time (5 identical runs died at +40.7/+111.0/+40.3/+65.5/
+#   +64.3s). DENS - the only arm whose design makes a kill likely - runs last,
+#   after its own ADDS control, so its death costs nothing else.
+#
+# HOW TO RUN
+#   `test_call_price`  - no parameters, one execution, ~2.5 minutes.
+#   Run it FIRST THING in a fresh session with nothing else running (confirm
+#   via `ps` / `jobs`). Paste back EVERY R..., ARM-..., SUM... line.
+#   REPEATS: 2 runs, same session, back to back. A third only if d_gcpu lands
+#   on opposite sides of the 0.15s / 0.40s decision band between the two.
+#
+# IF IT DIES WITH ZERO OUTPUT: this file is ~250 lines and a top-level
+#   script's own func declarations cost ticks. The sleep(1) lines between the
+#   arm definitions below exist to absorb that. If it still dies before
+#   printing anything, halve the file - delete the ISTR, UFNC, ADDS and DENS
+#   arms and their driver blocks, keep CTRL and GCPU - and re-run.
+
+func f0():
+    return 1
+
+sleep(1)
+
+func arm_ctrl(t0):
+    var s = 0
+    var r = 0
+    var b = 0
+    var ts = 0
+    var el = 0
+    while r < 5:
+        sleep(1)
+        ts = get_unix_time()
+        b = 1
+        b = 1
+        b = 1
+        b = 1
+        b = 1
+        b = 1
+        el = get_unix_time() - ts
+        sleep(1)
+        s = s + el
+        r = r + 1
+        log("R" + str(r) + " arm=CTRL burst=" + str(el) + " at=+" + str(get_unix_time() - t0))
+    return s / 5
+
+sleep(1)
+
+func arm_gcpu(t0):
+    var s = 0
+    var r = 0
+    var b = 0
+    var ts = 0
+    var el = 0
+    while r < 5:
+        sleep(1)
+        ts = get_unix_time()
+        b = get_cpu()
+        b = get_cpu()
+        b = get_cpu()
+        b = get_cpu()
+        b = get_cpu()
+        b = get_cpu()
+        el = get_unix_time() - ts
+        sleep(1)
+        s = s + el
+        r = r + 1
+        log("R" + str(r) + " arm=GCPU burst=" + str(el) + " at=+" + str(get_unix_time() - t0))
+    return s / 5
+
+sleep(1)
+
+func arm_time(t0):
+    var s = 0
+    var r = 0
+    var b = 0
+    var ts = 0
+    var el = 0
+    while r < 5:
+        sleep(1)
+        ts = get_unix_time()
+        b = get_unix_time()
+        b = get_unix_time()
+        b = get_unix_time()
+        b = get_unix_time()
+        b = get_unix_time()
+        b = get_unix_time()
+        el = get_unix_time() - ts
+        sleep(1)
+        s = s + el
+        r = r + 1
+        log("R" + str(r) + " arm=TIME burst=" + str(el) + " at=+" + str(get_unix_time() - t0))
+    return s / 5
+
+sleep(1)
+
+func arm_istr(t0):
+    var s = 0
+    var r = 0
+    var b = 0
+    var ts = 0
+    var el = 0
+    while r < 5:
+        sleep(1)
+        ts = get_unix_time()
+        b = str(7)
+        b = str(7)
+        b = str(7)
+        b = str(7)
+        b = str(7)
+        b = str(7)
+        el = get_unix_time() - ts
+        sleep(1)
+        s = s + el
+        r = r + 1
+        log("R" + str(r) + " arm=ISTR burst=" + str(el) + " at=+" + str(get_unix_time() - t0))
+    return s / 5
+
+sleep(1)
+
+func arm_ufnc(t0):
+    var s = 0
+    var r = 0
+    var b = 0
+    var ts = 0
+    var el = 0
+    while r < 5:
+        sleep(1)
+        ts = get_unix_time()
+        b = f0()
+        b = f0()
+        b = f0()
+        b = f0()
+        b = f0()
+        b = f0()
+        el = get_unix_time() - ts
+        sleep(1)
+        s = s + el
+        r = r + 1
+        log("R" + str(r) + " arm=UFNC burst=" + str(el) + " at=+" + str(get_unix_time() - t0))
+    return s / 5
+
+sleep(1)
+
+func arm_adds(t0):
+    var s = 0
+    var r = 0
+    var b = 0
+    var ts = 0
+    var el = 0
+    while r < 5:
+        sleep(1)
+        ts = get_unix_time()
+        b = r + r + r + r
+        b = r + r + r + r
+        b = r + r + r + r
+        b = r + r + r + r
+        b = r + r + r + r
+        b = r + r + r + r
+        el = get_unix_time() - ts
+        sleep(1)
+        s = s + el
+        r = r + 1
+        log("R" + str(r) + " arm=ADDS burst=" + str(el) + " at=+" + str(get_unix_time() - t0))
+    return s / 5
+
+sleep(1)
+
+func arm_dens(t0):
+    var s = 0
+    var r = 0
+    var b = 0
+    var ts = 0
+    var el = 0
+    while r < 5:
+        sleep(1)
+        ts = get_unix_time()
+        b = get_cpu() + get_cpu() + get_cpu() + get_cpu()
+        b = get_cpu() + get_cpu() + get_cpu() + get_cpu()
+        b = get_cpu() + get_cpu() + get_cpu() + get_cpu()
+        b = get_cpu() + get_cpu() + get_cpu() + get_cpu()
+        b = get_cpu() + get_cpu() + get_cpu() + get_cpu()
+        b = get_cpu() + get_cpu() + get_cpu() + get_cpu()
+        el = get_unix_time() - ts
+        sleep(1)
+        s = s + el
+        r = r + 1
+        log("R" + str(r) + " arm=DENS burst=" + str(el) + " at=+" + str(get_unix_time() - t0))
+    return s / 5
+
+sleep(1)
+
+# --- driver: seven arms in risk order, each bracketed by its own boundary
+# --- lines. The one get_cpu() in each boundary log is outside every timed
+# --- bracket and appears exactly twice per arm, identically, so it cannot
+# --- leak into any delta - it is there to prove every arm STARTED from the
+# --- same meter state, which neither source draft checked.
+
+var t0 = get_unix_time()
+sleep(2)
+log("CALLPRICE start arms=7 rounds=5 lines=6 cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+
+sleep(2)
+log("ARM-START arm=CTRL cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+var mCTRL = arm_ctrl(t0)
+log("ARM-DONE arm=CTRL mean=" + str(mCTRL) + " cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+
+sleep(2)
+log("ARM-START arm=GCPU cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+var mGCPU = arm_gcpu(t0)
+log("ARM-DONE arm=GCPU mean=" + str(mGCPU) + " cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+
+sleep(2)
+log("ARM-START arm=TIME cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+var mTIME = arm_time(t0)
+log("ARM-DONE arm=TIME mean=" + str(mTIME) + " cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+
+sleep(2)
+log("ARM-START arm=ISTR cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+var mISTR = arm_istr(t0)
+log("ARM-DONE arm=ISTR mean=" + str(mISTR) + " cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+
+sleep(2)
+log("ARM-START arm=UFNC cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+var mUFNC = arm_ufnc(t0)
+log("ARM-DONE arm=UFNC mean=" + str(mUFNC) + " cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+
+sleep(2)
+log("ARM-START arm=ADDS cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+var mADDS = arm_adds(t0)
+log("ARM-DONE arm=ADDS mean=" + str(mADDS) + " cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+
+sleep(2)
+log("ARM-START arm=DENS cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+var mDENS = arm_dens(t0)
+log("ARM-DONE arm=DENS mean=" + str(mDENS) + " cpu=" + str(get_cpu()) + " at=+" + str(get_unix_time() - t0))
+
+sleep(2)
+log("SUM1 ctrl=" + str(mCTRL) + " gcpu=" + str(mGCPU) + " d_gcpu=" + str(mGCPU - mCTRL))
+sleep(1)
+log("SUM2 time=" + str(mTIME) + " d_time=" + str(mTIME - mCTRL) + " istr=" + str(mISTR) + " d_istr=" + str(mISTR - mCTRL))
+sleep(1)
+log("SUM3 ufnc=" + str(mUFNC) + " d_ufnc=" + str(mUFNC - mCTRL) + " adds=" + str(mADDS) + " d_adds=" + str(mADDS - mCTRL))
+sleep(1)
+log("SUM4 dens=" + str(mDENS) + " dens_minus_adds=" + str(mDENS - mADDS))
+sleep(1)
+log("SUM5 per_call_sparse=" + str((mGCPU - mCTRL) / 6) + "s per_call_dense=" + str((mDENS - mADDS) / 24) + "s (equal => per-call; dense~0 => per-line)")
+sleep(1)
+log("CALLPRICE DONE 7/7 arms x 5 rounds, total=+" + str(get_unix_time() - t0) + "s - paste EVERY R/ARM/SUM line")
