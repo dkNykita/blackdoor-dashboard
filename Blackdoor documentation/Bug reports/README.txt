@@ -11,7 +11,15 @@ Three states now, one folder each:
                   may never fully resolve - not the same as Closed)
   Closed/       - resolved, with a "STATUS: RESOLVED" note per file
 
-OPEN: none currently.
+OPEN - see Open/ for full text:
+
+Open/01_param_default_quotes_embedded_literally.txt [script]
+  Quoting an @param default (`default="10"`) makes get_param() return
+  the literal quote characters as part of the value - int() on it then
+  throws Cannot convert '"10"' to int.. Found internally 2026-09-14 via
+  T01.bd's first real run; not yet submitted to Discord. Fix already
+  applied to this project's own tests/T01-T28 (see field_notes.txt);
+  this report is about the engine behavior itself, not our code.
 
 INVESTIGATION - see Investigation/ for full text:
 
