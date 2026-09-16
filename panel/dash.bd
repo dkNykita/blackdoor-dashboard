@@ -34,7 +34,7 @@
 # Shown in the title bar. Bump it on every edit - /mnt is not launchable
 # directly, so what is running in-game is whatever was last copied into
 # ~/scripts, and "is this even the new code?" is otherwise unanswerable.
-var BUILD = "p4h"
+var BUILD = "p4i"
 
 var PORTS = [20, 21, 22, 23, 25, 53, 69, 80, 110, 111, 135, 139, 143, 161, 162, 389, 443, 445, 465, 514, 587, 636, 993, 995, 1433, 1521, 2049, 3306, 3389, 5432, 5900, 6379, 8000, 8080, 8443, 8888, 9200, 11211, 27017, 31337]
 
@@ -201,7 +201,7 @@ func step_probe(job, ip, n):
     return job
 
 func paint_live(ui, d, live, ring, job, sess):
-    if ui.rows < 28 or ui.cols < 60:
+    if ui.rows < 34 or ui.cols < 76:
         return
     var last = ui.rows - 1
     var rcol = int(ui.cols / 2) + 1
@@ -244,17 +244,17 @@ func paint_live(ui, d, live, ring, job, sess):
         else:
             term_color(Color.muted)
             label(10, 14, "offline   clear   ceiling " + kc + "s")
-    term_clear_rect(17, 1, ui.cols - 2, 1)
+    term_clear_rect(22, 1, ui.cols - 2, 1)
     if job.kind != "":
         term_color(Color.amber)
-        label(17, 2, "PROBE  [" + bar(24, job.i, len(PORTS)) + "]  " + str(job.i) + "/" + str(len(PORTS)) + "   open " + str(job.n))
+        label(22, 2, "PROBE  [" + bar(24, job.i, len(PORTS)) + "]  " + str(job.i) + "/" + str(len(PORTS)) + "   open " + str(job.n))
     term_clear_rect(last - 3, 1, ui.cols - 2, 1)
     term_color(Color.muted)
     label(last - 3, 2, ring[0] + "   " + ring[1] + "   " + ring[2])
 
 func paint_all(ui, d, live, ring, job, limits, sess):
     term_clear()
-    if ui.rows < 28 or ui.cols < 60:
+    if ui.rows < 34 or ui.cols < 76:
         term_color(Color.amber)
         label(0, 0, "enlarge this pane")
         return
@@ -313,33 +313,50 @@ func paint_all(ui, d, live, ring, job, limits, sess):
     term_hline(14, 1, ui.cols - 2)
     term_color(Color.muted)
     label(15, 2, "ACTIONS")
+    # One per line, each with its key and what it COSTS - the trace
+    # implication is the thing worth knowing before clicking, so that is what
+    # the descriptions say rather than restating the button name.
+    term_color(Color.cyan)
+    label(16, 2, "p")
+    label(17, 2, "x")
+    label(18, 2, "c")
+    label(19, 2, "g")
+    label(20, 2, "d")
     term_color(Color.amber)
-    label(16, 2, "[ PROBE ]")
-    term_click_zone(16, 2, 9, 1, "b_probe")
-    label(16, 13, "[ STOP ]")
-    term_click_zone(16, 13, 8, 1, "b_stop")
-    label(16, 23, "[ CONNECT ]")
-    term_click_zone(16, 23, 11, 1, "b_connect")
-    label(16, 36, "[ RECON ]")
-    term_click_zone(16, 36, 9, 1, "b_recon")
-    label(16, 47, "[ DISCONN ]")
-    term_click_zone(16, 47, 11, 1, "b_disconnect")
-    # row 17 is the running job's progress, drawn by paint_live - it belongs
+    label(16, 5, "[ PROBE ]")
+    term_click_zone(16, 5, 9, 1, "b_probe")
+    label(17, 5, "[ STOP ]")
+    term_click_zone(17, 5, 8, 1, "b_stop")
+    label(18, 5, "[ CONNECT ]")
+    term_click_zone(18, 5, 11, 1, "b_connect")
+    label(19, 5, "[ RECON ]")
+    term_click_zone(19, 5, 9, 1, "b_recon")
+    label(20, 5, "[ DISCONN ]")
+    term_click_zone(20, 5, 11, 1, "b_disconnect")
+    term_color(Color.muted)
+    label(16, 19, "scan 40 common ports - no connection, no trace")
+    label(17, 19, "cancel the running job")
+    label(18, 19, "open a link and hold it - the trace runs")
+    label(19, 19, "banner, os and trace ceiling - drops in under a second")
+    label(20, 19, "close the link now")
+    # row 22 is the running job's progress, drawn by paint_live - it belongs
     # with the actions that produce it.
     term_color(Color.cyan)
-    term_hline(19, 1, ui.cols - 2)
+    term_hline(23, 1, ui.cols - 2)
     term_color(Color.muted)
-    label(20, 2, "SETTINGS")
+    label(24, 2, "SETTINGS")
+    term_color(Color.cyan)
+    label(25, 2, "f/s")
     term_color(Color.amber)
-    label(21, 2, "[ - ]")
-    term_click_zone(21, 2, 5, 1, "b_slower")
-    label(21, 8, "[ + ]")
-    term_click_zone(21, 8, 5, 1, "b_faster")
+    label(25, 6, "[ - ]")
+    term_click_zone(25, 6, 5, 1, "b_slower")
+    label(25, 12, "[ + ]")
+    term_click_zone(25, 12, 5, 1, "b_faster")
     term_color(Color.white)
     # "last scan" is measured, not modelled - the tick-cost estimate this
     # replaced was off by a wide margin. It sits next to the speed control on
     # purpose: change the knob, run a scan, read the consequence right here.
-    label(21, 16, "SPEED  " + str(d.speed + 1) + "/" + str(len(NAPS)) + "    " + str(NAPS[d.speed]) + "s nap    last scan " + str(int(d.last)) + "s")
+    label(25, 19, "SPEED  " + str(d.speed + 1) + "/" + str(len(NAPS)) + "    " + str(NAPS[d.speed]) + "s nap    last scan " + str(int(d.last)) + "s")
     # The master switch gates every action; the per-action switches decide
     # which ones it applies to. OFF still sleeps 0.01s - the loop must yield
     # or the panel cannot redraw, so "unlimited" means the floor of the
@@ -350,14 +367,20 @@ func paint_all(ui, d, live, ring, job, limits, sess):
         term_color(Color.green)
     else:
         term_color(Color.red)
-    label(22, 2, "LIMITER " + onoff(d.limit))
-    term_click_zone(22, 2, 16, 1, "b_limit")
+    label(26, 6, "LIMITER " + onoff(d.limit))
+    term_click_zone(26, 6, 16, 1, "b_limit")
+    term_color(Color.cyan)
+    label(26, 2, "l")
     term_color(Color.white)
-    label(22, 22, "probe " + mark(limits["probe"]))
-    term_click_zone(22, 22, 10, 1, "b_lim_probe")
+    label(26, 24, "probe " + mark(limits["probe"]))
+    term_click_zone(26, 24, 10, 1, "b_lim_probe")
+    term_color(Color.cyan)
+    label(27, 2, "b")
     term_color(Color.amber)
-    label(22, 36, "[ BATCH " + str(BATCHES[d.batch]) + " ]")
-    term_click_zone(22, 36, 13, 1, "b_batch")
+    label(27, 6, "[ BATCH " + str(BATCHES[d.batch]) + " ]")
+    term_click_zone(27, 6, 13, 1, "b_batch")
+    term_color(Color.muted)
+    label(27, 21, "ports per frame - higher is faster, slower to cancel")
     # Dashboard controls. Muted rather than amber, because nothing here
     # reaches the target.
     term_color(Color.muted)
@@ -365,7 +388,7 @@ func paint_all(ui, d, live, ring, job, limits, sess):
     term_click_zone(last - 4, 2, 11, 1, "b_refresh")
     label(last - 4, 15, "[ QUIT ]")
     term_click_zone(last - 4, 15, 8, 1, "b_quit")
-    label(last - 1, 2, "ACTIONS  p probe   x stop   c connect   g recon   d disconnect        SETTINGS  f/s speed   l limiter   b batch        r refresh   q quit")
+    label(last - 1, 2, "click the panel first so keys reach it")
     paint_live(ui, d, live, ring, job, sess)
 
 var r = open_panel()
