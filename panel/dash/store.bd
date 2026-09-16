@@ -2,7 +2,8 @@
 #
 # Deliberately tiny. Import cost scales with a module's TOTAL line count,
 # including bodies that never run, so this file does I/O and nothing else.
-# Parsing lives in dash.bd, where it runs inside render: for free.
+# Blob parsing and blob building live in dash.bd, where they run inside
+# render: for free - only the actual read/write calls belong here.
 #
 # Format: one "key=value" line per field, ~10 lines per host, one file per
 # host. The whole read path is a single 0-tick read_local() with no loop and
@@ -27,3 +28,11 @@ func load(ip):
     catch e:
         raw = ""
     return raw
+
+func store(ip, raw):
+    var r = {"success": false}
+    try:
+        r = save(DATA + "/" + ip + ".txt", raw)
+    catch e:
+        r = {"success": false}
+    return r
