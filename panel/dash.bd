@@ -1,70 +1,159 @@
-# dash.bd - PANEL REWRITE, PHASE 1 "hello panel"
+# dash.bd - PANEL REWRITE, PHASE 2 "read-only dashboard"
 #
-# The smallest thing that proves the panel model works in-game. Zero imports
-# on purpose: a top-level script's own length costs no launch ticks, so
-# startup here is open_panel() plus a couple of free reads.
+# Draws a real dashboard from things that cost nothing and need NO
+# connection: get_target()/get_my_ip()/get_noise()/get_trace_time()/traces()
+# are all 0 ticks, whois() is 1 tick and is called once at startup. Anything
+# that needs a live connection (ports, users, specs, firewall) comes from the
+# persisted per-host file instead, so those fields read "-" until P3 starts
+# filling them in. That is expected, not a failure.
 #
-# WHAT TO WATCH FOR, in order:
-#   1. It paints at all                 -> render:/term_* work
-#   2. The header is drawn by label(),
-#      a plain func called INSIDE       -> PROBE Q1. If this is a hard error,
-#      render:                             every draw call must be inlined.
-#   3. [ PING ] reacts to a click       -> click zones work
-#   4. q quits (click the panel first,
-#      keys only arrive while focused)  -> key events work
-#   5. LEAVE IT IDLING 10 MINUTES with
-#      no "[SYSTEM] CPU overloaded"     -> PROBE Q3, the headline test. This
-#                                          is what the old suite never passed.
+# WHAT TO WATCH FOR:
+#   1. It still paints and still survives a long idle  -> P1's result holds
+#      with a module imported and more work per frame.
+#   2. The right-hand INTEL column shows "-" for every  -> the read path
+#      field on a fresh save                              works (empty file)
+#   3. r / [REFRESH] updates NOISE, TRACE, TRACES        -> costed calls
+#      and pushes a line into the ring                     outside render:
+#   4. FRAMES keeps climbing                             -> soak evidence
 #
-# Also run, in the terminal:  which dash   -> PROBE Q4 (where a bare name
-#                                             resolves from)
-#                             run dash twice -> PROBE Q6 (does a second
-#                                             open_panel() get its own panel?)
+# PROBES THIS PHASE:
+#   Q5  import from a subfolder. The old suite proves `utils/` subfolder
+#       imports work by ABSOLUTE path, so that is the form used here. If it
+#       fails, fall back to a flat /home/test_box/scripts/dash_store.bd.
+#   --  does local_mkdir()/read_local() accept the path as written? The
+#       terminal expands ~, but an API call might not, so store.bd uses the
+#       absolute form throughout. If data/ never appears, that is the cause.
 #
-# NOT probed here on purpose: a while-loop INSIDE render: (Q2) can hang the
-# game, so it gets its own throwaway script, run deliberately.
+# LAYOUT NOTE: measured 198x44 on this setup, but nothing here assumes a
+# size - term_size() is re-read every frame and the whole layout derives
+# from it.
 
 func label(r, c, t):
     term_move(r, c)
     term_write(t)
 
-func paint(ui, s):
+func show(v):
+    if v == "":
+        return "-"
+    return v
+
+# Pull one "key=value" line out of the raw blob. Called from inside render:,
+# where string work is free - which is why the blob is never pre-parsed.
+func field(raw, key):
+    var lines = raw.split("\n")
+    for ln in lines:
+        if ln.starts_with(key + "="):
+            var parts = ln.split("=")
+            if len(parts) > 1:
+                return parts[1]
+    return ""
+
+func push(ring, t):
+    ring[0] = ring[1]
+    ring[1] = ring[2]
+    ring[2] = t
+    return ring
+
+func read_live():
+    var n = get_noise()
+    var t = get_trace_time()
+    var tr = traces()
+    return {"noise": n, "trace": t, "count": len(tr)}
+
+func paint_live(ui, d, live, ring):
+    if ui.rows < 16 or ui.cols < 44:
+        return
+    var last = ui.rows - 1
+    term_clear_rect(6, 14, 20, 4)
+    term_color(Color.green)
+    label(6, 14, str(int(live.noise)))
+    label(7, 14, str(int(live.trace)) + "s")
+    label(8, 14, str(live.count))
+    label(9, 14, str(d.frames))
+    term_clear_rect(last - 3, 1, ui.cols - 2, 1)
+    term_color(Color.muted)
+    label(last - 3, 2, ring[0] + "   " + ring[1] + "   " + ring[2])
+
+func paint_all(ui, d, live, ring):
     term_clear()
-    if ui.rows < 10 or ui.cols < 30:
+    if ui.rows < 16 or ui.cols < 44:
         term_color(Color.amber)
         label(0, 0, "enlarge this pane")
         return
+    # numbers are always floats in BDScript - int() so term_move() never
+    # gets a fractional column
+    var rcol = int(ui.cols / 2) + 1
+    var last = ui.rows - 1
     term_color(Color.cyan)
     term_box(0, 0, ui.cols, ui.rows)
+    term_hline(2, 1, ui.cols - 2)
     term_color(Color.white)
-    label(1, 2, "BLACKDOOR   panel rewrite   P1")
+    label(1, 2, "BLACKDOOR")
+    term_color(Color.cyan)
+    label(1, 14, show(d.ip) + "   " + show(d.hostname))
     term_color(Color.muted)
-    label(2, 2, "size " + str(ui.cols) + "x" + str(ui.rows))
+    label(4, 2, "OWNER")
+    label(5, 2, "MY IP")
+    label(6, 2, "NOISE")
+    label(7, 2, "TRACE")
+    label(8, 2, "TRACES")
+    label(9, 2, "FRAMES")
+    term_color(Color.white)
+    label(4, 14, show(d.owner))
+    label(5, 14, show(d.myip))
+    term_color(Color.muted)
+    label(4, rcol, "INTEL   (from " + show(d.ip) + ".txt)")
+    label(6, rcol, "PORTS")
+    label(7, rcol, "USERS")
+    label(8, rcol, "FIREWALL")
+    label(9, rcol, "SPECS")
+    label(10, rcol, "JOBS")
+    label(11, rcol, "NMAP")
+    label(12, rcol, "SQLI")
+    term_color(Color.white)
+    label(6, rcol + 10, show(field(d.raw, "ports")))
+    label(7, rcol + 10, show(field(d.raw, "users")))
+    label(8, rcol + 10, show(field(d.raw, "fw")))
+    label(9, rcol + 10, show(field(d.raw, "specs")))
+    label(10, rcol + 10, show(field(d.raw, "jobs")))
+    label(11, rcol + 10, show(field(d.raw, "nmap")))
+    label(12, rcol + 10, show(field(d.raw, "sqli")))
     term_color(Color.amber)
-    label(4, 2, "[ PING ]")
-    term_click_zone(4, 2, 8, 1, "b_ping")
+    label(last - 4, 2, "[ REFRESH ]")
+    term_click_zone(last - 4, 2, 11, 1, "b_refresh")
+    label(last - 4, 16, "[ QUIT ]")
+    term_click_zone(last - 4, 16, 8, 1, "b_quit")
     term_color(Color.muted)
-    label(ui.rows - 2, 2, "q quits - click the panel first so keys reach it")
-
-func paint_live(ui, s):
-    if ui.rows < 10 or ui.cols < 30:
-        return
-    term_clear_rect(6, 1, ui.cols - 2, 2)
-    term_color(Color.green)
-    label(6, 2, "frames " + str(s.frames) + "   clicks " + str(s.clicks) + "   keys " + str(s.keys))
-    term_color(Color.white)
-    label(7, 2, "last: " + s.last)
+    label(last - 1, 2, "r refresh   q quit   - click the panel first so keys reach it")
+    paint_live(ui, d, live, ring)
 
 var r = open_panel()
 if not r.success:
     log("no script panel in this layout - add one to run this")
     log(r.error)
     return
+term_cursor(false)
 
+import "/home/test_box/scripts/dash/store" as st
+sleep(1)
+
+var d = {"ip": "", "hostname": "", "owner": "", "myip": "", "raw": "", "frames": 0, "countdown": 40}
+var tgt = get_target()
+if tgt != none:
+    d.ip = tgt.ip
+    d.hostname = tgt.hostname
+d.myip = get_my_ip()
+if d.ip != "":
+    var w = whois(d.ip)
+    d.owner = w.owner
+st.ensure_dir()
+if d.ip != "":
+    d.raw = st.load(d.ip)
+
+var live = read_live()
+var ring = ["", "", "ready"]
 var ui = {"cols": 0, "rows": 0, "dirty": true}
-var s = {"frames": 0, "clicks": 0, "keys": 0, "last": "nothing yet"}
-var quit = false
-var nap = 0.25
+var pend = ""
 
 while true:
     render:
@@ -73,32 +162,43 @@ while true:
             ui.cols = sz.cols
             ui.rows = sz.rows
             ui.dirty = true
+        pend = ""
         var e = get_event()
         var n = 0
         while n < 8:
             if e == none:
                 break
             if e.type == "click":
-                s.clicks = s.clicks + 1
-                if e.zone_id == "b_ping":
-                    s.last = "click on [ PING ]"
-                else:
-                    s.last = "click at " + str(e.row) + "," + str(e.col)
+                if e.zone_id == "b_refresh":
+                    pend = "live"
+                elif e.zone_id == "b_quit":
+                    pend = "quit"
             elif e.type == "key":
-                s.keys = s.keys + 1
-                s.last = "key " + e.key
                 if e.key == "Q" or e.key == "q":
-                    quit = true
+                    pend = "quit"
+                elif e.key == "R" or e.key == "r":
+                    pend = "live"
             e = get_event()
             n = n + 1
-        s.frames = s.frames + 1
+        d.frames = d.frames + 1
+        d.countdown = d.countdown - 1
+        if d.countdown <= 0:
+            d.countdown = 40
+            if pend == "":
+                pend = "auto"
+        if pend == "live":
+            ring = push(ring, "refresh")
         if ui.dirty:
-            paint(ui, s)
+            paint_all(ui, d, live, ring)
             ui.dirty = false
-        paint_live(ui, s)
-    if quit:
-        break
-    sleep(nap)
+        else:
+            paint_live(ui, d, live, ring)
+    if pend != "":
+        if pend == "quit":
+            break
+        live = read_live()
+    sleep(0.25)
 
 term_clear()
-log("dash P1 stopped after " + str(s.frames) + " frames")
+term_cursor(true)
+log("dash P2 stopped after " + str(d.frames) + " frames")

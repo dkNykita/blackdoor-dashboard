@@ -1,0 +1,29 @@
+# dash/store.bd - per-host intel persistence.
+#
+# Deliberately tiny. Import cost scales with a module's TOTAL line count,
+# including bodies that never run, so this file does I/O and nothing else.
+# Parsing lives in dash.bd, where it runs inside render: for free.
+#
+# Format: one "key=value" line per field, ~10 lines per host, one file per
+# host. The whole read path is a single 0-tick read_local() with no loop and
+# no decode - that is the point. Every historical CPU-overload crash in the
+# old shell/ suite sat behind a full-file scan that decoded every host's
+# every token; there is nothing here to scan.
+
+var DATA = "/home/test_box/scripts/dash/data"
+
+func ensure_dir():
+    var ok = false
+    try:
+        ok = local_mkdir(DATA)
+    catch e:
+        ok = false
+    return ok
+
+func load(ip):
+    var raw = ""
+    try:
+        raw = read_local(DATA + "/" + ip + ".txt")
+    catch e:
+        raw = ""
+    return raw
