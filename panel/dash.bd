@@ -47,10 +47,11 @@ var PORTS = [20, 21, 22, 23, 25, 53, 69, 80, 110, 111, 135, 139, 143, 161, 162, 
 var NAPS = [1.2, 0.8, 0.5, 0.3, 0.2, 0.15, 0.12, 0.1, 0.08, 0.06, 0.05, 0.04, 0.03, 0.02, 0.01]
 
 # Ports scanned per frame. Trades progress granularity and STOP latency for
-# amortised per-frame overhead - at 8, a STOP waits up to ~6s for the batch
-# to finish. Also a measuring instrument: if raising this barely moves the
-# scan time, per-frame overhead is not what the scan is made of, and the
-# remaining cost is scan() latency that no restructuring will remove.
+# amortised per-frame overhead: a STOP cannot land until the running batch
+# finishes, so at ~0.9s/port that is ~3.7s at 4, ~7.4s at 8, ~15s at 16.
+# Default 4 is the balance point - 45s against b1's 79s, while a cancel still
+# lands in a few seconds. 8 is the speed knee (39s) if a run is worth waiting
+# on; 16 gains one further second and is not worth double the wait.
 var BATCHES = [1, 2, 4, 8, 16]
 
 func label(r, c, t):
@@ -144,15 +145,18 @@ func clean_list(s):
 # the loop body is a tick paid once PER PORT, so bookkeeping here is what the
 # scan time is made of. The comma cleanup lives in render: instead, free.
 #
-# Batching amortises the ~5 ticks of per-frame overhead (loop header, dispatch
-# ifs, sleep) across N ports - but it is NOT free, because the while/bounds/
-# counter lines it adds are themselves per-port. Measured baseline was ~11
-# ticks/port unbatched; batching lands near ~10. Expect roughly 10%, not the
-# 40% a per-frame-overhead-only estimate suggests. The bounds test is folded
-# into the while condition to save one line per port.
+# Batching amortises per-frame overhead (loop header, dispatch ifs, sleep)
+# across N ports. MEASURED on a 40-port scan at speed 8:
+#     b1 79s (1.98s/port)   b4 45s (1.13s)   b8 39s (0.98s)   b16 38s (0.95s)
+# Fitting per_port = A + B/n gives A ~= 0.9s of irreducible per-port work
+# (~9 ticks: scan()'s 2 plus this loop body) and B ~= 1.2s of per-frame
+# overhead. The curve knees at 8; 16 buys one more second for double the STOP
+# latency. The bounds test is folded into the while condition to save a line
+# per port.
 #
-# NOTE: at n=1 this is slightly MORE expensive than a non-looping version was,
-# by the loop bookkeeping. n=1 is kept for comparison, not as the good setting.
+# n=1 really is worse than the non-looping version it replaced - 79s against
+# that version's 59s, i.e. the loop bookkeeping costs ~0.5s/port. Keep n=1 for
+# comparison only; it is not a setting anyone should run.
 func step_probe(job, ip, n):
     var k = 0
     while k < n and job.i < len(PORTS):
@@ -291,7 +295,7 @@ sleep(1)
 # every later phase adds another import and more setup here. A sleep(1) every
 # few statements costs a few seconds of launch time and keeps each burst
 # short. Do not remove these to "speed up" startup.
-var d = {"ip": "", "hostname": "", "owner": "", "myip": "", "raw": "", "frames": 0, "countdown": 40, "speed": 7, "t0": 0, "last": 0, "limit": true, "batch": 0}
+var d = {"ip": "", "hostname": "", "owner": "", "myip": "", "raw": "", "frames": 0, "countdown": 40, "speed": 7, "t0": 0, "last": 0, "limit": true, "batch": 2}
 # One entry per action, keyed by job.kind. Every new action needs its key
 # here or the pacing lookup will fail on it.
 var limits = {"probe": true}
