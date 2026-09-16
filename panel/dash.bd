@@ -34,7 +34,7 @@
 # Shown in the title bar. Bump it on every edit - /mnt is not launchable
 # directly, so what is running in-game is whatever was last copied into
 # ~/scripts, and "is this even the new code?" is otherwise unanswerable.
-var BUILD = "p4k"
+var BUILD = "p4l"
 
 var PORTS = [20, 21, 22, 23, 25, 53, 69, 80, 110, 111, 135, 139, 143, 161, 162, 389, 443, 445, 465, 514, 587, 636, 993, 995, 1433, 1521, 2049, 3306, 3389, 5432, 5900, 6379, 8000, 8080, 8443, 8888, 9200, 11211, 27017, 31337]
 
@@ -703,7 +703,7 @@ while true:
             # there is nothing moving. Without this the offline trace readout
             # would be up to 40 frames stale - useless for deciding when it is
             # safe to go back in.
-            if live.count > 0:
+            if live.count > 0 or sess.on:
                 d.countdown = 8
             else:
                 d.countdown = 40
@@ -854,11 +854,17 @@ while true:
             disconnect(rc)
             sess.newconn = rc
             sess.newverdict = "recon"
+            d.countdown = 1
         elif pend == "disconnect":
             disconnect(sess.conn)
             sess.on = false
             sess.conn = none
             sess.verdict = ""
+            # Force a traces() read next frame. Otherwise the offline readout
+            # is computed from whatever list was last fetched - possibly from
+            # before the connection existed - and confidently reports "clear"
+            # on a host that is very much still cooling.
+            d.countdown = 1
             ring = push(ring, "disconnected")
             ui.dirty = true
         elif pend == "check":
@@ -880,6 +886,7 @@ while true:
                 sess.on = false
                 sess.conn = none
                 sess.verdict = ""
+                d.countdown = 1
                 ring = push(ring, "auto-drop: " + sv.verdict)
             ui.dirty = true
     sleep(nap)
