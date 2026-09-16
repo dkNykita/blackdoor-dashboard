@@ -60,6 +60,11 @@ func mark(on):
         return "[x]"
     return "[ ]"
 
+func onoff(on):
+    if on:
+        return "ENABLED"
+    return "DISABLED"
+
 # Pull one "key=value" line out of the raw blob. Called from inside render:,
 # where string work is free - which is why the blob is never pre-parsed.
 func field(raw, key):
@@ -223,12 +228,17 @@ func paint_all(ui, d, live, ring, job, limits):
     # which ones it applies to. OFF still sleeps 0.01s - the loop must yield
     # or the panel cannot redraw, so "unlimited" means the floor of the
     # range, not no sleep at all.
-    term_color(Color.amber)
-    label(17, 2, "LIMITER " + mark(d.limit))
-    term_click_zone(17, 2, 12, 1, "b_limit")
+    # Colour carries the state as well as the word, so it reads at a glance
+    # without parsing the label - green is paced, red is running unchecked.
+    if d.limit:
+        term_color(Color.green)
+    else:
+        term_color(Color.red)
+    label(17, 2, "LIMITER " + onoff(d.limit))
+    term_click_zone(17, 2, 16, 1, "b_limit")
     term_color(Color.white)
-    label(17, 16, "probe " + mark(limits["probe"]))
-    term_click_zone(17, 16, 10, 1, "b_lim_probe")
+    label(17, 22, "probe " + mark(limits["probe"]))
+    term_click_zone(17, 22, 10, 1, "b_lim_probe")
     term_color(Color.amber)
     label(last - 4, 2, "[ PROBE ]")
     term_click_zone(last - 4, 2, 9, 1, "b_probe")
