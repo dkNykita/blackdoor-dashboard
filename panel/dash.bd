@@ -34,7 +34,7 @@
 # Shown in the title bar. Bump it on every edit - /mnt is not launchable
 # directly, so what is running in-game is whatever was last copied into
 # ~/scripts, and "is this even the new code?" is otherwise unanswerable.
-var BUILD = "p4f"
+var BUILD = "p4g"
 
 var PORTS = [20, 21, 22, 23, 25, 53, 69, 80, 110, 111, 135, 139, 143, 161, 162, 389, 443, 445, 465, 514, 587, 636, 993, 995, 1433, 1521, 2049, 3306, 3389, 5432, 5900, 6379, 8000, 8080, 8443, 8888, 9200, 11211, 27017, 31337]
 
@@ -140,6 +140,19 @@ func read_live():
 # traces() keeps reporting a host after you disconnect, while its trace winds
 # back down - so the session is still worth watching once the link is gone.
 # Searching the list happens inside render:, where it is free.
+# One definition of "this link has to go", used by both places that can
+# reach that conclusion: the check dispatch acting on a reading it just took,
+# and render: acting on a verdict set elsewhere (connect's ceiling gate).
+# Same rule, two callers - not two rules.
+func must_drop(v):
+    if v == "":
+        return false
+    if v == "ok":
+        return false
+    if v == "flagged":
+        return false
+    return true
+
 func find_trace(list, ip):
     for e in list:
         if e.ip == ip:
@@ -489,7 +502,7 @@ while true:
         # could never get a turn, and the trace ran down to 1s with a correct
         # verdict sitting unread. Anything that must happen on time cannot
         # queue behind something that happens constantly.
-        if sess.on and sess.verdict != "" and sess.verdict != "ok" and sess.verdict != "flagged":
+        if sess.on and must_drop(sess.verdict):
             if pend != "quit":
                 ring = push(ring, "auto-drop: " + sess.verdict)
                 pend = "disconnect"
@@ -656,13 +669,25 @@ while true:
             ring = push(ring, "disconnected")
             ui.dirty = true
         elif pend == "check":
-            # Record only. render: reads the verdict next frame and asks for
-            # a disconnect if it needs one, so this branch never chains two
-            # costed calls together.
+            # Acts on its own reading IMMEDIATELY rather than recording the
+            # verdict and letting render: notice next frame. At low trace a
+            # poll frame costs ~1.75s, so deferring cost a whole extra frame
+            # of exposure on a threshold measured in seconds - the drop landed
+            # at 6s against a COOL of 10.
+            # This is two costed calls in one branch, which the dispatch
+            # otherwise avoids, but check + disconnect is ~1.8s and the 5s
+            # kill needs a sustained burst. Cheap insurance against a real
+            # trace completing.
             var sv = sf.check(sess.conn, sess.ceiling)
             sess.trace = sv.trace
             sess.ids = sv.ids
             sess.verdict = sv.verdict
+            if must_drop(sv.verdict):
+                disconnect(sess.conn)
+                sess.on = false
+                sess.conn = none
+                sess.verdict = ""
+                ring = push(ring, "auto-drop: " + sv.verdict)
             ui.dirty = true
     sleep(nap)
 
