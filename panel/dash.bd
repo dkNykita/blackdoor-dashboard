@@ -136,7 +136,7 @@ func step_probe(job, ip):
     return job
 
 func paint_live(ui, d, live, ring, job):
-    if ui.rows < 18 or ui.cols < 44:
+    if ui.rows < 24 or ui.cols < 44:
         return
     var last = ui.rows - 1
     term_clear_rect(6, 14, 20, 4)
@@ -145,17 +145,17 @@ func paint_live(ui, d, live, ring, job):
     label(7, 14, str(int(live.trace)) + "s")
     label(8, 14, str(live.count))
     label(9, 14, str(d.frames))
-    term_clear_rect(14, 1, ui.cols - 2, 1)
+    term_clear_rect(18, 1, ui.cols - 2, 1)
     if job.kind != "":
         term_color(Color.amber)
-        label(14, 2, "PROBE  [" + bar(24, job.i, len(PORTS)) + "]  " + str(job.i) + "/" + str(len(PORTS)) + "   open " + str(job.n))
+        label(18, 2, "PROBE  [" + bar(24, job.i, len(PORTS)) + "]  " + str(job.i) + "/" + str(len(PORTS)) + "   open " + str(job.n))
     term_clear_rect(last - 3, 1, ui.cols - 2, 1)
     term_color(Color.muted)
     label(last - 3, 2, ring[0] + "   " + ring[1] + "   " + ring[2])
 
 func paint_all(ui, d, live, ring, job):
     term_clear()
-    if ui.rows < 18 or ui.cols < 44:
+    if ui.rows < 24 or ui.cols < 44:
         term_color(Color.amber)
         label(0, 0, "enlarge this pane")
         return
@@ -177,13 +177,9 @@ func paint_all(ui, d, live, ring, job):
     label(7, 2, "TRACE")
     label(8, 2, "TRACES")
     label(9, 2, "FRAMES")
-    label(10, 2, "SPEED")
     term_color(Color.white)
     label(4, 14, show(d.owner))
     label(5, 14, show(d.myip))
-    # Measured, not modelled - the tick-cost estimate this replaced was off
-    # by a wide margin, so the only number shown is one a real scan produced.
-    label(10, 14, str(NAPS[d.speed]) + "s nap    last scan " + str(int(d.last)) + "s")
     term_color(Color.muted)
     label(4, rcol, "INTEL   (from " + show(d.ip) + ".txt)")
     label(6, rcol, "PORTS")
@@ -201,6 +197,23 @@ func paint_all(ui, d, live, ring, job):
     label(10, rcol + 10, show(field(d.raw, "jobs")))
     label(11, rcol + 10, show(field(d.raw, "nmap")))
     label(12, rcol + 10, show(field(d.raw, "sqli")))
+    # SETTINGS sits below both columns (which run to row 12) rather than in
+    # the left one, so its divider can span the full width without cutting
+    # through the INTEL list.
+    term_color(Color.cyan)
+    term_hline(14, 1, ui.cols - 2)
+    term_color(Color.muted)
+    label(15, 2, "SETTINGS")
+    term_color(Color.amber)
+    label(16, 2, "[ - ]")
+    term_click_zone(16, 2, 5, 1, "b_slower")
+    label(16, 8, "[ + ]")
+    term_click_zone(16, 8, 5, 1, "b_faster")
+    term_color(Color.white)
+    # "last scan" is measured, not modelled - the tick-cost estimate this
+    # replaced was off by a wide margin. It sits next to the speed control on
+    # purpose: change the knob, run a scan, read the consequence right here.
+    label(16, 16, "SPEED  " + str(d.speed + 1) + "/" + str(len(NAPS)) + "    " + str(NAPS[d.speed]) + "s nap    last scan " + str(int(d.last)) + "s")
     term_color(Color.amber)
     label(last - 4, 2, "[ PROBE ]")
     term_click_zone(last - 4, 2, 9, 1, "b_probe")
