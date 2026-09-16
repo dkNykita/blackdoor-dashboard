@@ -55,6 +55,11 @@ func show(v):
         return "-"
     return v
 
+func mark(on):
+    if on:
+        return "[x]"
+    return "[ ]"
+
 # Pull one "key=value" line out of the raw blob. Called from inside render:,
 # where string work is free - which is why the blob is never pre-parsed.
 func field(raw, key):
@@ -153,7 +158,7 @@ func paint_live(ui, d, live, ring, job):
     term_color(Color.muted)
     label(last - 3, 2, ring[0] + "   " + ring[1] + "   " + ring[2])
 
-func paint_all(ui, d, live, ring, job):
+func paint_all(ui, d, live, ring, job, limits):
     term_clear()
     if ui.rows < 24 or ui.cols < 44:
         term_color(Color.amber)
@@ -214,6 +219,16 @@ func paint_all(ui, d, live, ring, job):
     # replaced was off by a wide margin. It sits next to the speed control on
     # purpose: change the knob, run a scan, read the consequence right here.
     label(16, 16, "SPEED  " + str(d.speed + 1) + "/" + str(len(NAPS)) + "    " + str(NAPS[d.speed]) + "s nap    last scan " + str(int(d.last)) + "s")
+    # The master switch gates every action; the per-action switches decide
+    # which ones it applies to. OFF still sleeps 0.01s - the loop must yield
+    # or the panel cannot redraw, so "unlimited" means the floor of the
+    # range, not no sleep at all.
+    term_color(Color.amber)
+    label(17, 2, "LIMITER " + mark(d.limit))
+    term_click_zone(17, 2, 12, 1, "b_limit")
+    term_color(Color.white)
+    label(17, 16, "probe " + mark(limits["probe"]))
+    term_click_zone(17, 16, 10, 1, "b_lim_probe")
     term_color(Color.amber)
     label(last - 4, 2, "[ PROBE ]")
     term_click_zone(last - 4, 2, 9, 1, "b_probe")
@@ -224,7 +239,7 @@ func paint_all(ui, d, live, ring, job):
     label(last - 4, 36, "[ QUIT ]")
     term_click_zone(last - 4, 36, 8, 1, "b_quit")
     term_color(Color.muted)
-    label(last - 1, 2, "p probe   x stop   f faster   s slower   r refresh   q quit   - click the panel first so keys reach it")
+    label(last - 1, 2, "p probe   x stop   f faster   s slower   l limiter   r refresh   q quit   - click the panel first so keys reach it")
     paint_live(ui, d, live, ring, job)
 
 var r = open_panel()
@@ -244,7 +259,10 @@ sleep(1)
 # every later phase adds another import and more setup here. A sleep(1) every
 # few statements costs a few seconds of launch time and keeps each burst
 # short. Do not remove these to "speed up" startup.
-var d = {"ip": "", "hostname": "", "owner": "", "myip": "", "raw": "", "frames": 0, "countdown": 40, "speed": 7, "t0": 0, "last": 0}
+var d = {"ip": "", "hostname": "", "owner": "", "myip": "", "raw": "", "frames": 0, "countdown": 40, "speed": 7, "t0": 0, "last": 0, "limit": true}
+# One entry per action, keyed by job.kind. Every new action needs its key
+# here or the pacing lookup will fail on it.
+var limits = {"probe": true}
 var tgt = get_target()
 if tgt != none:
     d.ip = tgt.ip
@@ -298,6 +316,8 @@ while true:
                     act = "b_faster"
                 elif e.key == "S" or e.key == "s":
                     act = "b_slower"
+                elif e.key == "L" or e.key == "l":
+                    act = "b_limit"
             if act == "b_quit":
                 pend = "quit"
             elif act == "b_refresh":
@@ -321,6 +341,12 @@ while true:
                 if d.speed > 0:
                     d.speed = d.speed - 1
                     ui.dirty = true
+            elif act == "b_limit":
+                d.limit = not d.limit
+                ui.dirty = true
+            elif act == "b_lim_probe":
+                limits["probe"] = not limits["probe"]
+                ui.dirty = true
             e = get_event()
             n = n + 1
         d.frames = d.frames + 1
@@ -340,12 +366,18 @@ while true:
             pend = "save"
         elif job.kind != "" and pend == "":
             pend = "step"
+        # Effective pacing = master switch AND this action's own switch.
+        # Adding an action means adding its key to `limits`, or this lookup
+        # will fail on it.
         if pend == "step":
-            nap = NAPS[d.speed]
+            if d.limit and limits[job.kind]:
+                nap = NAPS[d.speed]
+            else:
+                nap = 0.01
         else:
             nap = 0.25
         if ui.dirty:
-            paint_all(ui, d, live, ring, job)
+            paint_all(ui, d, live, ring, job, limits)
             ui.dirty = false
         else:
             paint_live(ui, d, live, ring, job)
