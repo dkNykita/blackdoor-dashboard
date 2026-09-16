@@ -1,0 +1,37 @@
+# dash/safe.bd - trace and IDS verdicts.
+#
+# IT REPORTS. IT NEVER ACTS. This is the whole design rule.
+#
+# The old shell/ suite's check_trace() called disconnect()/exit()/raise()
+# inline. That is fine in a one-shot script and fatal in a long-running
+# panel: exit() would kill the dashboard from inside a helper, and raise()
+# would unwind the event loop past everything holding the UI together. So
+# every function here returns a verdict string and the loop decides what to
+# do about it.
+#
+# All reads are 0 ticks (get_trace_time, ids_status). The only cost is the
+# lines themselves, which is why this is one function and not five.
+#
+# VERDICTS, worst first:
+#   abort     IDS is actively watching - get off the box now
+#   hopeless  trace ceiling is too low to do anything useful with
+#   cool      trace is running out; disconnect and let it decay
+#   flagged   noticed but not yet urgent
+#   ok        proceed
+
+var HOPELESS = 10
+var COOL = 30
+
+func check(conn):
+    var t = get_trace_time()
+    var i = ids_status(conn)
+    var v = "ok"
+    if i == "active":
+        v = "abort"
+    elif t <= HOPELESS:
+        v = "hopeless"
+    elif t <= COOL:
+        v = "cool"
+    elif i == "flagged":
+        v = "flagged"
+    return {"trace": t, "ids": i, "verdict": v}
