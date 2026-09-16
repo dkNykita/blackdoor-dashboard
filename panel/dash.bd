@@ -36,14 +36,14 @@
 #   1. CONNECT fills BANNER/OS (connect() returns them even when login
 #      failed) and they persist to the blob for when you are offline again
 #   2. The SESSION line counts the trace down and is coloured by verdict
-#   3. It AUTO-DROPS the link at cool/abort/hopeless without being asked -
+#   3. It AUTO-DROPS the link at hot/abort/hopeless without being asked -
 #      that is the whole point of the phase
 #   4. The dashboard survives all of it, since nothing raises
 
 # Shown in the title bar. Bump it on every edit - /mnt is not launchable
 # directly, so what is running in-game is whatever was last copied into
 # ~/scripts, and "is this even the new code?" is otherwise unanswerable.
-var BUILD = "p5a"
+var BUILD = "p5b"
 
 var PORTS = [20, 21, 22, 23, 25, 53, 69, 80, 110, 111, 135, 139, 143, 161, 162, 389, 443, 445, 465, 514, 587, 636, 993, 995, 1433, 1521, 2049, 3306, 3389, 5432, 5900, 6379, 8000, 8080, 8443, 8888, 9200, 11211, 27017, 31337]
 
@@ -148,7 +148,7 @@ func cfg_blob(d, limits):
     out = out + "limit=" + boolstr(d.limit) + "\n"
     out = out + "probe=" + boolstr(limits["probe"]) + "\n"
     out = out + "autorecon=" + boolstr(d.autorecon) + "\n"
-    out = out + "cool=" + str(d.cool) + "\n"
+    out = out + "hot=" + str(d.hot) + "\n"
     out = out + "hopeless=" + str(d.hopeless) + "\n"
     return out
 
@@ -269,8 +269,7 @@ func paint_live(ui, d, live, ring, job, sess):
     term_color(Color.green)
     label(6, 14, str(int(live.noise)))
     label(7, 14, str(int(live.trace)) + "s")
-    label(8, 14, str(live.count))
-    label(9, 14, str(d.frames))
+    label(8, 14, str(d.frames))
     # The verdict is carried by colour as well as text: this is the line that
     # says whether it is safe to still be on the box.
     if sess.on:
@@ -283,9 +282,9 @@ func paint_live(ui, d, live, ring, job, sess):
         # remaining/ceiling reads better than a bare countdown - 12s means
         # something different on a 20s box than on a 120s one
         if sess.ceiling > 0:
-            label(10, 14, "UP   trace " + str(int(sess.trace)) + "s/" + str(int(sess.ceiling)) + "s   ids " + sess.ids + "   " + sess.verdict)
+            label(9, 14, "UP   trace " + str(int(sess.trace)) + "s/" + str(int(sess.ceiling)) + "s   ids " + sess.ids + "   " + sess.verdict)
         else:
-            label(10, 14, "UP   INSTANT TRACE   ids " + sess.ids + "   " + sess.verdict)
+            label(9, 14, "UP   INSTANT TRACE   ids " + sess.ids + "   " + sess.verdict)
     else:
         # A dropped link does not mean the danger ended - traces() keeps
         # reporting the host while its trace winds back down, and that is
@@ -294,16 +293,16 @@ func paint_live(ui, d, live, ring, job, sess):
         var kc = field(d.raw, "ceiling")
         if te != none:
             term_color(Color.amber)
-            label(10, 14, "offline   trace " + te.status + " " + str(int(te.remaining)) + "s/" + str(int(te.total)) + "s   let it clear")
+            label(9, 14, "offline   trace " + te.status + " " + str(int(te.remaining)) + "s/" + str(int(te.total)) + "s   let it clear")
         elif kc == "":
             term_color(Color.muted)
-            label(10, 14, "offline")
+            label(9, 14, "offline")
         elif int(kc) <= 0:
             term_color(Color.red)
-            label(10, 14, "offline   ceiling 0s - INSTANT TRACE, do not connect")
+            label(9, 14, "offline   ceiling 0s - INSTANT TRACE, do not connect")
         else:
             term_color(Color.muted)
-            label(10, 14, "offline   clear   ceiling " + kc + "s")
+            label(9, 14, "offline   trace clear   ceiling " + kc + "s")
     term_clear_rect(20, 1, ui.cols - 2, 1)
     if job.kind == "probe":
         term_color(Color.amber)
@@ -352,16 +351,21 @@ func paint_all(ui, d, live, ring, job, limits, sess):
     label(5, 2, "MY IP")
     label(6, 2, "NOISE")
     label(7, 2, "TRACE")
-    label(8, 2, "TRACES")
-    label(9, 2, "FRAMES")
-    label(10, 2, "SESSION")
-    label(11, 2, "BANNER")
-    label(12, 2, "OS")
+    # No TRACES count. len(traces()) cannot mean what it looks like: you can
+    # only be traced by one box at a time, so the number is the ACTIVE trace
+    # plus however many other hosts happen to still be cooling from earlier
+    # visits - a figure about your history, not your current danger. The one
+    # trace that matters is the target's, and SESSION already shows it with
+    # its ceiling.
+    label(8, 2, "FRAMES")
+    label(9, 2, "SESSION")
+    label(10, 2, "BANNER")
+    label(11, 2, "OS")
     term_color(Color.white)
     label(4, 14, show(d.owner))
     label(5, 14, show(d.myip))
-    label(11, 14, show(field(d.raw, "banner")))
-    label(12, 14, show(field(d.raw, "os")))
+    label(10, 14, show(field(d.raw, "banner")))
+    label(11, 14, show(field(d.raw, "os")))
     term_color(Color.muted)
     label(4, rcol, "INTEL   (from " + show(d.ip) + ".txt)")
     label(6, rcol, "PORTS")
@@ -455,20 +459,23 @@ func paint_all(ui, d, live, ring, job, limits, sess):
     label(25, 21, "ports per frame - higher is faster, slower to cancel")
     term_color(Color.cyan)
     label(26, 2, "a")
-    term_color(Color.white)
-    label(26, 6, "auto-recon " + mark(d.autorecon))
-    term_click_zone(26, 6, 16, 1, "b_autorecon")
+    if d.autorecon:
+        term_color(Color.green)
+    else:
+        term_color(Color.red)
+    label(26, 6, "AUTO-RECON " + onoff(d.autorecon))
+    term_click_zone(26, 6, 19, 1, "b_autorecon")
     term_color(Color.muted)
-    label(26, 24, "recon once on launch - skipped if ceiling known bad, g re-runs")
+    label(26, 27, "connects once on launch for banner/os/ceiling - g runs it again")
     # Trace thresholds. Click-only - they are set once for a box tier and
     # then left alone, and the keyboard map is crowded enough already.
     term_color(Color.amber)
     label(27, 6, "[ - ]")
-    term_click_zone(27, 6, 5, 1, "b_cool_down")
+    term_click_zone(27, 6, 5, 1, "b_hot_down")
     label(27, 12, "[ + ]")
-    term_click_zone(27, 12, 5, 1, "b_cool_up")
+    term_click_zone(27, 12, 5, 1, "b_hot_up")
     term_color(Color.white)
-    label(27, 19, "COOL " + str(d.cool) + "s")
+    label(27, 19, "TRACE HOT " + str(d.hot) + "s")
     term_color(Color.muted)
     label(27, 32, "drop the link with this much trace left")
     term_color(Color.amber)
@@ -477,7 +484,7 @@ func paint_all(ui, d, live, ring, job, limits, sess):
     label(28, 12, "[ + ]")
     term_click_zone(28, 12, 5, 1, "b_hope_up")
     term_color(Color.white)
-    label(28, 19, "HOPELESS " + str(d.hopeless) + "s")
+    label(28, 19, "TRACE HOPELESS " + str(d.hopeless) + "s")
     term_color(Color.muted)
     label(28, 32, "a ceiling this low is not worth entering")
     # Red: the only control here that discards state rather than adjusting it.
@@ -519,7 +526,7 @@ sleep(1)
 # every later phase adds another import and more setup here. A sleep(1) every
 # few statements costs a few seconds of launch time and keeps each burst
 # short. Do not remove these to "speed up" startup.
-var d = {"ip": "", "hostname": "", "owner": "", "myip": "", "raw": "", "frames": 0, "countdown": 40, "speed": 7, "t0": 0, "last": 0, "limit": true, "batch": 2, "boot": 0, "autorecon": true, "cool": 10, "hopeless": 5, "cfgdirty": false, "cfgraw": ""}
+var d = {"ip": "", "hostname": "", "owner": "", "myip": "", "raw": "", "frames": 0, "countdown": 40, "speed": 7, "t0": 0, "last": 0, "limit": true, "batch": 2, "boot": 0, "autorecon": true, "hot": 10, "hopeless": 5, "cfgdirty": false, "cfgraw": ""}
 # One entry per action, keyed by job.kind. Every new action needs its key
 # here or the pacing lookup will fail on it.
 var limits = {"probe": true, "crack": true}
@@ -662,18 +669,18 @@ while true:
             # letting them meet would make "cool" unreachable and the link
             # would hold until the far more urgent threshold - a safety
             # setting silently doing nothing. The clamps enforce the gap.
-            elif act == "b_cool_up":
-                if d.cool < 300:
-                    d.cool = d.cool + 1
+            elif act == "b_hot_up":
+                if d.hot < 300:
+                    d.hot = d.hot + 1
                     d.cfgdirty = true
                     ui.dirty = true
-            elif act == "b_cool_down":
-                if d.cool > d.hopeless + 1:
-                    d.cool = d.cool - 1
+            elif act == "b_hot_down":
+                if d.hot > d.hopeless + 1:
+                    d.hot = d.hot - 1
                     d.cfgdirty = true
                     ui.dirty = true
             elif act == "b_hope_up":
-                if d.hopeless < d.cool - 1:
+                if d.hopeless < d.hot - 1:
                     d.hopeless = d.hopeless + 1
                     d.cfgdirty = true
                     ui.dirty = true
@@ -690,7 +697,7 @@ while true:
                 d.limit = true
                 limits["probe"] = true
                 d.autorecon = true
-                d.cool = 10
+                d.hot = 10
                 d.hopeless = 5
                 d.cfgdirty = true
                 ring = push(ring, "settings reset")
@@ -730,7 +737,7 @@ while true:
                 d.limit = cfg_bool(cfgraw, "limit", d.limit)
                 limits["probe"] = cfg_bool(cfgraw, "probe", limits["probe"])
                 d.autorecon = cfg_bool(cfgraw, "autorecon", d.autorecon)
-                d.cool = cfg_int(cfgraw, "cool", d.cool)
+                d.hot = cfg_int(cfgraw, "hot", d.hot)
                 d.hopeless = cfg_int(cfgraw, "hopeless", d.hopeless)
                 ui.dirty = true
             if d.boot >= 3:
@@ -974,7 +981,7 @@ while true:
             # otherwise avoids, but check + disconnect is ~1.8s and the 5s
             # kill needs a sustained burst. Cheap insurance against a real
             # trace completing.
-            var sv = sf.check(sess.conn, sess.ceiling, d.hopeless, d.cool)
+            var sv = sf.check(sess.conn, sess.ceiling, d.hopeless, d.hot)
             sess.trace = sv.trace
             sess.ids = sv.ids
             sess.verdict = sv.verdict

@@ -15,21 +15,26 @@
 # VERDICTS, worst first:
 #   abort     IDS is actively watching - get off the box now
 #   hopeless  trace ceiling is too low to do anything useful with
-#   cool      trace is running out; disconnect and let it decay
+#   hot       trace is running out; disconnect and let it decay
 #   flagged   noticed but not yet urgent
 #   ok        proceed
+#
+# "hot" was called "cool" until it kept being read as reassurance. It is the
+# opposite: the trace is nearly up, leave. The waiting-to-recover phase in
+# dash.bd is called "cooling", and having those two sound related while
+# meaning opposite things was a trap worth removing.
 
 # Thresholds are PASSED IN, not held here. They are seconds remaining on the
 # live trace, and the right values depend on the box - a 20s ceiling needs
 # very different numbers from a 120s one, which is why they became a setting
 # rather than an edit to this file.
 #
-# The caller is responsible for keeping cool > hopeless. check() tests
-# hopeless first, so equal values make "cool" unreachable dead code.
+# The caller is responsible for keeping hot > hopeless. check() tests
+# hopeless first, so equal values make "hot" unreachable dead code.
 #
 # These remain only as the fallback the dashboard starts from.
 var HOPELESS = 5
-var COOL = 10
+var HOT = 10
 
 # Judges the BOX, from its trace ceiling alone - "is this worth being on at
 # all", answerable the moment a connection opens and before any work starts.
@@ -47,7 +52,7 @@ func ceiling_verdict(ceiling, hopeless):
 
 # Judges the LIVE SESSION. `ceiling` is connect()'s trace_time, captured when
 # the session opened; `t` is what is left right now.
-func check(conn, ceiling, hopeless, cool):
+func check(conn, ceiling, hopeless, hot):
     var t = get_trace_time()
     var i = ids_status(conn)
     var v = "ok"
@@ -57,8 +62,8 @@ func check(conn, ceiling, hopeless, cool):
         v = "instant"
     elif t <= hopeless:
         v = "hopeless"
-    elif t <= cool:
-        v = "cool"
+    elif t <= hot:
+        v = "hot"
     elif i == "flagged":
         v = "flagged"
     return {"trace": t, "ids": i, "verdict": v}
