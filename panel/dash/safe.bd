@@ -26,40 +26,37 @@
 #
 # COOL must stay above HOPELESS or it becomes dead code - check() tests
 # hopeless first, so equal values mean "cool" can never be reached.
-#
-# NOT HANDLED YET: the plan's other sense of "hopeless" - a box whose trace
-# CEILING is so low it is not worth attacking at all, judged from
-# connect()'s trace_time before starting work. That is a different test from
-# this one and wants its own gate.
 var HOPELESS = 5
 var COOL = 10
 
-# `ceiling` is connect()'s own trace_time - this box's MAXIMUM, captured once
-# when the session opened, as opposed to `t` which is what is left right now.
+# Judges the BOX, from its trace ceiling alone - "is this worth being on at
+# all", answerable the moment a connection opens and before any work starts.
 #
-# A ceiling of 0 means the box does not trace at all. Without this the
-# remaining-time tests read 0 as the worst possible value and would auto-drop
-# an untraced box instantly - exactly backwards. Every trace test is
-# therefore gated on ceiling > 0, and "none" is reported so the state is
-# visible rather than silently indistinguishable from "ok".
-#
-# HONEST LIMIT: we cannot tell "this box never traces" from "the trace has
-# already completed" - both look like 0 from here. Reporting "none" instead
-# of "safe" leaves that judgement with the player. IDS is checked
-# independently and still aborts on an untraced box, since the two systems
-# are separate.
+# A CEILING OF 0 MEANS THE TRACE COMPLETES INSTANTLY: connecting gets you
+# caught. It is the worst case there is, not an absence of danger. Anything
+# reading a low ceiling as "safe" has the sign backwards - which is easy to
+# do, because 0 also looks like "nothing running" everywhere else.
+func ceiling_verdict(ceiling):
+    if ceiling <= 0:
+        return "instant"
+    if ceiling <= HOPELESS:
+        return "hopeless"
+    return "ok"
+
+# Judges the LIVE SESSION. `ceiling` is connect()'s trace_time, captured when
+# the session opened; `t` is what is left right now.
 func check(conn, ceiling):
     var t = get_trace_time()
     var i = ids_status(conn)
     var v = "ok"
     if i == "active":
         v = "abort"
-    elif ceiling > 0 and t <= HOPELESS:
+    elif ceiling <= 0:
+        v = "instant"
+    elif t <= HOPELESS:
         v = "hopeless"
-    elif ceiling > 0 and t <= COOL:
+    elif t <= COOL:
         v = "cool"
     elif i == "flagged":
         v = "flagged"
-    elif ceiling <= 0:
-        v = "none"
     return {"trace": t, "ids": i, "verdict": v}

@@ -187,7 +187,7 @@ func paint_live(ui, d, live, ring, job, sess):
     # The verdict is carried by colour as well as text: this is the line that
     # says whether it is safe to still be on the box.
     if sess.on:
-        if sess.verdict == "ok" or sess.verdict == "none":
+        if sess.verdict == "ok":
             term_color(Color.green)
         elif sess.verdict == "flagged":
             term_color(Color.amber)
@@ -198,10 +198,21 @@ func paint_live(ui, d, live, ring, job, sess):
         if sess.ceiling > 0:
             label(10, 14, "UP   trace " + str(int(sess.trace)) + "s/" + str(int(sess.ceiling)) + "s   ids " + sess.ids + "   " + sess.verdict)
         else:
-            label(10, 14, "UP   no trace   ids " + sess.ids + "   " + sess.verdict)
+            label(10, 14, "UP   INSTANT TRACE   ids " + sess.ids + "   " + sess.verdict)
     else:
-        term_color(Color.muted)
-        label(10, 14, "offline")
+        # Offline, but the ceiling is worth surfacing BEFORE anyone clicks
+        # connect - it is the one fact that makes connecting a mistake, and
+        # it is already known from the last session.
+        var kc = field(d.raw, "ceiling")
+        if kc == "":
+            term_color(Color.muted)
+            label(10, 14, "offline")
+        elif int(kc) <= 0:
+            term_color(Color.red)
+            label(10, 14, "offline   ceiling 0s - INSTANT TRACE, do not connect")
+        else:
+            term_color(Color.muted)
+            label(10, 14, "offline   ceiling " + kc + "s")
     term_clear_rect(18, 1, ui.cols - 2, 1)
     if job.kind != "":
         term_color(Color.amber)
@@ -516,7 +527,19 @@ while true:
             st.store(d.ip, d.raw)
         elif pend == "connect":
             var c = connect(d.ip, 22)
+            var cv = "ok"
             if c.success:
+                cv = sf.ceiling_verdict(c.trace_time)
+                # Learn the ceiling and keep it, so the NEXT launch can warn
+                # before anyone clicks connect. We cannot know it without
+                # connecting once, but we only have to pay that once.
+                d.raw = put(d.raw, "ceiling", str(int(c.trace_time)))
+                st.store(d.ip, d.raw)
+            if c.success and cv != "ok":
+                # Nothing useful can happen here - get straight back off.
+                disconnect(c)
+                ring = push(ring, cv + ": ceiling " + str(int(c.trace_time)) + "s")
+            elif c.success:
                 sess.on = true
                 sess.conn = c
                 sess.user = c.user
@@ -552,7 +575,7 @@ while true:
             sess.ids = sv.ids
             sess.verdict = sv.verdict
             # safe.bd reports; the decision to drop the link is made here.
-            if sv.verdict == "abort" or sv.verdict == "hopeless" or sv.verdict == "cool":
+            if sv.verdict == "abort" or sv.verdict == "hopeless" or sv.verdict == "cool" or sv.verdict == "instant":
                 disconnect(sess.conn)
                 sess.on = false
                 sess.conn = none
