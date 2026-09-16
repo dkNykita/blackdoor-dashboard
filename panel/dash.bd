@@ -359,6 +359,11 @@ while true:
         elif pend == "save":
             d.last = get_unix_time() - d.t0
             st.store(d.ip, d.raw)
+            # paint_all() already ran this frame, before d.last existed, and
+            # cleared the flag - so re-dirty to repaint with the real number.
+            # Only paint_all() draws the SETTINGS row; without this the value
+            # is computed correctly and simply never shown.
+            ui.dirty = true
         elif pend == "live":
             live = read_live()
     sleep(nap)
