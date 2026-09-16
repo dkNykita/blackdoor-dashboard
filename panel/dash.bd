@@ -31,12 +31,20 @@
 var PORTS = [20, 21, 22, 23, 25, 53, 69, 80, 110, 111, 135, 139, 143, 161, 162, 389, 443, 445, 465, 514, 587, 636, 993, 995, 1433, 1521, 2049, 3306, 3389, 5432, 5900, 6379, 8000, 8080, 8443, 8888, 9200, 11211, 27017, 31337]
 
 # How long the loop sleeps after each costed step, tunable live with f/s.
-# Lower = faster scan, higher CPU duty. The measured duty at nap=0.25 idle
-# was 30-40%, comfortably under the model's own prediction, which is why the
-# default sits mid-list rather than at the cautious end. There is no "safe"
-# value to hardcode - the kill needs 5s SUSTAINED at 100, so tune by watching
-# the game's own meter during a scan and back off if it pins.
-var NAPS = [1.2, 0.8, 0.5, 0.3, 0.2, 0.1]
+#
+# MEASURED 2026-09-16, and it settles an argument: at 0.1s the scan holds a
+# STABLE 60% (bar the usual startup spike). The tick-cost model predicted
+# ~86% there, so real execution is materially cheaper than "1 line = 1 tick
+# at 10 ticks/sec" implies - the same conservatism that showed up at idle
+# (30-40% measured against 55% modelled). 0.1 is therefore the default, not
+# the daring end of the range.
+#
+# Granular below the default because that is where the interesting cliff is:
+# the kill needs 5s SUSTAINED at 100, so the useful question is how far past
+# 0.1 this can go before the meter pins. Watch a real scan and back off if it
+# does - and remember the displayed meter is a smoothed all-script sum, not
+# the per-script number that actually kills, so treat SURVIVAL as the test.
+var NAPS = [1.2, 0.8, 0.5, 0.3, 0.2, 0.15, 0.12, 0.1, 0.08, 0.06, 0.05, 0.04, 0.03, 0.02, 0.01]
 
 func label(r, c, t):
     term_move(r, c)
@@ -173,7 +181,9 @@ func paint_all(ui, d, live, ring, job):
     term_color(Color.white)
     label(4, 14, show(d.owner))
     label(5, 14, show(d.myip))
-    label(10, 14, str(NAPS[d.speed]) + "s nap    full scan ~" + str(int(len(PORTS) * (0.6 + NAPS[d.speed]))) + "s")
+    # Measured, not modelled - the tick-cost estimate this replaced was off
+    # by a wide margin, so the only number shown is one a real scan produced.
+    label(10, 14, str(NAPS[d.speed]) + "s nap    last scan " + str(int(d.last)) + "s")
     term_color(Color.muted)
     label(4, rcol, "INTEL   (from " + show(d.ip) + ".txt)")
     label(6, rcol, "PORTS")
@@ -221,7 +231,7 @@ sleep(1)
 # every later phase adds another import and more setup here. A sleep(1) every
 # few statements costs a few seconds of launch time and keeps each burst
 # short. Do not remove these to "speed up" startup.
-var d = {"ip": "", "hostname": "", "owner": "", "myip": "", "raw": "", "frames": 0, "countdown": 40, "speed": 2}
+var d = {"ip": "", "hostname": "", "owner": "", "myip": "", "raw": "", "frames": 0, "countdown": 40, "speed": 7, "t0": 0, "last": 0}
 var tgt = get_target()
 if tgt != none:
     d.ip = tgt.ip
@@ -284,6 +294,7 @@ while true:
                     job = {"kind": "probe", "phase": "scan", "i": 0, "n": 0, "found": ""}
                     ring = push(ring, "probe start")
                     ui.dirty = true
+                    pend = "start"
             elif act == "b_stop":
                 if job.kind != "":
                     job = {"kind": "", "phase": "", "i": 0, "n": 0, "found": ""}
@@ -330,7 +341,10 @@ while true:
             break
         elif pend == "step":
             job = step_probe(job, d.ip)
+        elif pend == "start":
+            d.t0 = get_unix_time()
         elif pend == "save":
+            d.last = get_unix_time() - d.t0
             st.store(d.ip, d.raw)
         elif pend == "live":
             live = read_live()
