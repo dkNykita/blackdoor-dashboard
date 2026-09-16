@@ -31,6 +31,11 @@
 #      that is the whole point of the phase
 #   4. The dashboard survives all of it, since nothing raises
 
+# Shown in the title bar. Bump it on every edit - /mnt is not launchable
+# directly, so what is running in-game is whatever was last copied into
+# ~/scripts, and "is this even the new code?" is otherwise unanswerable.
+var BUILD = "p4c"
+
 var PORTS = [20, 21, 22, 23, 25, 53, 69, 80, 110, 111, 135, 139, 143, 161, 162, 389, 443, 445, 465, 514, 587, 636, 993, 995, 1433, 1521, 2049, 3306, 3389, 5432, 5900, 6379, 8000, 8080, 8443, 8888, 9200, 11211, 27017, 31337]
 
 # How long the loop sleeps after each costed step, tunable live with f/s.
@@ -236,8 +241,10 @@ func paint_all(ui, d, live, ring, job, limits, sess):
     term_hline(2, 1, ui.cols - 2)
     term_color(Color.white)
     label(1, 2, "BLACKDOOR")
+    term_color(Color.muted)
+    label(1, 12, BUILD)
     term_color(Color.cyan)
-    label(1, 14, show(d.ip) + "   " + show(d.hostname))
+    label(1, 18, show(d.ip) + "   " + show(d.hostname))
     term_color(Color.muted)
     label(4, 2, "OWNER")
     label(5, 2, "MY IP")
@@ -349,7 +356,7 @@ var limits = {"probe": true}
 # trace is the one thing here that gets worse while you do nothing, so it is
 # polled on a timer rather than only when acting. `stamped` records whether
 # this session's banner/os have been written to the blob yet.
-var sess = {"on": false, "conn": none, "user": "", "banner": "", "os": "", "trace": 0, "ceiling": 0, "ids": "", "verdict": "", "poll": 8, "stamped": false}
+var sess = {"on": false, "conn": none, "user": "", "banner": "", "os": "", "trace": 0, "ceiling": 0, "ids": "", "verdict": "", "poll": 8, "stamped": false, "newconn": none, "newverdict": ""}
 var tgt = get_target()
 if tgt != none:
     d.ip = tgt.ip
@@ -473,6 +480,32 @@ while true:
         # them once per session. Rebuilding the blob is free in here; only the
         # save() is costed. Deliberately NOT "save" - that branch also stamps
         # the scan duration and would clobber it.
+        # Unpack a connection the dispatch parked last frame. All of this is
+        # bookkeeping, so it belongs in here where it costs nothing.
+        if sess.newconn != none:
+            var nc = sess.newconn
+            sess.newconn = none
+            if nc.success:
+                sess.on = true
+                sess.conn = nc
+                sess.user = nc.user
+                sess.banner = nc.banner
+                sess.os = nc.os
+                sess.ceiling = nc.trace_time
+                sess.trace = nc.trace_time
+                sess.ids = "-"
+                sess.poll = 8
+                sess.stamped = false
+                sess.verdict = sess.newverdict
+                # success only means the port answered - an empty user means
+                # the login did not happen, though the trace runs either way
+                if nc.user == "":
+                    ring = push(ring, "linked, not authed")
+                else:
+                    ring = push(ring, "linked as " + nc.user)
+            else:
+                ring = push(ring, "connect failed")
+            ui.dirty = true
         if sess.on and sess.stamped == false:
             d.raw = put(d.raw, "ceiling", str(int(sess.ceiling)))
             d.raw = put(d.raw, "banner", sess.banner)
@@ -535,25 +568,17 @@ while true:
         elif pend == "stamp":
             st.store(d.ip, d.raw)
         elif pend == "connect":
-            # ONE costed call and plain assignments - nothing that loops.
-            # An earlier version also ran put() (which iterates every blob
-            # line) and store() here, and that burst grew with the blob until
-            # it tripped the CPU kill on the second connect. Blob rebuilding
-            # belongs in render:, and the ceiling gate is acted on next frame.
+            # THE API CALL AND NOTHING ELSE. Even plain assignments are ticks
+            # out here, so the result is parked and unpacked inside render:
+            # next frame, where it is free. Earlier versions did the blob
+            # rebuild here (crashed), then eleven assignments here (~2s burst);
+            # this is ~1s.
             var c = connect(d.ip, 22)
+            var v = "fail"
             if c.success:
-                sess.on = true
-                sess.conn = c
-                sess.user = c.user
-                sess.banner = c.banner
-                sess.os = c.os
-                sess.ceiling = c.trace_time
-                sess.trace = c.trace_time
-                sess.ids = "-"
-                sess.poll = 8
-                sess.stamped = false
-                sess.verdict = sf.ceiling_verdict(c.trace_time)
-            ui.dirty = true
+                v = sf.ceiling_verdict(c.trace_time)
+            sess.newconn = c
+            sess.newverdict = v
         elif pend == "disconnect":
             disconnect(sess.conn)
             sess.on = false
