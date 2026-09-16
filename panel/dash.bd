@@ -34,7 +34,7 @@
 # Shown in the title bar. Bump it on every edit - /mnt is not launchable
 # directly, so what is running in-game is whatever was last copied into
 # ~/scripts, and "is this even the new code?" is otherwise unanswerable.
-var BUILD = "p4e"
+var BUILD = "p4f"
 
 var PORTS = [20, 21, 22, 23, 25, 53, 69, 80, 110, 111, 135, 139, 143, 161, 162, 389, 443, 445, 465, 514, 587, 636, 993, 995, 1433, 1521, 2049, 3306, 3389, 5432, 5900, 6379, 8000, 8080, 8443, 8888, 9200, 11211, 27017, 31337]
 
@@ -481,6 +481,18 @@ while true:
             e = get_event()
             n = n + 1
         d.frames = d.frames + 1
+        # DROPPING A LINK OUTRANKS EVERYTHING ELSE COMPETING FOR THIS FRAME.
+        # It runs first and overrides pend rather than waiting for a free
+        # slot. The previous version sat at the BOTTOM of render: gated on
+        # `pend == ""`, which worked until the adaptive poll started asking
+        # for a "check" every single frame at low trace - after which the drop
+        # could never get a turn, and the trace ran down to 1s with a correct
+        # verdict sitting unread. Anything that must happen on time cannot
+        # queue behind something that happens constantly.
+        if sess.on and sess.verdict != "" and sess.verdict != "ok" and sess.verdict != "flagged":
+            if pend != "quit":
+                ring = push(ring, "auto-drop: " + sess.verdict)
+                pend = "disconnect"
         d.countdown = d.countdown - 1
         if d.countdown <= 0:
             # Refresh often while a trace is winding down offline, rarely when
@@ -563,14 +575,6 @@ while true:
             ui.dirty = true
             if pend == "":
                 pend = "stamp"
-        # THE ONLY PLACE THAT DECIDES TO DROP A LINK. safe.bd reports a
-        # verdict, this reads it, and the disconnect happens as its own
-        # dispatch next frame - never chained onto whatever produced the
-        # verdict. "flagged" is noticed but not urgent, so it stays.
-        if sess.on and sess.verdict != "ok" and sess.verdict != "flagged":
-            if pend == "":
-                ring = push(ring, "auto-drop: " + sess.verdict)
-                pend = "disconnect"
         # End-of-list detection lives here rather than in step_probe(),
         # because comparisons inside render: are free and ticks inside the
         # step function are paid once per port.
