@@ -19,13 +19,15 @@
 #   flagged   noticed but not yet urgent
 #   ok        proceed
 
-# Both are SECONDS REMAINING on the live trace, not the box's trace ceiling.
-# Tuned 2026-09-16 for a test server with a 20s ceiling: at the old COOL=30
-# every session on that box would have been "cool" from the instant it
-# opened, auto-dropping before anything could be observed.
+# Thresholds are PASSED IN, not held here. They are seconds remaining on the
+# live trace, and the right values depend on the box - a 20s ceiling needs
+# very different numbers from a 120s one, which is why they became a setting
+# rather than an edit to this file.
 #
-# COOL must stay above HOPELESS or it becomes dead code - check() tests
-# hopeless first, so equal values mean "cool" can never be reached.
+# The caller is responsible for keeping cool > hopeless. check() tests
+# hopeless first, so equal values make "cool" unreachable dead code.
+#
+# These remain only as the fallback the dashboard starts from.
 var HOPELESS = 5
 var COOL = 10
 
@@ -36,16 +38,16 @@ var COOL = 10
 # caught. It is the worst case there is, not an absence of danger. Anything
 # reading a low ceiling as "safe" has the sign backwards - which is easy to
 # do, because 0 also looks like "nothing running" everywhere else.
-func ceiling_verdict(ceiling):
+func ceiling_verdict(ceiling, hopeless):
     if ceiling <= 0:
         return "instant"
-    if ceiling <= HOPELESS:
+    if ceiling <= hopeless:
         return "hopeless"
     return "ok"
 
 # Judges the LIVE SESSION. `ceiling` is connect()'s trace_time, captured when
 # the session opened; `t` is what is left right now.
-func check(conn, ceiling):
+func check(conn, ceiling, hopeless, cool):
     var t = get_trace_time()
     var i = ids_status(conn)
     var v = "ok"
@@ -53,9 +55,9 @@ func check(conn, ceiling):
         v = "abort"
     elif ceiling <= 0:
         v = "instant"
-    elif t <= HOPELESS:
+    elif t <= hopeless:
         v = "hopeless"
-    elif t <= COOL:
+    elif t <= cool:
         v = "cool"
     elif i == "flagged":
         v = "flagged"

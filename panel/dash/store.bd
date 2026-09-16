@@ -12,6 +12,10 @@
 # every token; there is nothing here to scan.
 
 var DATA = "/home/test_box/scripts/dash/data"
+# Dashboard settings, not per-host. Same key=value format as a host blob, so
+# the same field()/put() helpers in dash.bd read and write it. Lives beside
+# data/ rather than inside it - it is not intel about anything.
+var CFG = "/home/test_box/scripts/dash/config.txt"
 
 func ensure_dir():
     var ok = false
@@ -33,6 +37,22 @@ func store(ip, raw):
     var r = {"success": false}
     try:
         r = save(DATA + "/" + ip + ".txt", raw)
+    catch e:
+        r = {"success": false}
+    return r
+
+func load_cfg():
+    var raw = ""
+    try:
+        raw = read_local(CFG)
+    catch e:
+        raw = ""
+    return raw
+
+func store_cfg(raw):
+    var r = {"success": false}
+    try:
+        r = save(CFG, raw)
     catch e:
         r = {"success": false}
     return r
