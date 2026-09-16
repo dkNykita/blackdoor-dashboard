@@ -474,12 +474,21 @@ while true:
         # save() is costed. Deliberately NOT "save" - that branch also stamps
         # the scan duration and would clobber it.
         if sess.on and sess.stamped == false:
+            d.raw = put(d.raw, "ceiling", str(int(sess.ceiling)))
             d.raw = put(d.raw, "banner", sess.banner)
             d.raw = put(d.raw, "os", sess.os)
             sess.stamped = true
             ui.dirty = true
             if pend == "":
                 pend = "stamp"
+        # THE ONLY PLACE THAT DECIDES TO DROP A LINK. safe.bd reports a
+        # verdict, this reads it, and the disconnect happens as its own
+        # dispatch next frame - never chained onto whatever produced the
+        # verdict. "flagged" is noticed but not urgent, so it stays.
+        if sess.on and sess.verdict != "ok" and sess.verdict != "flagged":
+            if pend == "":
+                ring = push(ring, "auto-drop: " + sess.verdict)
+                pend = "disconnect"
         # End-of-list detection lives here rather than in step_probe(),
         # because comparisons inside render: are free and ticks inside the
         # step function are paid once per port.
@@ -526,41 +535,24 @@ while true:
         elif pend == "stamp":
             st.store(d.ip, d.raw)
         elif pend == "connect":
+            # ONE costed call and plain assignments - nothing that loops.
+            # An earlier version also ran put() (which iterates every blob
+            # line) and store() here, and that burst grew with the blob until
+            # it tripped the CPU kill on the second connect. Blob rebuilding
+            # belongs in render:, and the ceiling gate is acted on next frame.
             var c = connect(d.ip, 22)
-            var cv = "ok"
             if c.success:
-                cv = sf.ceiling_verdict(c.trace_time)
-                # Learn the ceiling and keep it, so the NEXT launch can warn
-                # before anyone clicks connect. We cannot know it without
-                # connecting once, but we only have to pay that once.
-                d.raw = put(d.raw, "ceiling", str(int(c.trace_time)))
-                st.store(d.ip, d.raw)
-            if c.success and cv != "ok":
-                # Nothing useful can happen here - get straight back off.
-                disconnect(c)
-                ring = push(ring, cv + ": ceiling " + str(int(c.trace_time)) + "s")
-            elif c.success:
                 sess.on = true
                 sess.conn = c
                 sess.user = c.user
                 sess.banner = c.banner
                 sess.os = c.os
+                sess.ceiling = c.trace_time
+                sess.trace = c.trace_time
+                sess.ids = "-"
                 sess.poll = 8
                 sess.stamped = false
-                sess.verdict = "ok"
-                # seed from connect()'s own trace_time so the session line
-                # shows a real number before the first check lands
-                sess.trace = c.trace_time
-                sess.ceiling = c.trace_time
-                sess.ids = "-"
-                # success only means the port answered. An empty user means
-                # the login did NOT happen - the trace is running either way.
-                if c.user == "":
-                    ring = push(ring, "linked, not authed")
-                else:
-                    ring = push(ring, "linked as " + c.user)
-            else:
-                ring = push(ring, "connect failed")
+                sess.verdict = sf.ceiling_verdict(c.trace_time)
             ui.dirty = true
         elif pend == "disconnect":
             disconnect(sess.conn)
@@ -570,16 +562,13 @@ while true:
             ring = push(ring, "disconnected")
             ui.dirty = true
         elif pend == "check":
+            # Record only. render: reads the verdict next frame and asks for
+            # a disconnect if it needs one, so this branch never chains two
+            # costed calls together.
             var sv = sf.check(sess.conn, sess.ceiling)
             sess.trace = sv.trace
             sess.ids = sv.ids
             sess.verdict = sv.verdict
-            # safe.bd reports; the decision to drop the link is made here.
-            if sv.verdict == "abort" or sv.verdict == "hopeless" or sv.verdict == "cool" or sv.verdict == "instant":
-                disconnect(sess.conn)
-                sess.on = false
-                sess.conn = none
-                ring = push(ring, "auto-drop: " + sv.verdict)
             ui.dirty = true
     sleep(nap)
 
