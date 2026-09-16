@@ -137,18 +137,30 @@ term_cursor(false)
 import "/home/test_box/scripts/dash/store" as st
 sleep(1)
 
+# STARTUP IS PACED ON PURPOSE. Measured 2026-09-16: the steady-state loop
+# idles at 30-40%, but launch briefly spikes to 90-100% - ~20 statements
+# running back-to-back is ~2s of solid ticks against a 5s-at-100% kill. It
+# survives, but this is the exact window the old shell/ suite died in, and
+# every later phase adds another import and more setup here. A sleep(1) every
+# few statements costs a few seconds of launch time and keeps each burst
+# short. Do not remove these to "speed up" startup.
 var d = {"ip": "", "hostname": "", "owner": "", "myip": "", "raw": "", "frames": 0, "countdown": 40}
 var tgt = get_target()
 if tgt != none:
     d.ip = tgt.ip
     d.hostname = tgt.hostname
+sleep(1)
+
 d.myip = get_my_ip()
 if d.ip != "":
     var w = whois(d.ip)
     d.owner = w.owner
+sleep(1)
+
 st.ensure_dir()
 if d.ip != "":
     d.raw = st.load(d.ip)
+sleep(1)
 
 var live = read_live()
 var ring = ["", "", "ready"]
