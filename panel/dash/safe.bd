@@ -19,19 +19,47 @@
 #   flagged   noticed but not yet urgent
 #   ok        proceed
 
-var HOPELESS = 10
-var COOL = 30
+# Both are SECONDS REMAINING on the live trace, not the box's trace ceiling.
+# Tuned 2026-09-16 for a test server with a 20s ceiling: at the old COOL=30
+# every session on that box would have been "cool" from the instant it
+# opened, auto-dropping before anything could be observed.
+#
+# COOL must stay above HOPELESS or it becomes dead code - check() tests
+# hopeless first, so equal values mean "cool" can never be reached.
+#
+# NOT HANDLED YET: the plan's other sense of "hopeless" - a box whose trace
+# CEILING is so low it is not worth attacking at all, judged from
+# connect()'s trace_time before starting work. That is a different test from
+# this one and wants its own gate.
+var HOPELESS = 5
+var COOL = 10
 
-func check(conn):
+# `ceiling` is connect()'s own trace_time - this box's MAXIMUM, captured once
+# when the session opened, as opposed to `t` which is what is left right now.
+#
+# A ceiling of 0 means the box does not trace at all. Without this the
+# remaining-time tests read 0 as the worst possible value and would auto-drop
+# an untraced box instantly - exactly backwards. Every trace test is
+# therefore gated on ceiling > 0, and "none" is reported so the state is
+# visible rather than silently indistinguishable from "ok".
+#
+# HONEST LIMIT: we cannot tell "this box never traces" from "the trace has
+# already completed" - both look like 0 from here. Reporting "none" instead
+# of "safe" leaves that judgement with the player. IDS is checked
+# independently and still aborts on an untraced box, since the two systems
+# are separate.
+func check(conn, ceiling):
     var t = get_trace_time()
     var i = ids_status(conn)
     var v = "ok"
     if i == "active":
         v = "abort"
-    elif t <= HOPELESS:
+    elif ceiling > 0 and t <= HOPELESS:
         v = "hopeless"
-    elif t <= COOL:
+    elif ceiling > 0 and t <= COOL:
         v = "cool"
     elif i == "flagged":
         v = "flagged"
+    elif ceiling <= 0:
+        v = "none"
     return {"trace": t, "ids": i, "verdict": v}

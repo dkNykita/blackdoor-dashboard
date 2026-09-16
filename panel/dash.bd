@@ -187,13 +187,18 @@ func paint_live(ui, d, live, ring, job, sess):
     # The verdict is carried by colour as well as text: this is the line that
     # says whether it is safe to still be on the box.
     if sess.on:
-        if sess.verdict == "ok":
+        if sess.verdict == "ok" or sess.verdict == "none":
             term_color(Color.green)
         elif sess.verdict == "flagged":
             term_color(Color.amber)
         else:
             term_color(Color.red)
-        label(10, 14, "UP   trace " + str(int(sess.trace)) + "s   ids " + sess.ids + "   " + sess.verdict)
+        # remaining/ceiling reads better than a bare countdown - 12s means
+        # something different on a 20s box than on a 120s one
+        if sess.ceiling > 0:
+            label(10, 14, "UP   trace " + str(int(sess.trace)) + "s/" + str(int(sess.ceiling)) + "s   ids " + sess.ids + "   " + sess.verdict)
+        else:
+            label(10, 14, "UP   no trace   ids " + sess.ids + "   " + sess.verdict)
     else:
         term_color(Color.muted)
         label(10, 14, "offline")
@@ -333,7 +338,7 @@ var limits = {"probe": true}
 # trace is the one thing here that gets worse while you do nothing, so it is
 # polled on a timer rather than only when acting. `stamped` records whether
 # this session's banner/os have been written to the blob yet.
-var sess = {"on": false, "conn": none, "user": "", "banner": "", "os": "", "trace": 0, "ids": "", "verdict": "", "poll": 8, "stamped": false}
+var sess = {"on": false, "conn": none, "user": "", "banner": "", "os": "", "trace": 0, "ceiling": 0, "ids": "", "verdict": "", "poll": 8, "stamped": false}
 var tgt = get_target()
 if tgt != none:
     d.ip = tgt.ip
@@ -523,6 +528,7 @@ while true:
                 # seed from connect()'s own trace_time so the session line
                 # shows a real number before the first check lands
                 sess.trace = c.trace_time
+                sess.ceiling = c.trace_time
                 sess.ids = "-"
                 # success only means the port answered. An empty user means
                 # the login did NOT happen - the trace is running either way.
@@ -541,7 +547,7 @@ while true:
             ring = push(ring, "disconnected")
             ui.dirty = true
         elif pend == "check":
-            var sv = sf.check(sess.conn)
+            var sv = sf.check(sess.conn, sess.ceiling)
             sess.trace = sv.trace
             sess.ids = sv.ids
             sess.verdict = sv.verdict
