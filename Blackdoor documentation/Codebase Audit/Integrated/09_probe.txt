@@ -1,6 +1,0 @@
-CODEBASE AUDIT - INTEGRATED PASS
-File: utils/probe.bd (37 lines, 4 functions)
-============================================================
-All 4 functions: NO investigation history - cleared in the same
-full-codebase audit pass as crack.bd/sqli.bd. Independent pass's
-conclusion stands unchanged.

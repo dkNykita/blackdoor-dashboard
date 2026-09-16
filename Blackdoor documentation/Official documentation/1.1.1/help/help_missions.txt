@@ -1,8 +1,0 @@
-Nykita@localhost ~/scripts > help missions
-
-MISSIONS
-
-  missions           List available missions
-  mission <id>       View mission details
-  mission accept <id>  Accept a mission
-  mission abandon     Drop current mission

@@ -1,6 +1,0 @@
-CODEBASE AUDIT - INTEGRATED PASS
-File: utils/firewall.bd (26 lines, 1 function)
-============================================================
-do_bypass_firewall(): NO investigation history. Cleared in the same
-full-codebase audit pass as the other action-orchestrator modules.
-Independent pass's conclusion stands unchanged.
