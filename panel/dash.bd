@@ -1,9 +1,18 @@
-# dash.bd - PANEL REWRITE, PHASE 4 "session + trace safety"
+# dash.bd - PANEL REWRITE, PHASE 5 "cracking across sessions"
 #
 # P1 proved the panel model, P2 the read path, P3 that costed work can run a
-# few calls per frame with the UI live and a working cancel. P4 opens a real
-# connection, which is the first thing here that can go WRONG ON ITS OWN
-# while you sit still: the trace runs down whether or not you act.
+# few calls per frame with the UI live and a working cancel, P4 that a live
+# connection can be held and dropped safely. P5 is the payoff: WORK THAT
+# OUTLIVES THE CONNECTION IT STARTED ON.
+#
+# A 20s-ceiling box gives ~12s of working time before the auto-drop, and
+# cracking it takes 8-10 visits. So a crack is a 6-8 minute unattended run of
+# connect, work, drop, cool ~36s, reconnect, resume. The job holds an account
+# name, not a connection: crack progress is SERVER-SIDE AND PERMANENT
+# (reset_crack() exists to clear "the permanent cracked record"), so a
+# dropped link costs only the handle. The old suite knew this too - its
+# progressive_crack_loop() reassigned conn from check_trace() mid-loop - it
+# just could not stay alive long enough to finish.
 #
 # THE RULE THAT SHAPES THIS PHASE: nothing the loop calls may exit() or
 # raise(). The old suite's check_trace() called disconnect()/exit()/raise()
@@ -34,7 +43,7 @@
 # Shown in the title bar. Bump it on every edit - /mnt is not launchable
 # directly, so what is running in-game is whatever was last copied into
 # ~/scripts, and "is this even the new code?" is otherwise unanswerable.
-var BUILD = "p4m"
+var BUILD = "p5a"
 
 var PORTS = [20, 21, 22, 23, 25, 53, 69, 80, 110, 111, 135, 139, 143, 161, 162, 389, 443, 445, 465, 514, 587, 636, 993, 995, 1433, 1521, 2049, 3306, 3389, 5432, 5900, 6379, 8000, 8080, 8443, 8888, 9200, 11211, 27017, 31337]
 
@@ -232,6 +241,25 @@ func step_probe(job, ip, n):
         k = k + 1
     return job
 
+# One crack attempt per iteration, batched like step_probe. crack() is 3
+# ticks, so a batch of 4 is ~36 ticks - the same shape as a probe batch.
+#
+# It does NOT manage the connection. Crack progress is server-side and
+# permanent (reset_crack() exists to clear "the permanent cracked record"),
+# so losing the link mid-crack loses nothing but the handle. The job reacts
+# to the session going away rather than trying to prevent it.
+func step_crack(job, conn, n):
+    var k = 0
+    while k < n and job.phase == "crack":
+        var r = crack(conn, job.account)
+        job.attempts = job.attempts + 1
+        job.hint = r.hint
+        if r.success:
+            job.password = r.password
+            job.phase = "done"
+        k = k + 1
+    return job
+
 func paint_live(ui, d, live, ring, job, sess):
     if ui.rows < 35 or ui.cols < 76:
         return
@@ -277,9 +305,25 @@ func paint_live(ui, d, live, ring, job, sess):
             term_color(Color.muted)
             label(10, 14, "offline   clear   ceiling " + kc + "s")
     term_clear_rect(20, 1, ui.cols - 2, 1)
-    if job.kind != "":
+    if job.kind == "probe":
         term_color(Color.amber)
         label(20, 2, "PROBE  [" + bar(24, job.i, len(PORTS)) + "]  " + str(job.i) + "/" + str(len(PORTS)) + "   open " + str(job.n))
+    elif job.kind == "crack":
+        # A crack has no percentage to show - it is done when it is done. So
+        # report effort instead: visits survived, attempts made, and what the
+        # job is doing right now. A multi-minute unattended run has to look
+        # different from a hung one.
+        term_color(Color.amber)
+        var cs = "working"
+        if job.phase == "cooling":
+            var ce = find_trace(live.list, d.ip)
+            if ce != none:
+                cs = "cooling " + str(int(ce.remaining)) + "s/" + str(int(ce.total)) + "s"
+            else:
+                cs = "cooling"
+        elif job.phase == "connect":
+            cs = "reconnecting"
+        label(20, 2, "CRACK " + job.account + "   visit " + str(job.visits) + "   attempts " + str(job.attempts) + "   " + cs + "   " + job.hint)
     term_clear_rect(last - 3, 1, ui.cols - 2, 1)
     term_color(Color.muted)
     label(last - 3, 2, ring[0] + "   " + ring[1] + "   " + ring[2])
@@ -350,19 +394,23 @@ func paint_all(ui, d, live, ring, job, limits, sess):
     # the descriptions say rather than restating the button name.
     term_color(Color.cyan)
     label(16, 2, "p")
-    label(17, 2, "c")
-    label(18, 2, "d")
+    label(17, 2, "k")
+    label(18, 2, "c")
+    label(19, 2, "d")
     term_color(Color.amber)
     label(16, 5, "[ PROBE ]")
     term_click_zone(16, 5, 9, 1, "b_probe")
-    label(17, 5, "[ CONNECT ]")
-    term_click_zone(17, 5, 11, 1, "b_connect")
-    label(18, 5, "[ DISCONN ]")
-    term_click_zone(18, 5, 11, 1, "b_disconnect")
+    label(17, 5, "[ CRACK ]")
+    term_click_zone(17, 5, 9, 1, "b_crack")
+    label(18, 5, "[ CONNECT ]")
+    term_click_zone(18, 5, 11, 1, "b_connect")
+    label(19, 5, "[ DISCONN ]")
+    term_click_zone(19, 5, 11, 1, "b_disconnect")
     term_color(Color.muted)
     label(16, 19, "scan 40 common ports - no connection, no trace")
-    label(17, 19, "hold a session open for actions that need one - trace runs")
-    label(18, 19, "close the link now")
+    label(17, 19, "crack root across as many visits as it takes - runs unattended")
+    label(18, 19, "hold a session open for actions that need one - trace runs")
+    label(19, 19, "close the link now")
     # row 22 is the running job's progress, drawn by paint_live - it belongs
     # with the actions that produce it.
     term_color(Color.cyan)
@@ -474,7 +522,7 @@ sleep(1)
 var d = {"ip": "", "hostname": "", "owner": "", "myip": "", "raw": "", "frames": 0, "countdown": 40, "speed": 7, "t0": 0, "last": 0, "limit": true, "batch": 2, "boot": 0, "autorecon": true, "cool": 10, "hopeless": 5, "cfgdirty": false, "cfgraw": ""}
 # One entry per action, keyed by job.kind. Every new action needs its key
 # here or the pacing lookup will fail on it.
-var limits = {"probe": true}
+var limits = {"probe": true, "crack": true}
 # A live connection. `poll` counts frames down to the next trace check - the
 # trace is the one thing here that gets worse while you do nothing, so it is
 # polled on a timer rather than only when acting. `stamped` records whether
@@ -503,7 +551,7 @@ sleep(1)
 var live = read_live()
 var ring = ["", "", "ready"]
 var ui = {"cols": 0, "rows": 0, "dirty": true}
-var job = {"kind": "", "phase": "", "i": 0, "n": 0, "found": ""}
+var job = {"kind": "", "phase": "", "i": 0, "n": 0, "found": "", "account": "root", "visits": 0, "attempts": 0, "hint": "", "password": ""}
 var pend = ""
 var nap = 0.25
 
@@ -530,6 +578,8 @@ while true:
                     act = "b_refresh"
                 elif e.key == "P" or e.key == "p":
                     act = "b_probe"
+                elif e.key == "K" or e.key == "k":
+                    act = "b_crack"
                 elif e.key == "X" or e.key == "x":
                     act = "b_stop"
                 elif e.key == "F" or e.key == "f":
@@ -554,13 +604,13 @@ while true:
                 pend = "live"
             elif act == "b_probe":
                 if job.kind == "" and d.ip != "":
-                    job = {"kind": "probe", "phase": "scan", "i": 0, "n": 0, "found": ""}
+                    job = {"kind": "probe", "phase": "scan", "i": 0, "n": 0, "found": "", "account": "root", "visits": 0, "attempts": 0, "hint": "", "password": ""}
                     ring = push(ring, "probe start")
                     ui.dirty = true
                     pend = "start"
             elif act == "b_stop":
                 if job.kind != "":
-                    job = {"kind": "", "phase": "", "i": 0, "n": 0, "found": ""}
+                    job = {"kind": "", "phase": "", "i": 0, "n": 0, "found": "", "account": "root", "visits": 0, "attempts": 0, "hint": "", "password": ""}
                     ring = push(ring, "stopped")
                     ui.dirty = true
             elif act == "b_faster":
@@ -581,6 +631,14 @@ while true:
                 d.autorecon = not d.autorecon
                 d.cfgdirty = true
                 ui.dirty = true
+            elif act == "b_crack":
+                if job.kind == "" and d.ip != "":
+                    job = {"kind": "crack", "phase": "connect", "i": 0, "n": 0, "found": "", "account": "root", "visits": 0, "attempts": 0, "hint": "", "password": ""}
+                    if sess.on:
+                        job.phase = "crack"
+                        job.visits = 1
+                    ring = push(ring, "crack root: started")
+                    ui.dirty = true
             elif act == "b_connect":
                 if sess.on == false and d.ip != "":
                     pend = "connect"
@@ -765,6 +823,19 @@ while true:
                     ring = push(ring, "linked, not authed")
                 else:
                     ring = push(ring, "linked as " + nc.user)
+                # A crack in progress resumes on the new handle. This is the
+                # whole point: the visit counter goes up, the attempt counter
+                # does not reset, and the box remembers the rest.
+                if job.kind == "crack":
+                    if must_drop(sess.verdict):
+                        # The ceiling gate rejected this box. Without this the
+                        # job would reconnect, be dropped, wait, and reconnect
+                        # forever - a patient infinite loop.
+                        ring = push(ring, "crack aborted: " + sess.verdict)
+                        job = {"kind": "", "phase": "", "i": 0, "n": 0, "found": "", "account": "root", "visits": 0, "attempts": 0, "hint": "", "password": ""}
+                    else:
+                        job.phase = "crack"
+                        job.visits = job.visits + 1
             else:
                 ring = push(ring, "connect failed")
             ui.dirty = true
@@ -776,12 +847,39 @@ while true:
             ui.dirty = true
             if pend == "":
                 pend = "stamp"
+        # CRACK ORCHESTRATION. The job never opens or closes a connection
+        # itself - it reacts to whether one exists. The auto-drop ends a visit
+        # for its own reasons, and this just notices and waits. That is why a
+        # crack can outlive any number of sessions without special handling:
+        # progress is server-side, so a dropped link costs only the handle.
+        if job.kind == "crack":
+            if job.phase == "done":
+                d.raw = put(d.raw, "cracked", job.account)
+                ring = push(ring, "CRACKED " + job.account + ": " + job.password)
+                job = {"kind": "", "phase": "", "i": 0, "n": 0, "found": "", "account": "root", "visits": 0, "attempts": 0, "hint": "", "password": ""}
+                ui.dirty = true
+                if pend == "":
+                    pend = "stamp"
+            elif sess.on and job.phase == "crack":
+                if pend == "":
+                    pend = "crackstep"
+            elif sess.on == false:
+                # Between visits. Wait for the host to leave traces()
+                # entirely rather than for a threshold - a definite signal,
+                # and at ~3s of recovery per 1s of trace there is no hurry.
+                var ct = find_trace(live.list, d.ip)
+                if ct == none:
+                    job.phase = "connect"
+                    if pend == "":
+                        pend = "connect"
+                else:
+                    job.phase = "cooling"
         # End-of-list detection lives here rather than in step_probe(),
         # because comparisons inside render: are free and ticks inside the
         # step function are paid once per port.
         if job.kind != "" and job.i >= len(PORTS):
             d.raw = put(d.raw, "ports", clean_list(job.found))
-            job = {"kind": "", "phase": "", "i": 0, "n": 0, "found": ""}
+            job = {"kind": "", "phase": "", "i": 0, "n": 0, "found": "", "account": "root", "visits": 0, "attempts": 0, "hint": "", "password": ""}
             ring = push(ring, "probe done")
             ui.dirty = true
             pend = "save"
@@ -807,6 +905,8 @@ while true:
             break
         elif pend == "step":
             job = step_probe(job, d.ip, BATCHES[d.batch])
+        elif pend == "crackstep":
+            job = step_crack(job, sess.conn, BATCHES[d.batch])
         elif pend == "start":
             d.t0 = get_unix_time()
         elif pend == "save":
