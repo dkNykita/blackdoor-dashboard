@@ -137,9 +137,6 @@ func read_live():
     var tr = traces()
     return {"noise": n, "trace": t, "count": len(tr), "list": tr}
 
-# traces() keeps reporting a host after you disconnect, while its trace winds
-# back down - so the session is still worth watching once the link is gone.
-# Searching the list happens inside render:, where it is free.
 # One definition of "this link has to go", used by both places that can
 # reach that conclusion: the check dispatch acting on a reading it just took,
 # and render: acting on a verdict set elsewhere (connect's ceiling gate).
@@ -153,6 +150,9 @@ func must_drop(v):
         return false
     return true
 
+# traces() keeps reporting a host after you disconnect, while its trace winds
+# back down - so the session is still worth watching once the link is gone.
+# Searching the list happens inside render:, where it is free.
 func find_trace(list, ip):
     for e in list:
         if e.ip == ip:
