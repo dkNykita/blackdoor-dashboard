@@ -1,0 +1,104 @@
+# dash.bd - PANEL REWRITE, PHASE 1 "hello panel"
+#
+# The smallest thing that proves the panel model works in-game. Zero imports
+# on purpose: a top-level script's own length costs no launch ticks, so
+# startup here is open_panel() plus a couple of free reads.
+#
+# WHAT TO WATCH FOR, in order:
+#   1. It paints at all                 -> render:/term_* work
+#   2. The header is drawn by label(),
+#      a plain func called INSIDE       -> PROBE Q1. If this is a hard error,
+#      render:                             every draw call must be inlined.
+#   3. [ PING ] reacts to a click       -> click zones work
+#   4. q quits (click the panel first,
+#      keys only arrive while focused)  -> key events work
+#   5. LEAVE IT IDLING 10 MINUTES with
+#      no "[SYSTEM] CPU overloaded"     -> PROBE Q3, the headline test. This
+#                                          is what the old suite never passed.
+#
+# Also run, in the terminal:  which dash   -> PROBE Q4 (where a bare name
+#                                             resolves from)
+#                             run dash twice -> PROBE Q6 (does a second
+#                                             open_panel() get its own panel?)
+#
+# NOT probed here on purpose: a while-loop INSIDE render: (Q2) can hang the
+# game, so it gets its own throwaway script, run deliberately.
+
+func label(r, c, t):
+    term_move(r, c)
+    term_write(t)
+
+func paint(ui, s):
+    term_clear()
+    if ui.rows < 10 or ui.cols < 30:
+        term_color(Color.amber)
+        label(0, 0, "enlarge this pane")
+        return
+    term_color(Color.cyan)
+    term_box(0, 0, ui.cols, ui.rows)
+    term_color(Color.white)
+    label(1, 2, "BLACKDOOR   panel rewrite   P1")
+    term_color(Color.muted)
+    label(2, 2, "size " + str(ui.cols) + "x" + str(ui.rows))
+    term_color(Color.amber)
+    label(4, 2, "[ PING ]")
+    term_click_zone(4, 2, 8, 1, "b_ping")
+    term_color(Color.muted)
+    label(ui.rows - 2, 2, "q quits - click the panel first so keys reach it")
+
+func paint_live(ui, s):
+    if ui.rows < 10 or ui.cols < 30:
+        return
+    term_clear_rect(6, 1, ui.cols - 2, 2)
+    term_color(Color.green)
+    label(6, 2, "frames " + str(s.frames) + "   clicks " + str(s.clicks) + "   keys " + str(s.keys))
+    term_color(Color.white)
+    label(7, 2, "last: " + s.last)
+
+var r = open_panel()
+if not r.success:
+    log("no script panel in this layout - add one to run this")
+    log(r.error)
+    return
+
+var ui = {"cols": 0, "rows": 0, "dirty": true}
+var s = {"frames": 0, "clicks": 0, "keys": 0, "last": "nothing yet"}
+var quit = false
+var nap = 0.25
+
+while true:
+    render:
+        var sz = term_size()
+        if sz.cols != ui.cols or sz.rows != ui.rows:
+            ui.cols = sz.cols
+            ui.rows = sz.rows
+            ui.dirty = true
+        var e = get_event()
+        var n = 0
+        while n < 8:
+            if e == none:
+                break
+            if e.type == "click":
+                s.clicks = s.clicks + 1
+                if e.zone_id == "b_ping":
+                    s.last = "click on [ PING ]"
+                else:
+                    s.last = "click at " + str(e.row) + "," + str(e.col)
+            elif e.type == "key":
+                s.keys = s.keys + 1
+                s.last = "key " + e.key
+                if e.key == "Q" or e.key == "q":
+                    quit = true
+            e = get_event()
+            n = n + 1
+        s.frames = s.frames + 1
+        if ui.dirty:
+            paint(ui, s)
+            ui.dirty = false
+        paint_live(ui, s)
+    if quit:
+        break
+    sleep(nap)
+
+term_clear()
+log("dash P1 stopped after " + str(s.frames) + " frames")
