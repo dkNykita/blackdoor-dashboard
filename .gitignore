@@ -1,0 +1,11 @@
+# Non-core content and local files stay out of the repo
+external/
+**/.claude/settings.local.json
+CLAUDE.local.md
+.env
+.env.*
+*.pem
+*.key
+Thumbs.db
+desktop.ini
+.DS_Store
