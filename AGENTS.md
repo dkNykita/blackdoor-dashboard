@@ -7,6 +7,17 @@ Scripts for the game Blackdoor written in the game's own script language (`.bd`)
 - `shell/` – the original dashboard, kept as the working fallback. `shell/menu.bd` is the dashboard and launcher; scripts cannot launch other scripts, so it calls the action functions in `shell/utils/*.bd` directly by name, and a change of a name or signature in `shell/utils/` has to be mirrored in `shell/menu.bd`.
 - `panel/` – the ground-up rewrite on Script Panels: entry point `panel/dash.bd`, modules `panel/dash/*.bd` (`store.bd` persistence, `safe.bd` session and trace safety). Milestones P1–P5 are done; P6 (GRAB + CLEANUP) and P7 (polish, port the remaining actions) are next.
 
+## What to load when
+At the start an agent reads only this file; it loads the files below when the task matches a row (rule in the vault's root `AGENTS.md`). A new, moved or deleted key file = update its row.
+
+| When… | Load |
+|---|---|
+| you need the overview of the repo | [README.md](README.md) |
+| you change the original dashboard | `shell/menu.bd` and `shell/utils/*.bd` (a renamed function or changed signature in `shell/utils/` must be mirrored in `shell/menu.bd`) |
+| you work on the Script Panels rewrite | `panel/dash.bd`, `panel/dash/*.bd` (`store.bd` persistence, `safe.bd` session and trace safety) |
+| you need the plan, per-phase results or ruled-out directions | vault `Projects/Games/Blackdoor/`: `dashboard-stav.md`, `Internal/panel rewrite/00_PLAN.md`, `Internal/field_notes.txt` |
+| you need BDScript syntax, save layout or rules from earlier sessions | vault `Projects/Games/Blackdoor/CLAUDE-external.md`, `Internal/Blackdoor documentation/` |
+
 ## Notes
 - The game runs the scripts from its saves and the repo mirrors them: `slot_0/mnt/Scripts/Active/menu.bd` and `utils/*.bd` → `shell/menu.bd` and `shell/utils/*.bd`; the dev save `slot_2/mnt/dash.bd` and `dash/*.bd` → `panel/dash.bd` and `panel/dash/*.bd` (`dash/data/` is runtime state, not mirrored). The owner copies changes between the game and the repo; the repo is also the backup, because some in-game machines can wipe a save.
 - The game runs only on the owner's PC; changes cannot be executed in a cloud session, so describe how to verify them in the game.
