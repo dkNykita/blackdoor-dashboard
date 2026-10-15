@@ -36,7 +36,7 @@ grep_staged() {
 }
 
 # 1) Local-only cesty (pojistka i proti 'git add -f'); udrzuj v souladu s .gitignore
-FORBIDDEN='^(Projects|Archive)/(PA|Generic)/|^Worktree/|^Projects/PC-Maintenance/(temp/|.*LocaleMetaData/|.*\.jpg$)|^Projects/Linux/(chunks|downloads)/|(^|/)\.smart-env/|(^|/)\.claude/(settings\.local\.json$|worktrees/)|(^|/)CLAUDE\.local\.md$|(^|/)\.env(\.|$)|(^|/)\.credentials\.json$|(^|/)(credentials|token)\.json$|(^|/)client_secret[^/]*\.json$|(^|/)(id_rsa|id_ed25519|id_ecdsa|\.netrc|\.npmrc|\.pypirc)$|(^|/)[^/]*cookies[^/]*\.txt$|\.(dmp|mdmp|evtx|etl|mta|pem|key|p12|pfx|kdbx)$'
+FORBIDDEN='^(Projects|Archive)/(PA|Generic)/|^Worktree/|^Projects/PC-Maintenance/(temp/|.*LocaleMetaData/|.*\.jpg$)|^Projects/Linux/(chunks|downloads)/|(^|/)\.smart-env/|(^|/)\.claude/(settings\.local\.json$|worktrees/)|(^|/)CLAUDE\.local\.md$|(^|/)\.env(\.|$)|(^|/)\.credentials\.json$|(^|/)(credentials|token)\.json$|(^|/)client_secret[^/]*\.json$|(^|/)(id_rsa|id_ed25519|id_ecdsa|\.netrc|\.npmrc|\.pypirc)$|(^|/)[^/]*cookies[^/]*\.txt$|(^|/)morning_brief_[^/]*\.html$|\.(dmp|mdmp|evtx|etl|mta|pem|key|p12|pfx|kdbx)$'
 sed "s|^|$prefix|" "$tmp.files" | grep -iE "$FORBIDDEN" > "$tmp"
 [ -s "$tmp" ] && block "soubory jen pro lokalni disk (git restore --staged <soubor>; na disku zustane):"
 
