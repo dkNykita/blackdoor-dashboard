@@ -1,0 +1,17 @@
+#!/bin/sh
+# Vault - pre-push pojistka: zadny force-push (prepis historie na GitHubu) pro zadneho agenta ani cloveka.
+# Odmitne push, pri kterem vzdaleny commit neni predkem posilaneho (non-fast-forward).
+# Mazani vzdalene vetve (napr. po sloucenem PR) povoli. Aktivace: python Scripts/vault_git.py setup
+fail=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$local_sha" in *[!0]*) ;; *) continue ;; esac        # mazani vetve
+  case "$remote_sha" in *[!0]*) ;; *) continue ;; esac       # nova vetev
+  if ! git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
+    printf 'pre-push BLOK: %s na serveru obsahuje commity, ktere tu nejsou (git fetch a merge)\n' "$remote_ref" >&2
+    fail=1
+  elif ! git merge-base --is-ancestor "$remote_sha" "$local_sha"; then
+    printf 'pre-push BLOK: %s -> %s neni fast-forward (force-push je zakazany)\n' "$local_ref" "$remote_ref" >&2
+    fail=1
+  fi
+done
+exit $fail
