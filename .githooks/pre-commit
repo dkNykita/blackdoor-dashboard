@@ -1,0 +1,71 @@
+#!/bin/sh
+# Claude Workspace - pre-commit pojistka: local-only cesty, tajemstvi, velke soubory.
+# Bezi v Git Bash (Windows) i v /bin/sh (Linux cloud); jen git + POSIX nastroje.
+# Aktivace na kazdem klonu: python Scripts/vault_git.py setup
+#   (vault: core.hooksPath .githooks; kazdy submodul Projects/<x>: core.hooksPath ../../.githooks;
+#    v cloudu to dela SessionStart hook v .claude/settings.json)
+# V submodulu se cesty kontroluji vcetne cesty submodulu ve vaultu (Projects/<x>/...).
+# Nalezy tajemstvi se vypisuji jen jako nazev souboru, hodnoty se neopakuji.
+
+MAX_KB="${CLAUDE_WS_MAX_KB:-2048}"
+fail=0
+tmp=$(mktemp) || exit 1
+trap 'rm -f "$tmp" "$tmp.z" "$tmp.files" "$tmp.small"' EXIT
+
+block() { printf 'pre-commit BLOK: %s\n' "$1" >&2; cat "$tmp" >&2; fail=1; }
+
+# Nazvy souboru doslovne (NUL-oddelene), i s uvozovkami/diakritikou
+git diff --cached --name-only -z --diff-filter=ACMR > "$tmp.z"
+[ -s "$tmp.z" ] || exit 0
+# Kod pluginu Obsidianu (minifikovany main.js, casto nad limitem) se nekontroluje: commituje ho i obsidian-git
+tr '\0' '\n' < "$tmp.z" | grep -v -E '^\.obsidian/plugins/[^/]+/main\.js$' > "$tmp.files"
+[ -s "$tmp.files" ] || exit 0
+
+# Submodul vaultu: predpona = cesta submodulu ve vaultu (napr. "Projects/Games/")
+prefix=""
+super=$(git rev-parse --show-superproject-working-tree 2>/dev/null)
+if [ -n "$super" ]; then
+  top=$(git rev-parse --show-toplevel)
+  prefix="${top#"$super"/}/"
+fi
+
+# Soubory (staged verze do limitu velikosti), ve kterych git grep najde vzor; vypise jen nazvy
+grep_staged() {
+  [ -s "$tmp.small" ] || return 0
+  xargs -0 git --literal-pathspecs grep --cached -I -l -z "$@" -- < "$tmp.small" 2>/dev/null | tr '\0' '\n'
+}
+
+# 1) Local-only cesty (pojistka i proti 'git add -f'); udrzuj v souladu s .gitignore
+FORBIDDEN='^(Projects|Archive)/(PA|Generic)/|^Worktree/|^Projects/PC-Maintenance/(temp/|.*LocaleMetaData/|.*\.jpg$)|^Projects/Linux/(chunks|downloads)/|(^|/)\.smart-env/|(^|/)\.claude/(settings\.local\.json$|worktrees/)|(^|/)CLAUDE\.local\.md$|(^|/)\.env(\.|$)|(^|/)\.credentials\.json$|(^|/)(credentials|token)\.json$|(^|/)client_secret[^/]*\.json$|(^|/)(id_rsa|id_ed25519|id_ecdsa|\.netrc|\.npmrc|\.pypirc)$|(^|/)[^/]*cookies[^/]*\.txt$|\.(dmp|mdmp|evtx|etl|mta|pem|key|p12|pfx|kdbx)$'
+sed "s|^|$prefix|" "$tmp.files" | grep -iE "$FORBIDDEN" > "$tmp"
+[ -s "$tmp" ] && block "soubory jen pro lokalni disk (git restore --staged <soubor>; na disku zustane):"
+
+# 2) Velikost souboru (velke soubory se dal neprohledavaji, jsou blokovane)
+: > "$tmp.small"
+while IFS= read -r f; do
+  sz=$(git cat-file -s ":$f" 2>/dev/null || echo 0)
+  if [ "$sz" -gt $((MAX_KB * 1024)) ]; then
+    printf '%s (%s KB)\n' "$f" $((sz / 1024))
+  else
+    printf '%s\0' "$f" >> "$tmp.small"
+  fi
+done < "$tmp.files" > "$tmp"
+[ -s "$tmp" ] && block "soubory nad $MAX_KB KB (nechat lokalne, nebo vedome CLAUDE_WS_MAX_KB=...):"
+
+# 3) Tajemstvi: API klice, tokeny, privatni klice, hesla v URL, session cookies
+SECRETS='-----BEGIN [A-Z ]*PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,}|sk-ant-[A-Za-z0-9_-]{20,}|sk-(proj-)?[A-Za-z0-9]{32,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{35}|ya29\.[0-9A-Za-z_-]{20,}|GOCSPX-[A-Za-z0-9_-]{20,}|1//0[A-Za-z0-9_-]{30,}|[Bb]earer [A-Za-z0-9._~+/-]{20,}|[a-z][a-z0-9+.-]{0,15}://[^/:@ ]{1,64}:[^/@ ]{3,64}@|discord(app)?\.com/api/webhooks/[0-9]+/|hf_[A-Za-z0-9]{30,}'
+COOKIES='(sessionid|csrftoken)["'"'"' =:]+[A-Za-z0-9]{16,}'
+{ grep_staged -E -e "$SECRETS"; grep_staged -i -E -e "$COOKIES"; } | sort -u > "$tmp"
+[ -s "$tmp" ] && block "vypada to na tajemstvi / token (soubor):"
+
+# 4) Klice v nastaveni pluginu Obsidianu (Copilot, Smart Connections…): neprazdne "...apiKey"/"...Token"
+grep -E '^\.obsidian/plugins/[^/]+/data\.json$' "$tmp.files" | while IFS= read -r f; do
+  git show ":$f" 2>/dev/null | grep -q -E '"[A-Za-z]*([Aa]pi[Kk]ey|[Tt]oken)" *: *"[^"]+"' && printf '%s\n' "$f"
+done > "$tmp"
+[ -s "$tmp" ] && block "API klic / token v nastaveni pluginu (smaz hodnotu, nebo soubor nech jen lokalne):"
+
+if [ "$fail" -ne 0 ]; then
+  echo "Commit zastaven. Oprav priciny vyse; --no-verify jen vedome." >&2
+  exit 1
+fi
+exit 0
