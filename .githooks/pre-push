@@ -1,7 +1,7 @@
 #!/bin/sh
 # Vault - pre-push pojistka: zadny force-push (prepis historie na GitHubu) pro zadneho agenta ani cloveka.
 # Odmitne push, pri kterem vzdaleny commit neni predkem posilaneho (non-fast-forward).
-# Mazani vzdalene vetve (napr. po sloucenem PR) povoli. Aktivace: python Scripts/vault_git.py setup
+# Mazani vzdalene vetve (napr. po sloucenem PR) povoli. Aktivace: python System/Scripts/vault_git.py setup
 fail=0
 while read -r local_ref local_sha remote_ref remote_sha; do
   case "$local_sha" in *[!0]*) ;; *) continue ;; esac        # mazani vetve

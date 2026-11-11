@@ -1,7 +1,7 @@
 #!/bin/sh
 # Claude Workspace - pre-commit pojistka: local-only cesty, tajemstvi, velke soubory.
 # Bezi v Git Bash (Windows) i v /bin/sh (Linux cloud); jen git + POSIX nastroje.
-# Aktivace na kazdem klonu: python Scripts/vault_git.py setup
+# Aktivace na kazdem klonu: python System/Scripts/vault_git.py setup
 #   (vault: core.hooksPath .githooks; kazdy submodul Projects/<x>: core.hooksPath ../../.githooks;
 #    v cloudu to dela SessionStart hook v .claude/settings.json)
 # V submodulu se cesty kontroluji vcetne cesty submodulu ve vaultu (Projects/<x>/...).
