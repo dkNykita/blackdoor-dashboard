@@ -1,6 +1,6 @@
 # Blackdoor Dashboard – instructions for AI agents
 
-> For any agent (Claude, Gemini, Codex/GPT, Copilot…); `CLAUDE.md` only imports this file. Human-facing description: [README.md](README.md).
+> For any agent (Claude, Gemini, Codex/GPT, Copilot…); `CLAUDE.md` only imports this file. Human-facing description: [README.md](README.md). This repo holds only the code; the main place for documentation and notes about the game (plan, results, BDScript rules, game docs) is the vault folder `Projects/Games/Poznamky/Blackdoor/`.
 
 ## What this is
 Scripts for the game Blackdoor written in the game's own script language (`.bd`), in two generations:
@@ -15,8 +15,8 @@ At the start an agent reads only this file; it loads the files below when the ta
 | you need the overview of the repo | [README.md](README.md) |
 | you change the original dashboard | `shell/menu.bd` and `shell/utils/*.bd` (a renamed function or changed signature in `shell/utils/` must be mirrored in `shell/menu.bd`) |
 | you work on the Script Panels rewrite | `panel/dash.bd`, `panel/dash/*.bd` (`store.bd` persistence, `safe.bd` session and trace safety) |
-| you need the plan, per-phase results or ruled-out directions | vault `Projects/Games/Blackdoor/`: `dashboard-stav.md`, `Internal/panel rewrite/00_PLAN.md`, `Internal/field_notes.txt` |
-| you need BDScript syntax, save layout or rules from earlier sessions | vault `Projects/Games/Blackdoor/CLAUDE-external.md`, `Internal/Blackdoor documentation/` |
+| you need the plan, per-phase results or ruled-out directions | vault `Projects/Games/Poznamky/Blackdoor/`: `dashboard-stav.md`, `Internal/panel rewrite/00_PLAN.md`, `Internal/field_notes.txt` |
+| you need BDScript syntax, save layout or rules from earlier sessions | vault `Projects/Games/Poznamky/Blackdoor/CLAUDE-external.md`, `Internal/Blackdoor documentation/` |
 
 ## Notes
 - The game runs the scripts from its saves and the repo mirrors them: `slot_0/mnt/Scripts/Active/menu.bd` and `utils/*.bd` → `shell/menu.bd` and `shell/utils/*.bd`; the dev save `slot_2/mnt/dash.bd` and `dash/*.bd` → `panel/dash.bd` and `panel/dash/*.bd` (`dash/data/` is runtime state, not mirrored). The owner copies changes between the game and the repo; the repo is also the backup, because some in-game machines can wipe a save.
