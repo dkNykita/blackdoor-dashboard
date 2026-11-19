@@ -1,0 +1,3 @@
+# Git hooky jsou shell skripty: vždy LF (i s core.autocrlf=true), jinak je /bin/sh v cloudu nespustí
+# a `vault_git.py hooks --check` hlásí rozdíl proti kopii ve vaultu.
+.githooks/* text eol=lf
