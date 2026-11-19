@@ -8,6 +8,14 @@
 # Nalezy tajemstvi se vypisuji jen jako nazev souboru, hodnoty se neopakuji.
 
 MAX_KB="${CLAUDE_WS_MAX_KB:-2048}"
+# Vyjimky z limitu velikosti: presne cesty od korene vaultu (jen schvalene uzivatelem, viz AGENTS.md)
+#   System/Tools/flashplayer_32_sa_debug.exe – Flash Player projektor pro .swf hry (16 MB, Adobe ho uz nedistribuuje)
+#   Projects/Games/tools/renpy/game/0x52_URM.rpa – mod URM pro Ren'Py hry (2,2 MB)
+SIZE_EXEMPT='^System/Tools/flashplayer_32_sa_debug\.exe$|^Projects/Games/tools/renpy/game/0x52_URM\.rpa$'
+# Nastroje Ren'Py katalogu (Projects/Games/tools/renpy/, nova verze z aktualizace tlacitkem) do 10 MB;
+# obsah se kontroluje jako u ostatnich souboru (schvalil uzivatel 2026-11-10)
+TOOLS_PATH='^Projects/Games/tools/renpy/'
+TOOLS_MAX_KB=10240
 fail=0
 tmp=$(mktemp) || exit 1
 trap 'rm -f "$tmp" "$tmp.z" "$tmp.files" "$tmp.small"' EXIT
@@ -36,7 +44,7 @@ grep_staged() {
 }
 
 # 1) Local-only cesty (pojistka i proti 'git add -f'); udrzuj v souladu s .gitignore
-FORBIDDEN='^(Projects|Archive)/(PA|Generic)/|^Worktree/|^Projects/PC-Maintenance/(temp/|.*LocaleMetaData/|.*\.jpg$)|^Projects/Linux/(chunks|downloads)/|(^|/)\.smart-env/|(^|/)\.claude/(settings\.local\.json$|worktrees/)|(^|/)CLAUDE\.local\.md$|(^|/)\.env(\.|$)|(^|/)\.credentials\.json$|(^|/)(credentials|token)\.json$|(^|/)client_secret[^/]*\.json$|(^|/)(id_rsa|id_ed25519|id_ecdsa|\.netrc|\.npmrc|\.pypirc)$|(^|/)[^/]*cookies[^/]*\.txt$|(^|/)morning_brief_[^/]*\.html$|\.(dmp|mdmp|evtx|etl|mta|pem|key|p12|pfx|kdbx)$'
+FORBIDDEN='^(Projects|Archive)/(PA|Generic)/|^Personal/Generic/|^Worktree/|^Outputs/kontroly/|^Outputs/pc-uklid/|^Projects/PC-Maintenance/(temp/|.*LocaleMetaData/|.*\.jpg$)|^Projects/Linux/(chunks|downloads)/|(^|/)\.smart-env/|(^|/)\.miyo/|(^|/)\.claude/(settings\.local\.json$|worktrees/)|(^|/)CLAUDE\.local\.md$|(^|/)\.env(\.|$)|(^|/)\.credentials\.json$|(^|/)(credentials|token)\.json$|(^|/)client_secret[^/]*\.json$|(^|/)(id_rsa|id_ed25519|id_ecdsa|\.netrc|\.npmrc|\.pypirc)$|(^|/)[^/]*cookies[^/]*\.txt$|(^|/)morning_brief_[^/]*\.html$|\.(dmp|mdmp|evtx|etl|mta|pem|key|p12|pfx|kdbx)$'
 sed "s|^|$prefix|" "$tmp.files" | grep -iE "$FORBIDDEN" > "$tmp"
 [ -s "$tmp" ] && block "soubory jen pro lokalni disk (git restore --staged <soubor>; na disku zustane):"
 
@@ -44,7 +52,11 @@ sed "s|^|$prefix|" "$tmp.files" | grep -iE "$FORBIDDEN" > "$tmp"
 : > "$tmp.small"
 while IFS= read -r f; do
   sz=$(git cat-file -s ":$f" 2>/dev/null || echo 0)
-  if [ "$sz" -gt $((MAX_KB * 1024)) ]; then
+  if printf '%s\n' "$prefix$f" | grep -qE "$SIZE_EXEMPT"; then
+    :  # schvalena vyjimka: nekontroluje se ani velikost, ani obsah (binarka)
+  elif printf '%s\n' "$prefix$f" | grep -qE "$TOOLS_PATH" && [ "$sz" -le $((TOOLS_MAX_KB * 1024)) ]; then
+    printf '%s\0' "$f" >> "$tmp.small"  # nastroj Ren'Py do TOOLS_MAX_KB: velikost OK, obsah se kontroluje
+  elif [ "$sz" -gt $((MAX_KB * 1024)) ]; then
     printf '%s (%s KB)\n' "$f" $((sz / 1024))
   else
     printf '%s\0' "$f" >> "$tmp.small"
@@ -63,6 +75,26 @@ grep -E '^\.obsidian/plugins/[^/]+/data\.json$' "$tmp.files" | while IFS= read -
   git show ":$f" 2>/dev/null | grep -q -E '"[A-Za-z]*([Aa]pi[Kk]ey|[Tt]oken)" *: *"[^"]+"' && printf '%s\n' "$f"
 done > "$tmp"
 [ -s "$tmp" ] && block "API klic / token v nastaveni pluginu (smaz hodnotu, nebo soubor nech jen lokalne):"
+
+# 5) Sifrovani git-crypt (atribut filter=git-crypt v .gitattributes): staged verze musi byt sifra (hlavicka
+#    \0GITCRYPT\0), jinak by se do gitu dostal prosty text (ztraceny filtr, klon bez git-crypt). Obsah se nevypisuje.
+#    Atributy z indexu (--cached), ne z pracovniho stromu: radek smazany jen na disku kontrolu neobejde.
+tr '\n' '\0' < "$tmp.files" | git check-attr --cached -z --stdin filter 2>/dev/null | tr '\0' '\n' | paste - - - \
+  | awk -F '\t' '$3 == "git-crypt" { print $1 }' | while IFS= read -r f; do
+    [ "$(git cat-file blob ":$f" 2>/dev/null | head -c 9 | tail -c 8 | tr -d '\000')" = "GITCRYPT" ] || printf '%s\n' "$f"
+  done > "$tmp"
+[ -s "$tmp" ] && block "soubor ma byt zasifrovany (git-crypt), staged verze je prosty text (git-crypt unlock, pak git-crypt status -f):"
+
+# 5b) Co je v HEAD sifra (hlavicka \0GITCRYPT\0), musi zustat sifrou i v indexu – nezavisle na atributech
+#     (smazany nebo zmeneny radek .gitattributes, pozdejsi -filter, vnoreny .gitattributes, .git/info/attributes).
+#     Kandidati jednim git grep nad HEAD verzemi souboru v commitu, pak presne podle hlavicky. Obsah se nevypisuje.
+#     Zamerne odsifrovani souboru = nejdriv ho s uzivatelem z gitu odebrat (git rm --cached), pak pridat znovu.
+tr '\n' '\0' < "$tmp.files" | GIT_LITERAL_PATHSPECS=1 xargs -0 git grep -l -z -a -F GITCRYPT HEAD -- 2>/dev/null | tr '\0' '\n' \
+  | sed 's/^HEAD://' | while IFS= read -r f; do
+    [ "$(git cat-file blob "HEAD:$f" 2>/dev/null | head -c 9 | tail -c 8 | tr -d '\000')" = "GITCRYPT" ] || continue
+    [ "$(git cat-file blob ":$f" 2>/dev/null | head -c 9 | tail -c 8 | tr -d '\000')" = "GITCRYPT" ] || printf '%s\n' "$f"
+  done > "$tmp"
+[ -s "$tmp" ] && block "soubor je v HEAD zasifrovany (git-crypt), staged verze je prosty text – zkontroluj .gitattributes a git-crypt (vault_git.py status), pak git-crypt status -f:"
 
 if [ "$fail" -ne 0 ]; then
   echo "Commit zastaven. Oprav priciny vyse; --no-verify jen vedome." >&2

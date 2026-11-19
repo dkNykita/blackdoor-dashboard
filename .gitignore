@@ -9,3 +9,5 @@ CLAUDE.local.md
 Thumbs.db
 desktop.ini
 .DS_Store
+# dočasné soubory atomického zápisu (kontroly vaultu, kontroly_vaultu._zapis)
+*.tmp
